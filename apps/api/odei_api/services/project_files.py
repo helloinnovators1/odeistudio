@@ -155,10 +155,16 @@ def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[i
             os.close(root_fd)
 
     before = target.stat()
+    if not stat.S_ISREG(before.st_mode):
+        raise ProjectFileError("Requested path is not a regular file")
     try:
         file_fd = os.open(target, flags)
     except OSError as exc:
-        if target.is_dir():
+        try:
+            current = target.stat()
+        except OSError:
+            raise
+        if not stat.S_ISREG(current.st_mode):
             raise ProjectFileError("Requested path is not a regular file") from exc
         raise
     try:
