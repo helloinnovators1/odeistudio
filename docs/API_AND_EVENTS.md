@@ -113,6 +113,7 @@ Approval is now an explicit domain state between `awaiting_approval` and `execut
 |---|---|---|
 | POST | `/organizations/{organization_id}/projects` | Creates an active project for an active organization member; creator becomes owner. Returns 201. |
 | GET | `/organizations/{organization_id}/projects` | Lists up to 100 active projects owned by or actively shared with the caller. |
+| GET | `/organizations/{organization_id}/projects/{project_id}/members` | Project owner lists up to 100 active project members. |
 | PUT | `/organizations/{organization_id}/projects/{project_id}/members` | Project owner adds an already-active organization member. |
 | DELETE | `/organizations/{organization_id}/projects/{project_id}/members` | Project owner marks an active member inactive; history is retained. |
 
