@@ -10,7 +10,7 @@ def test_read_only_workspace_tools_list_read_and_search(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     secret = "ghp_" + "A" * 32
     (tmp_path / "src" / "main.py").write_text(
-        "def hello():\\n    return 'ODEI'\\napi_key = \"" + secret + "\"\\n",
+        "def hello():\n    return 'ODEI'\napi_key = \"" + secret + "\"\n",
         encoding="utf-8",
     )
     registry = WorkspaceHandleRegistry()
@@ -26,6 +26,9 @@ def test_read_only_workspace_tools_list_read_and_search(tmp_path: Path) -> None:
         search = tools.execute("search_project_files", {"query": "ODEI"})
         assert '"line":2' in search
         assert secret not in search
+        secret_search = tools.execute("search_project_files", {"query": "api_key"})
+        assert '"line":3' in secret_search
+        assert secret not in secret_search
         assert (tmp_path / "src" / "main.py").read_text(encoding="utf-8").endswith("ODEI'\n")
     finally:
         registry.close()
