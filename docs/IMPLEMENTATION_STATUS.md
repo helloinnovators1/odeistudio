@@ -1,6 +1,6 @@
 # Implementation Status
 
-**Last updated:** 2026-11-20 (upstream ecosystem alignment added)  
+**Last updated:** 2026-11-20  
 **Repository:** https://github.com/helloinnovators1/odeistudio  
 **Default branch:** main
 
@@ -26,11 +26,14 @@
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
 
 ## Not yet verified
-- Python tests and Ruff linting are configured in GitHub Actions. GitHub Actions run [44737685982](https://github.com/helloinnovators1/odeistudio/actions/runs/44737685982) passed on commit `9b571533f9d38c915aa0458b5a20d3bba0960459`: Ruff reported `All checks passed!` and pytest reported `30 passed, 1 warning`. The lint issue was caused by missing blank-line separation after the `__future__` import; CI's temporary `--diff` diagnostic exposed the exact fix. The diagnostic step has been removed from the workflow; the workflow-cleanup commit is triggering a fresh confirmation run.
-- No frontend application, authentication, verified tenant membership service, live Atlas connection, secret vault, sandbox runtime, GitHub App, MAC UI or MAD UI has been implemented in this work. The task store requires an authenticated caller to enforce organization membership before use. The planner is a single Responses API planning call, not yet a full autonomous agent loop.
-- Project-file utilities and the model planner are not exposed through HTTP. Authentication, tenant/workspace authorization and a safe task persistence layer are prerequisites. The scanner currently applies common exclusions and .gitignore rules but still needs cross-platform race-resistant file-handle hardening before network exposure.
-- No Windows desktop folders have been scanned; Chrome extension access does not provide unrestricted local filesystem access.
+- Authentication, trusted identity verification, organization membership and project-level authorization are not implemented. No task or workspace routes are exposed.
+- No React/TypeScript/Monaco frontend has been integrated into this target repository. The upstream UI remains reference material until service ownership and migration contracts are settled.
+- No live Atlas connection, secret vault, sandbox runtime, GitHub App, Studio MAC UI or MAD UI has been implemented here.
+- The task store requires authenticated callers to enforce organization membership, project access and owner permissions before use. The planner is one Responses API planning call, not a full autonomous agent loop.
+- Project-file utilities are not exposed through HTTP. The scanner still needs cross-platform race-resistant file-handle hardening and workspace ownership checks before exposure.
+- No Windows desktop folders have been scanned. The user's Chrome extension does not grant unrestricted filesystem access; the upstream path-bridge is a design/code reference and has not been ported or installed on the user's machine.
 - Provider integrations are documented/researched, not connected or end-to-end tested.
+- No live MongoDB/Atlas connection has been attempted because no valid credential is configured in this repository. The task-event transaction code has unit-test coverage but still needs integration tests against a replica-set deployment.
 
 ## Next implementation sequence
 0. Keep the clean Ruff gate green and reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
