@@ -17,7 +17,12 @@ def test_liveness_endpoint() -> None:
     assert response.json() == {"status": "alive"}
 
 
-def test_readiness_does_not_claim_unconfigured_dependencies() -> None:
+def test_readiness_reports_missing_mongodb_as_not_ready() -> None:
     response = client.get("/api/v1/health/ready")
-    assert response.status_code == 200
-    assert response.json() == {"status": "unknown", "checks": "not_configured"}
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "status": "not_ready",
+            "checks": {"mongodb": "not_configured"},
+        }
+    }
