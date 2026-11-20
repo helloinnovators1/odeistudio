@@ -150,3 +150,12 @@ References: https://www.rfc-editor.org/rfc/rfc9068.html ; https://www.rfc-editor
 - CI also audits declared Python dependencies with pip-audit, scans repository history/working tree with Gitleaks, and runs CodeQL for Python and JavaScript/TypeScript.
 
 Primary sources: https://github.com/advisories/GHSA-82fw-gwwq-j7x9 ; https://github.com/advisories/GHSA-qxg6-89mg-rqv8 ; https://github.com/advisories/GHSA-67mh-4wv8-2f99 ; https://github.com/advisories/GHSA-5gmw-xhrv-c9v3 ; https://github.com/pypa/pip-audit ; https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql.
+
+
+## Responses API state retention and local-code consent
+
+- Responses are stored for at least 30 days by default when `store` is omitted or true. The Responses API supports `store: false` to disable application-state storage; stateless multi-turn flows must replay prior output items rather than depend on persisted response IDs.
+- OpenAI API data is not used to train models by default unless the customer opts in. Abuse-monitoring logs may still retain content for up to 30 days by default; Zero Data Retention or Modified Abuse Monitoring eligibility/configuration is a separate account-level control. Do not describe `store=false` as Zero Data Retention.
+- Decision: every NEXUS planner/agent call requires an explicit trusted-caller consent flag before task or workspace text is sent to a cloud model. Apply secret redaction to tasks, context, tool results and final output. Keep Responses `store=false` and manually replay bounded tool history. Do not add a browser-controlled consent boolean to a cloud API route without server-side user/session binding and an auditable consent record.
+
+Primary sources: https://developers.openai.com/api/docs/guides/conversation-state ; https://developers.openai.com/api/docs/guides/your-data ; https://developers.openai.com/api/reference/python/resources/responses/methods/create.

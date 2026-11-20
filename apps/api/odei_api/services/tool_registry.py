@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from odei_api.services.project_files import ProjectFile
+from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
 MAX_LIST_FILES = 40
@@ -111,9 +112,9 @@ class ReadOnlyWorkspaceTools:
     def _read_file(self, path: str) -> str:
         if not path or len(path) > 1024:
             raise ToolExecutionError("path must contain 1 to 1024 characters")
-        content = self._registry.read_text(
+        content = redact_secrets(self._registry.read_text(
             self._workspace_id, path, max_bytes=MAX_READ_BYTES
-        )
+        ))
         truncated = len(content) > MAX_READ_CHARS
         return self._encode({
             "path": path,
@@ -151,7 +152,7 @@ class ReadOnlyWorkspaceTools:
                     matches.append({
                         "path": item.path,
                         "line": line_number,
-                        "text": line[:400],
+                        "text": redact_secrets(line[:400]),
                     })
                     if len(matches) >= MAX_SEARCH_RESULTS:
                         return self._encode({"matches": matches, "truncated": True})

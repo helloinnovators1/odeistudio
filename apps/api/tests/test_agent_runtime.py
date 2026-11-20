@@ -22,38 +22,57 @@ class FakeClient:
         self.responses = FakeResponses(responses)
 
 
-def _response(response_id, output, output_text=""):
-    return SimpleNamespace(id=response_id, output=output, output_text=output_text)
+def _response(output, output_text=""):
+    return SimpleNamespace(output=output, output_text=output_text)
 
 
-def test_agent_executes_only_registered_read_tools_and_returns_final_answer(tmp_path) -> None:
+def test_agent_executes_only_registered_read_tools_and_replays_stateless_history(tmp_path) -> None:
     source = tmp_path / "main.py"
     source.write_text("print('ODEI')\n", encoding="utf-8")
     registry = WorkspaceHandleRegistry()
     workspace_id = registry.register_selected_root(tmp_path)
     tools = ReadOnlyWorkspaceTools(registry, workspace_id)
     client = FakeClient([
-        _response("resp_1", [
+        _response([
             SimpleNamespace(
                 type="function_call", name="read_project_file",
                 arguments='{"path":"main.py"}', call_id="call_1",
             )
         ]),
-        _response("resp_2", [SimpleNamespace(type="message")], "The project prints ODEI."),
+        _response([SimpleNamespace(type="message")], "The project prints ODEI."),
     ])
     try:
         result = run_nexus_agent(
-            client, model="test-model", task="Explain main.py", workspace_tools=tools
+            client, model="test-model", task="Explain main.py",
+            workspace_tools=tools, cloud_model_consent=True,
         )
         assert result.answer == "The project prints ODEI."
         assert result.tool_calls == 1
         assert result.tool_rounds == 1
-        assert "tools" in client.responses.calls[0]
-        assert client.responses.calls[1]["previous_response_id"] == "resp_1"
-        outputs = client.responses.calls[1]["input"]
-        assert outputs[0]["type"] == "function_call_output"
+        first, second = client.responses.calls
+        assert "tools" in first and first["store"] is False
+        assert second["store"] is False
+        assert "previous_response_id" not in second
+        assert second["instructions"] == first["instructions"]
+        history = second["input"]
+        assert any(getattr(item, "type", None) == "function_call" for item in history)
+        outputs = [item for item in history if isinstance(item, dict) and item.get("type") == "function_call_output"]
+        assert len(outputs) == 1
         assert "print('ODEI')" in outputs[0]["output"]
         assert source.read_text(encoding="utf-8") == "print('ODEI')\n"
+    finally:
+        registry.close()
+
+
+def test_agent_requires_explicit_cloud_consent_before_model_call(tmp_path) -> None:
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    client = FakeClient([])
+    try:
+        with pytest.raises(AgentRuntimeError, match="consent"):
+            run_nexus_agent(client, model="model", task="Explain", workspace_tools=tools)
+        assert client.responses.calls == []
     finally:
         registry.close()
 
@@ -75,25 +94,23 @@ def test_agent_rejects_missing_final_answer(tmp_path) -> None:
     registry = WorkspaceHandleRegistry()
     workspace_id = registry.register_selected_root(tmp_path)
     tools = ReadOnlyWorkspaceTools(registry, workspace_id)
-    client = FakeClient([_response("resp_final", [SimpleNamespace(type="message")], " ")])
+    client = FakeClient([_response([SimpleNamespace(type="message")], " ")])
     try:
         with pytest.raises(AgentRuntimeError, match="no final answer"):
-            run_nexus_agent(client, model="model", task="Explain", workspace_tools=tools)
+            run_nexus_agent(client, model="model", task="Explain", workspace_tools=tools, cloud_model_consent=True)
     finally:
         registry.close()
 
 
-def test_agent_fails_closed_on_missing_response_id(tmp_path) -> None:
+def test_agent_redacts_secrets_from_final_answer(tmp_path) -> None:
     registry = WorkspaceHandleRegistry()
     workspace_id = registry.register_selected_root(tmp_path)
     tools = ReadOnlyWorkspaceTools(registry, workspace_id)
-    client = FakeClient([
-        _response(None, [
-            SimpleNamespace(type="function_call", name="list_project_files", arguments="{}", call_id="call_1")
-        ])
-    ])
+    secret = "sk-proj-" + "A" * 28
+    client = FakeClient([_response([SimpleNamespace(type="message")], "I found " + secret)])
     try:
-        with pytest.raises(AgentRuntimeError, match="response ID"):
-            run_nexus_agent(client, model="model", task="List files", workspace_tools=tools)
+        result = run_nexus_agent(client, model="model", task="Explain", workspace_tools=tools, cloud_model_consent=True)
+        assert secret not in result.answer
+        assert "[REDACTED]" in result.answer
     finally:
         registry.close()

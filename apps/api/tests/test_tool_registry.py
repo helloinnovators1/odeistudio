@@ -8,7 +8,11 @@ from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
 def test_read_only_workspace_tools_list_read_and_search(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "main.py").write_text("def hello():\n    return 'ODEI'\n", encoding="utf-8")
+    secret = "ghp_" + "A" * 32
+    (tmp_path / "src" / "main.py").write_text(
+        "def hello():\\n    return 'ODEI'\\napi_key = \"" + secret + "\"\\n",
+        encoding="utf-8",
+    )
     registry = WorkspaceHandleRegistry()
     workspace_id = registry.register_selected_root(tmp_path)
     tools = ReadOnlyWorkspaceTools(registry, workspace_id)
@@ -17,8 +21,11 @@ def test_read_only_workspace_tools_list_read_and_search(tmp_path: Path) -> None:
         assert "src/main.py" in listed
         read = tools.execute("read_project_file", {"path": "src/main.py"})
         assert "def hello" in read
+        assert secret not in read
+        assert "[REDACTED]" in read
         search = tools.execute("search_project_files", {"query": "ODEI"})
         assert '"line":2' in search
+        assert secret not in search
         assert (tmp_path / "src" / "main.py").read_text(encoding="utf-8").endswith("ODEI'\n")
     finally:
         registry.close()

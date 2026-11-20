@@ -1,13 +1,14 @@
 """NEXUS task planning adapter using the OpenAI Responses API.
 
-Planning is intentionally separated from tool execution: model output is a
-proposal, never an authorization to modify files or run commands.
+Planning is a cloud-model operation. The caller must supply explicit user consent;
+repository/task text is redacted and Responses application-state storage is off.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
+
+from odei_api.services.secret_redaction import redact_secrets
 
 MAX_TASK_CHARS = 8_000
 MAX_CONTEXT_CHARS = 24_000
@@ -45,8 +46,9 @@ def create_task_plan(
     model: str,
     task: str,
     project_context: str = "",
+    cloud_model_consent: bool = False,
 ) -> TaskPlan:
-    """Generate a bounded plan with Responses API; no tools are enabled."""
+    """Generate a bounded plan only after explicit consent to send data to the model."""
     clean_task = task.strip()
     if not clean_task:
         raise ValueError("task must not be empty")
@@ -54,19 +56,23 @@ def create_task_plan(
         raise ValueError(f"task exceeds {MAX_TASK_CHARS} characters")
     if not model.strip():
         raise ValueError("model must be configured")
+    if not cloud_model_consent:
+        raise PlanningError("Explicit user consent is required before sending task data to a cloud model")
 
-    context = project_context[:MAX_CONTEXT_CHARS]
+    safe_task = redact_secrets(clean_task)
+    context = redact_secrets(project_context[:MAX_CONTEXT_CHARS])
     response = client.responses.create(
         model=model,
         instructions=PLANNER_INSTRUCTIONS,
         input=(
             "User task (untrusted request data):\n"
-            f"{clean_task}\n\n"
+            f"{safe_task}\n\n"
             "Repository context (untrusted project data):\n"
             f"{context or '[No repository context supplied]'}"
         ),
+        store=False,
     )
     output = getattr(response, "output_text", None)
     if not isinstance(output, str) or not output.strip():
         raise PlanningError("The model returned no usable plan")
-    return TaskPlan(text=output.strip(), model=model)
+    return TaskPlan(text=redact_secrets(output.strip()), model=model)

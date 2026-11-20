@@ -53,3 +53,9 @@ No production release with known critical/high exploitable vulnerabilities, plai
 
 ## Automated security checks
 The repository configures `.github/workflows/security.yml` to run Gitleaks secret scanning, `pip-audit --strict --desc` against the API dependency environment, and CodeQL Python analysis on push, pull request, weekly schedule and manual dispatch. `.github/dependabot.yml` requests weekly update proposals for GitHub Actions and Python dependencies. A configured scanner is not evidence of a clean scan: release owners must inspect each run, triage findings, rotate exposed credentials and record remediation before release.
+
+
+## Cloud model data transfer
+- Sending repository text to a hosted model is a separate data-transfer decision from selecting a local folder. Require explicit consent tied to the authenticated user/session before any planner or agent call includes workspace context.
+- Redact common secrets before model submission and redact model/tool output before display or logs. Redaction is best-effort defense-in-depth and does not guarantee detection of every credential; secret files remain excluded at the filesystem layer.
+- Responses requests set `store=false` and replay stateless history. This disables Responses application-state storage, but does not itself enable Zero Data Retention or disable default abuse-monitoring retention. Confirm the account's retention controls and customer obligations before production use.

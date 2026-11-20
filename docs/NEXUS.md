@@ -1,7 +1,7 @@
 # ODEI NEXUS — AI Software Engineering Agent
 
 **Priority:** First major product implementation.  
-**Status:** Initial planning service and read-only project indexing utilities are committed. No authenticated agent API, tool execution loop or sandbox is implemented yet.
+**Status:** Initial planning service, bounded read-only Responses API tool loop and secure workspace indexing primitives are committed. No authenticated agent API, mutating tools or sandbox is implemented yet.
 
 ## Mission
 NEXUS is the repository-aware coding agent at the heart of ODEI Studio. It turns a developer's goal into a reviewable, tested set of code changes while respecting workspace permissions and execution policy.
@@ -31,7 +31,11 @@ Additional terminal states: `failed`, `cancelled`, `expired`. Every transition i
 - `services/tasks.py` defines task states, legal transitions, terminal states, plan-before-approval and optimistic version checks.
 - `services/task_store.py` persists tasks in MongoDB with organization-scoped reads/writes, optimistic version matching and atomic status-change event append. The caller must enforce organization membership and task permissions.
 - `mongo_client.py` constructs a lazy PyMongo Async client from a private `MONGODB_URI`; live database connectivity has not yet been configured or tested.
-- `services/project_files.py` lists, reads and searches bounded text files with common secret exclusions, GitIgnoreSpec rules and scan budgets. It is not exposed to HTTP callers.
+- `services/project_files.py` lists, reads and searches bounded text files with common secret exclusions, GitIgnoreSpec rules and scan budgets. It is not exposed to cloud HTTP callers.
+- `services/tool_registry.py` exposes only strict-schema list/read/literal-search tools against one workspace ID injected by the trusted caller; the model cannot choose a workspace.
+- `services/agent_runtime.py` runs a bounded Responses API tool loop (six rounds/twelve calls) with no write, shell, install, network or deployment tools. It uses stateless Responses requests (`store=False`) and replays output items locally.
+- `services/secret_redaction.py` redacts common API tokens, private keys, bearer tokens, JWTs, database URI passwords and quoted secret assignments before task/context/tool text is sent to or returned from the model. This is defense-in-depth, not a full DLP guarantee.
+- Both planner and agent runtime fail closed unless the trusted caller confirms explicit user consent to send task/workspace context to a cloud model. Responses application-state storage is disabled; API abuse-monitoring retention remains subject to the OpenAI account's data controls.
 
 ## Initial tool contract
 - `project.list_files`: list permitted paths, honoring ignore rules and symlink policy.
@@ -45,7 +49,7 @@ Additional terminal states: `failed`, `cancelled`, `expired`. Every transition i
 - `git.status`: report repository state.
 - `git.commit` / `git.push`: require explicit user authorization and scoped credentials.
 
-Tool schemas must define arguments, output, permission, timeout, resource limits, idempotency and audit behavior. Tool output and repository contents are untrusted data, never system instructions.
+Only the initial list/read/search tools are implemented. All patch, runtime, test and Git tools remain planned and must not be exposed until authorization, approval records, sandbox isolation and audit are implemented. Tool schemas must define arguments, output, permission, timeout, resource limits, idempotency and audit behavior. Tool output and repository contents are untrusted data, never system instructions.
 
 ## Planner and execution loop
 1. Parse goal and identify missing requirements.
