@@ -9,6 +9,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from pathspec import GitIgnoreSpec
+
 DEFAULT_EXCLUDED_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "node_modules",
     "__pycache__", ".next", "dist", "build", "coverage",
@@ -21,6 +23,8 @@ DEFAULT_EXCLUDED_NAMES = {
 }
 SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
 MAX_TEXT_FILE_BYTES = 1_000_000
+DEFAULT_MAX_FILES = 5_000
+DEFAULT_MAX_TOTAL_BYTES = 100_000_000
 
 
 class ProjectFileError(ValueError):
@@ -94,16 +98,46 @@ def _safe_target(root: Path, relative_path: str) -> Path:
     return resolved
 
 
+def _load_ignore_spec(directory: Path) -> GitIgnoreSpec | None:
+    ignore_file = directory / ".gitignore"
+    if not ignore_file.is_file() or ignore_file.is_symlink():
+        return None
+    try:
+        lines = ignore_file.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return GitIgnoreSpec.from_lines("gitwildmatch", lines)
+
+
+def _ignored_by_gitignore(root: Path, directory: Path, name: str, *, is_dir: bool) -> bool:
+    """Apply each ancestor .gitignore relative to its own directory."""
+    candidate = directory / name
+    is_ignored = False
+    for ancestor in (root, *directory.parents):
+        if not ancestor.is_relative_to(root):
+            continue
+        spec = _load_ignore_spec(ancestor)
+        if spec is None:
+            continue
+        relative = candidate.relative_to(ancestor).as_posix()
+        check_path = relative + ("/" if is_dir else "")
+        if spec.match_file(check_path):
+            is_ignored = True
+    return is_ignored
+
+
 def list_project_files(
     root: str | Path,
     *,
-    max_files: int = 5_000,
+    max_files: int = DEFAULT_MAX_FILES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
 ) -> list[ProjectFile]:
     """List eligible regular files beneath an explicitly selected workspace."""
-    if max_files < 1:
-        raise ValueError("max_files must be positive")
+    if max_files < 1 or max_total_bytes < 1:
+        raise ValueError("max_files and max_total_bytes must be positive")
     workspace = _workspace_root(root)
     found: list[ProjectFile] = []
+    total_bytes = 0
 
     for current_dir, dirnames, filenames in os.walk(
         workspace, topdown=True, followlinks=False
@@ -115,6 +149,7 @@ def list_project_files(
             if name.lower() not in DEFAULT_EXCLUDED_DIRS
             and not (current / name).is_symlink()
             and not _is_excluded((*relative_dir.parts, name))
+            and not _ignored_by_gitignore(workspace, current, name, is_dir=True)
         )
 
         for filename in sorted(filenames):
@@ -123,9 +158,15 @@ def list_project_files(
             parts = relative.parts
             if candidate.is_symlink() or _is_excluded(parts):
                 continue
+            if _ignored_by_gitignore(workspace, current, filename, is_dir=False):
+                continue
             if not candidate.is_file():
                 continue
-            found.append(ProjectFile(path=relative.as_posix(), size=candidate.stat().st_size))
+            size = candidate.stat().st_size
+            if total_bytes + size > max_total_bytes:
+                return found
+            found.append(ProjectFile(path=relative.as_posix(), size=size))
+            total_bytes += size
             if len(found) >= max_files:
                 return found
 
