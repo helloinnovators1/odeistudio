@@ -285,7 +285,8 @@ async def list_project_task_events(
     """Read ordered task lifecycle events with a reconnectable version cursor."""
     try:
         _, store, _ = await _load_authorized_task(
-            request, organization_id, project_id, task_id, principal
+            request, organization_id, project_id, task_id, principal,
+            audit_action="nexus.task.events.read",
         )
         rows, has_more = await store.list_events(
             organization_id=organization_id, task_id=task_id,
@@ -305,6 +306,13 @@ async def list_project_task_events(
         "occurred_at": row["occurred_at"].isoformat(),
     } for row in rows]
     next_cursor = events[-1]["version"] if events else after_version
+    await _append_task_audit_decision(
+        request, principal, organization_id, task_id, "nexus.task.events.read",
+        "success", metadata={
+            "after_version": after_version, "limit": limit,
+            "returned_count": len(events), "has_more": has_more,
+        },
+    )
     return {"events": events, "has_more": has_more, "next_after_version": next_cursor}
 
 
