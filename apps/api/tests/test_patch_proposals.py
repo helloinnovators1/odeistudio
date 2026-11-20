@@ -107,3 +107,30 @@ def test_rejects_more_than_twenty_file_changes() -> None:
     hashes = {path: None for path in changes}
     with pytest.raises(PatchProposalError, match="between 1 and 20"):
         build_patch_proposal({}, changes, hashes)
+
+
+def test_rejects_new_file_when_base_has_parent_file() -> None:
+    with pytest.raises(PatchProposalError, match="existing file as a parent"):
+        build_patch_proposal(
+            {"src": "existing file"},
+            {"src/main.py": "child"},
+            {"src/main.py": None},
+        )
+
+
+def test_rejects_file_when_base_has_descendant_files() -> None:
+    with pytest.raises(PatchProposalError, match="replace an existing directory"):
+        build_patch_proposal(
+            {"src/main.py": "existing child"},
+            {"src": "new file"},
+            {"src": None},
+        )
+
+
+def test_rejects_oversized_base_snapshot_file() -> None:
+    with pytest.raises(PatchProposalError, match="base file exceeds"):
+        build_patch_proposal(
+            {"large.txt": "x" * (MAX_FILE_BYTES + 1)},
+            {"large.txt": "small"},
+            {"large.txt": sha256_text("x" * (MAX_FILE_BYTES + 1))},
+        )
