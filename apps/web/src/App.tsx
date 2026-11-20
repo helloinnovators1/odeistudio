@@ -198,7 +198,7 @@ export default function App() {
         <div className="brand-lockup"><div className="brand-mark">O</div><div><b>ODEI STUDIO</b><small>Development workspace</small></div></div>
         <div className="titlebar-project"><span className="status-dot" />{workspaceName}</div>
         <div className="titlebar-actions">
-          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>NEXUS <kbd>⌘ I</kbd></button>
+          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>NEXUS <kbd>⌘ / Ctrl + I</kbd></button>
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
         </div>
@@ -282,7 +282,7 @@ export default function App() {
                 contextmenu: false,
                 domReadOnly: true,
               }}
-            /> : <div className="editor-welcome"><div className="editor-logo">O</div><h2>ODEI NEXUS Workspace</h2><p>Select a file from Explorer to inspect it in Monaco.</p><div className="shortcut-hint"><kbd>⌘ I</kbd> Open NEXUS chat</div></div>}
+            /> : <div className="editor-welcome"><div className="editor-logo">O</div><h2>ODEI NEXUS Workspace</h2><p>Select a file from Explorer to inspect it in Monaco.</p><div className="shortcut-hint"><kbd>⌘ / Ctrl + I</kbd> Open NEXUS chat</div></div>}
           </div>
           <section className="bottom-panel">
             <div className="bottom-tabs">
