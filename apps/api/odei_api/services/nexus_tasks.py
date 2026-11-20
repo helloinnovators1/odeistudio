@@ -75,7 +75,7 @@ async def _authorize_project(request: Request, organization_id: str, project_id:
 
 def _task_audit_event(
     principal: Principal, organization_id: str, task_id: str,
-    action: str, metadata: dict | None = None,
+    action: str, metadata: dict | None = None, outcome: str = "success",
 ) -> dict:
     """Build a redacted, tenant-scoped event for the task-store transaction."""
     return {
@@ -85,10 +85,39 @@ def _task_audit_event(
         "action": action,
         "target_type": "nexus_task",
         "target_id": task_id,
-        "outcome": "success",
+        "outcome": outcome,
         "request_id": uuid4().hex,
         "metadata": metadata or {},
     }
+
+
+
+async def _append_task_audit_decision(
+    request: Request, principal: Principal, organization_id: str, task_id: str,
+    action: str, outcome: str, reason: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Persist read/denial decisions before returning a response."""
+    store = getattr(request.app.state, "audit_event_store", None)
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is not available."},
+        )
+    event_metadata = dict(metadata or {})
+    if reason:
+        event_metadata["reason"] = reason
+    try:
+        await store.append(**_task_audit_event(
+            principal, organization_id, task_id, action,
+            event_metadata, outcome=outcome,
+        ))
+    except Exception as exc:
+        logger.error("NEXUS task decision audit append failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is temporarily unavailable."},
+        ) from exc
 
 
 def _task_response(task: TaskRecord) -> dict:
@@ -156,16 +185,27 @@ async def create_project_task(
     return _task_response(task)
 
 
-async def _load_authorized_task(request: Request, organization_id: str, project_id: str, task_id: str, principal: Principal):
+async def _load_authorized_task(
+    request: Request, organization_id: str, project_id: str, task_id: str,
+    principal: Principal, *, audit_action: str = "nexus.task.read",
+):
     project = await _authorize_project(request, organization_id, project_id, principal)
     store = getattr(request.app.state, "task_store", None)
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "TASK_STORE_UNAVAILABLE", "message": "NEXUS task storage is not configured."})
     task = await store.get(organization_id=organization_id, task_id=task_id)
     if task is None or task.project_id != project_id:
+        await _append_task_audit_decision(
+            request, principal, organization_id, task_id, audit_action,
+            "denied", reason="task_not_found_or_project_mismatch",
+        )
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."})
     is_project_owner = project.get("owner_issuer") == principal.issuer and project.get("owner_subject") == principal.subject
     if task.owner_id != identity_owner_key(principal.issuer, principal.subject) and not is_project_owner:
+        await _append_task_audit_decision(
+            request, principal, organization_id, task_id, audit_action,
+            "denied", reason="task_owner_required",
+        )
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."})
     return project, store, task
 
@@ -184,6 +224,10 @@ async def get_project_task(
         _, _, task = await _load_authorized_task(request, organization_id, project_id, task_id, principal)
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "TASK_STORE_UNAVAILABLE", "message": "Task storage is temporarily unavailable."}) from exc
+    await _append_task_audit_decision(
+        request, principal, organization_id, task_id, "nexus.task.read",
+        "success", metadata={"status": task.status.value},
+    )
     return _task_response(task)
 
 
@@ -191,10 +235,17 @@ async def _transition_project_task(
     request: Request, organization_id: str, project_id: str, task_id: str,
     payload: TaskTransitionRequest, principal: Principal, next_status: TaskStatus,
 ) -> dict:
+    action = "nexus.task.approve" if next_status is TaskStatus.APPROVED else "nexus.task.cancel"
     try:
-        project, store, _task = await _load_authorized_task(request, organization_id, project_id, task_id, principal)
+        project, store, _task = await _load_authorized_task(
+            request, organization_id, project_id, task_id, principal, audit_action=action,
+        )
         is_project_owner = project.get("owner_issuer") == principal.issuer and project.get("owner_subject") == principal.subject
         if next_status is TaskStatus.APPROVED and not is_project_owner:
+            await _append_task_audit_decision(
+                request, principal, organization_id, task_id, action,
+                "denied", reason="project_owner_approval_required",
+            )
             raise HTTPException(status_code=403, detail={"code": "PROJECT_OWNER_APPROVAL_REQUIRED", "message": "Only the project owner can approve this task."})
         updated = await store.transition(
             organization_id=organization_id, task_id=task_id,
