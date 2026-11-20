@@ -97,7 +97,7 @@ def test_verify_access_token_rejects_unknown_kid():
 
 def test_verify_access_token_rejects_non_rs256_algorithm():
     _, jwks, _, payload = make_signing_material()
-    token = jwt.encode(payload, "not-a-real-key", algorithm="HS256", headers={"kid": "key-1", "typ": "at+jwt"})
+    token = jwt.encode(payload, "odei-test-hmac-key-with-at-least-thirty-two-bytes", algorithm="HS256", headers={"kid": "key-1", "typ": "at+jwt"})
     with pytest.raises(jwt.InvalidAlgorithmError):
         verify_access_token(
             token,
