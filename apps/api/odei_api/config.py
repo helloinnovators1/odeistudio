@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     openai_model: str | None = None
     mongodb_uri: SecretStr | None = None
     mongodb_database: str = "odei_studio"
+    auth_issuer: str | None = None
+    auth_audience: str | None = None
+    auth_jwks_url: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
