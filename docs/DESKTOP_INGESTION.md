@@ -12,14 +12,14 @@ A normal browser extension or web page cannot silently enumerate arbitrary Windo
 3. **Git provider ingestion:** use a GitHub App installation to index repositories where the user grants access.
 4. **Desktop automation:** use an explicitly supported desktop/Computer Use workflow where available; it is not a substitute for a dedicated, secure filesystem agent.
 
-## Local companion security
+## Local companion security — target requirements
 - Bind to loopback only; authenticate requests with short-lived pairing tokens and origin checks.
 - Require explicit user selection of each root folder.
 - Display active roots, indexing status and last access; provide immediate pause/revoke.
 - Respect .gitignore and configurable excludes; exclude .env, credentials, private keys, dependency folders, build output and large/binary files by default.
 - Prevent path traversal and symlink escape; enforce file count, size and rate limits.
 - Send only user-authorized files; show a preview/manifest before upload.
-- Encrypt transport; never expose local service to public network interfaces.
+- Keep the prototype loopback-only; if any remote interface is ever added, require TLS and a separate security review. Never expose the local service to public network interfaces.
 - Keep an audit log of selected roots and indexing actions without recording file secrets.
 - Provide incremental indexing by content hash and file metadata.
 - Never execute scanned files automatically.
@@ -36,13 +36,13 @@ A read-only Python project-file utility has been added under `apps/api/odei_api/
 - Add adversarial tests for concurrent rename/swap, junction and reparse-point insertion, root replacement, permission revocation and handle cleanup.
 - Keep reads read-only; a future mutation API must use separate permission and approval flows.
 
-## Initial implementation stages
-1. Local CLI lists files under an explicitly supplied root and applies safe excludes.
-2. CLI emits a manifest with relative path, size, modified time and content hash.
-3. User reviews and approves the manifest.
-4. Selected text files are streamed in bounded batches to an authenticated API.
-5. Server stores index metadata and content according to retention policy.
-6. User can pause, revoke, remove a root or delete indexed content.
+## Remaining ingestion stages
+1. Integrate the browser pairing screen/client with the loopback companion.
+2. Show a manifest/preview and obtain explicit approval before sending any file contents to a model or cloud API.
+3. Bind the local session and workspace to verified ODID user, organization and project permissions.
+4. Stream only approved text files in bounded batches to the authenticated API.
+5. Persist index metadata/content with tenant isolation, retention, deletion and audit controls.
+6. Add incremental indexing, pause/revoke, multiple roots and signed Windows installer/update lifecycle.
 
 ## Acceptance tests
 Verify permission revocation, symlink traversal, path traversal, ignored secrets, binary/oversized files, interrupted upload, duplicate content, incremental re-index, tenant authorization and deletion.
