@@ -35,7 +35,7 @@ A database credential was exposed in project setup material. Assume it is compro
 
 ## Documentation
 
-Start with [`docs/INDEX.md`](docs/INDEX.md) for the complete documentation map and [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) for the full product ecosystem. The audited upstream ecosystem specifications and historical remediation documents are preserved in [`docs/upstream/INDEX.md`](docs/upstream/INDEX.md), with current migration decisions in [`docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`](docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md).
+Start with [`docs/INDEX.md`](docs/INDEX.md) for the complete documentation map and [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) for the full product ecosystem. The audited upstream ecosystem specifications and historical remediation documents are preserved in [`docs/upstream/INDEX.md`](docs/upstream/INDEX.md); a complete 68-file source-document mirror is indexed in [`docs/upstream/MIRROR_INDEX.md`](docs/upstream/MIRROR_INDEX.md). Current migration decisions are in [`docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`](docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for implementation status. Documentation describes intended behavior; it does not imply that a feature is already implemented or operational.
 
