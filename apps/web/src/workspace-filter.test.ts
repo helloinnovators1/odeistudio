@@ -14,7 +14,7 @@ describe("filterWorkspaceFiles", () => {
   });
 
   it("matches paths case-insensitively across directories and extensions", () => {
-    expect(filterWorkspaceFiles(files, "APP")).toEqual([files[0]]);
+    expect(filterWorkspaceFiles(files, "SRC/APP")).toEqual([files[0]]);
     expect(filterWorkspaceFiles(files, ".PY")).toEqual([files[2]]);
     expect(filterWorkspaceFiles(files, "docs/")).toEqual([files[1]]);
   });
