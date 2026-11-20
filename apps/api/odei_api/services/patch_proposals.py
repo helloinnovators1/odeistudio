@@ -17,6 +17,7 @@ MAX_FILE_BYTES = 1_000_000
 MAX_TOTAL_BYTES = 5_000_000
 MAX_DIFF_BYTES = 8_000_000
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_WINDOWS_RESERVED = {"con", "prn", "aux", "nul"}
 _EXCLUDED_PARTS = {
     ".git", ".ssh", ".aws", ".azure", ".gnupg", "node_modules",
     ".venv", "venv", "__pycache__",
@@ -57,10 +58,17 @@ def _validate_path(path: str) -> tuple[str, ...]:
     parts = tuple(path.split("/"))
     if any(part in {"", ".", ".."} for part in parts):
         raise PatchProposalError("Path traversal and empty path components are not allowed")
-    if ":" in parts[0]:
-        raise PatchProposalError("Drive-qualified paths are not allowed")
     for part in parts:
         lowered = part.casefold()
+        device_name = lowered.split(".", 1)[0]
+        if (
+            ":" in part
+            or part.endswith((".", " "))
+            or any(ord(character) < 32 or character in '<>:"|?*' for character in part)
+            or device_name in _WINDOWS_RESERVED
+            or re.fullmatch(r"(?:com|lpt)[1-9]", device_name)
+        ):
+            raise PatchProposalError("Path contains a Windows-reserved or invalid component")
         if (
             lowered in _EXCLUDED_PARTS
             or lowered in _EXCLUDED_NAMES
