@@ -7,6 +7,8 @@ def test_redacts_known_provider_tokens_and_quoted_secret_assignments() -> None:
     assert token not in result
     assert "correct-horse-battery" not in result
     assert result.count("[REDACTED]") >= 2
+    unquoted = redact_secrets("DB_PASSWORD=plain-secret-value-12345")
+    assert "plain-secret-value-12345" not in unquoted
 
 
 def test_redacts_jwts_private_keys_and_database_passwords() -> None:

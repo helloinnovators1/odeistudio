@@ -32,8 +32,12 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         r"\1[REDACTED]\2",
     ),
 )
+_SECRET_NAME = r"""["']?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?access[_-]?key|aws[_-]?secret[_-]?access[_-]?key|db[_-]?password|password|passwd|secret)\b["']?\s*[:=]\s*"""
 _QUOTED_SECRET_ASSIGNMENT = re.compile(
-    r"""(?im)(["']?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret)\b["']?\s*[:=]\s*)(["'])(.{8,}?)\2"""
+    r"(?im)(" + _SECRET_NAME + r")([\"'])(.{8,}?)\\2"
+)
+_UNQUOTED_SECRET_ASSIGNMENT = re.compile(
+    r"(?im)(" + _SECRET_NAME + r")([A-Za-z0-9_./+=:-]{12,})(?=\\s|[,;}#]|$)"
 )
 
 
@@ -44,7 +48,11 @@ def redact_secrets(text: str) -> str:
     result = text
     for pattern, replacement in _PATTERNS:
         result = pattern.sub(replacement, result)
-    return _QUOTED_SECRET_ASSIGNMENT.sub(
+    result = _QUOTED_SECRET_ASSIGNMENT.sub(
         lambda match: match.group(1) + match.group(2) + "[REDACTED]" + match.group(2),
+        result,
+    )
+    return _UNQUOTED_SECRET_ASSIGNMENT.sub(
+        lambda match: match.group(1) + "[REDACTED]",
         result,
     )
