@@ -207,3 +207,48 @@ def test_organization_membership_fails_closed_on_database_error() -> None:
         app.state.mongo_database = previous_database
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "MEMBERSHIP_STORE_UNAVAILABLE"
+
+
+
+def test_organization_membership_fails_closed_when_audit_store_is_missing() -> None:
+    previous_database = getattr(app.state, "mongo_database", None)
+    previous_audit = getattr(app.state, "audit_event_store", None)
+    app.state.mongo_database = FakeDatabase(FakeMembershipCollection({
+        "status": "active", "role": "developer"
+    }))
+    app.state.audit_event_store = None
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="user-123", issuer="https://identity.example.test/"
+    )
+    try:
+        response = client.get("/api/v1/organizations/org-1/membership")
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        app.state.mongo_database = previous_database
+        app.state.audit_event_store = previous_audit
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "AUDIT_STORE_UNAVAILABLE"
+
+
+def test_organization_membership_fails_closed_when_audit_append_fails() -> None:
+    class BrokenAuditStore:
+        async def append(self, **event):
+            raise RuntimeError("audit database unavailable")
+
+    previous_database = getattr(app.state, "mongo_database", None)
+    previous_audit = getattr(app.state, "audit_event_store", None)
+    app.state.mongo_database = FakeDatabase(FakeMembershipCollection({
+        "status": "active", "role": "developer"
+    }))
+    app.state.audit_event_store = BrokenAuditStore()
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="user-123", issuer="https://identity.example.test/"
+    )
+    try:
+        response = client.get("/api/v1/organizations/org-1/membership")
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        app.state.mongo_database = previous_database
+        app.state.audit_event_store = previous_audit
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "AUDIT_STORE_UNAVAILABLE"
