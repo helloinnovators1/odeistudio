@@ -175,3 +175,5 @@ No phase is complete because its screens exist. Each capability needs working be
 - The panel is not an authenticated chat yet; no streaming, patch editing, shell execution, LSP, Git, cloud agents or native desktop package is implied. The editor and companion remain read-only.
 
 - Added owner-only bounded active-member listing to complete the first project membership management surface; route test covers list and audit outcome. Current-head CI pending.
+
+- Owner-only project member listing and full membership lifecycle route tests passed in API CI [44804291266](https://github.com/helloinnovators1/odeistudio/actions/runs/44804291266) on `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`; all six API/web/MongoDB jobs passed.
