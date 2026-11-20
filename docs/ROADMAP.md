@@ -144,3 +144,5 @@ No phase is complete because its screens exist. Each capability needs working be
 - Fixed the API CI pull-request path filter to include `apps/web/**`, so web changes trigger the web tests and production build on PRs.
 
 - Security workflow for the 8fe integration-test commit was cancelled by a later push; do not count it as a pass. A new security scan must complete on the latest branch head.
+
+- Full API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821) passed all six jobs on `8fe8fd1f6f924919cb922e96a5c255017abb5976`: four OS/Python matrix jobs, web tests/build, and real MongoDB 7.0 replica-set integration. The integration test reported `1 passed in 0.24s`.
