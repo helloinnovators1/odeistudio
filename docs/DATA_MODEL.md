@@ -17,7 +17,7 @@ This document defines logical domains, not a final ORM schema. Choose exact fiel
 - `project_indexes`: index version, file inventory, symbols and embeddings metadata.
 
 ## Agent orchestration
-- `tasks`: user goal, plan, state, approvals, owner and timestamps; tenant-scoped optimistic version.
+- `tasks`: user goal, plan, state, approvals, owner and timestamps; tenant-scoped optimistic version. The persisted `owner_id` is a canonical JSON tuple `[verified_issuer, verified_subject]`, not a subject-only identifier, so identical subjects from different identity providers cannot inherit task access.
 - `task_events`: append-only task lifecycle events, uniquely sequenced per `(organization_id, task_id, version)`; never embed an unbounded event array in task documents.
 - `agent_runs`: model/provider, agent profile, budgets and execution status.
 - `tool_events`: tool name, validated arguments summary, result metadata, duration and policy decision; redact secrets.

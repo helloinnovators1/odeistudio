@@ -193,3 +193,27 @@ def test_project_member_cannot_approve_another_users_task(route_state):
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROJECT_OWNER_APPROVAL_REQUIRED"
     assert tasks.tasks[task.id].status is TaskStatus.AWAITING_APPROVAL
+
+
+def test_same_subject_from_different_issuer_cannot_read_task(route_state):
+    database, _, tasks = route_state
+    database.collections["projects"].document = {
+        "organization_id": "org-1", "project_id": "project-1",
+        "status": "active", "owner_issuer": "https://identity.example/",
+        "owner_subject": "project-owner",
+    }
+    database.collections["project_memberships"].document = {"status": "active"}
+    task = TaskRecord(
+        id="task-cross-issuer", organization_id="org-1", project_id="project-1",
+        owner_id=identity_owner_key("https://issuer-a.example/", "same-subject"),
+        goal="Private task", status=TaskStatus.AWAITING_APPROVAL, version=3,
+        plan="Inspect and test",
+    )
+    tasks.tasks[task.id] = task
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="same-subject", issuer="https://issuer-b.example/",
+    )
+    response = TestClient(app).get(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-cross-issuer"
+    )
+    assert response.status_code == 404
