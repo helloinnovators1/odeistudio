@@ -10,6 +10,12 @@ Protect source code, credentials, customer data, infrastructure and agent execut
 - Separate roles for secret administration, secret use, infrastructure changes and audit.
 - Use short-lived sessions/tokens, rotation and revocation.
 
+### Current API authentication foundation
+- The API now has a fail-closed OIDC access-token verifier using a configured issuer, audience and JWKS URL (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_JWKS_URL`). It accepts RS256 only, requires `exp` and `sub`, and verifies signature, issuer and audience.
+- JWKS documents are fetched over TLS with a bounded timeout and cached for five minutes; the cache refreshes after expiry. Signing key selection requires one matching RSA `kid`.
+- Organization access is resolved separately from the verified subject against an active server-side membership record. Client-supplied organization IDs and token role claims do not establish membership.
+- Missing identity configuration fails closed. The dependency is not yet attached to project/task routes because those routes are not exposed; do not treat this foundation as completed SSO or production tenant authorization.
+
 ## Secrets
 - Store secret material in a managed KMS-backed vault or external secret manager.
 - Store only references, version identifiers and non-sensitive metadata in MongoDB.
