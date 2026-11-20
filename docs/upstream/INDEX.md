@@ -26,6 +26,12 @@ These are source snapshots from the user's linked repository, [infoedutechos/ODE
 - [Editor Phase 2B](STUDIO_EDITOR_PHASE_2B_SOURCE.md)
 - [Editor Phase 2C](STUDIO_EDITOR_PHASE_2C_SOURCE.md)
 
+## Identity and roles
+
+- [ODEI Identity holistic document](ODEI_IDENTITY_HOLISTIC_SOURCE.md)
+- [Reusable authentication UI](ODEI_AUTH_UI_SOURCE.md)
+- [Production roles and security boundary](PRODUCTION_ROLES_SOURCE.md)
+
 ## ODEI AI and ecosystem
 
 - [ODEI AI operating system](ODEI_AI_OPERATING_SYSTEM_SOURCE.md)
