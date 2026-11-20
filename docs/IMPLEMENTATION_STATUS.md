@@ -200,3 +200,14 @@ Earlier entries in this file describe intermediate milestones and may say task H
 - Project creation and membership changes persist their audit record inside the same MongoDB transaction as the write. Organization/project-owner authorization denials are audited; audit failures fail closed.
 - Added route tests covering create/list/add/remove and rejecting a target without active organization membership. Current-head CI is pending; do not count this increment as verified until all API matrix, web, MongoDB integration and security jobs pass.
 - Not implemented by this increment: org member provisioning/invitations, project ownership transfer, custom project roles, patch application, isolated command execution, Monaco IDE, cloud/background agents or desktop folder scanning.
+
+
+## Project lifecycle and IDE workspace continuation (2026-11-20)
+
+- Project API increment: create/list projects and owner-managed add/remove memberships. Full API CI passed on commit `88aa6f9ab2bb487c5d9b424069c5ff3300dd60f7`: Ubuntu/Windows × Python 3.10/3.12, web, and MongoDB replica-set integration all passed. Security CI on the same commit passed Gitleaks, pip-audit, npm audit and CodeQL.
+- The real MongoDB integration suite now covers both task/audit atomicity and project/membership audit transaction rollback. The project rollback test was added after the earlier transaction-test failure was diagnosed and corrected.
+- Replaced the previous minimal file-preview screen with the first IDE workspace shell: Monaco read-only editor, explorer, multiple tabs, bottom Problems/Output/Terminal surfaces, and NEXUS panel shell.
+- Implemented Command+I (macOS) / Ctrl+I (Windows/Linux) to toggle NEXUS chat, with a Left/Right setting stored under `odei.nexus.chatPanelSide`; default is Right. Preference/shortcut/language helpers have Vitest tests.
+- The NEXUS panel remains a disabled UI shell: no authenticated conversation, streaming or agent tool execution. The terminal is not a shell. Monaco is read-only. The companion remains read-only and no project files are sent to a cloud model from this UI.
+- Web CI passed tests/build on the initial Monaco UI commit `6004f3122a8e724f25dcb8cfae52970b2fe22d7e`; later CSS and README refinements are on newer commits and require latest-head CI verification. Do not mark the complete current head green until that run finishes.
+- Added `docs/IDE_WORKSPACE.md` and indexed it in `docs/INDEX.md`. Full Next.js/Code-OSS desktop parity, recursive explorer, authenticated NEXUS chat, safe patches, isolated terminal, LSP, Git/SCM, preview, Agents Window, CLI, cloud/background agents and Windows 10 build 18362 validation remain open.
