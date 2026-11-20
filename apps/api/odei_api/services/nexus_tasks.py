@@ -68,20 +68,22 @@ async def _authorize_project(request: Request, organization_id: str, project_id:
         raise
 
 
-async def _audit_task_action(request: Request, principal: Principal, organization_id: str, task_id: str, action: str, outcome: str, metadata: dict | None = None) -> None:
-    store = getattr(request.app.state, "audit_event_store", None)
-    if store is None:
-        raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is not available."})
-    try:
-        await store.append(
-            organization_id=organization_id, actor_issuer=principal.issuer,
-            actor_subject=principal.subject, action=action, target_type="nexus_task",
-            target_id=task_id, outcome=outcome, request_id=uuid4().hex,
-            metadata=metadata or {},
-        )
-    except Exception as exc:
-        logger.error("NEXUS task audit append failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is temporarily unavailable."}) from exc
+def _task_audit_event(
+    principal: Principal, organization_id: str, task_id: str,
+    action: str, metadata: dict | None = None,
+) -> dict:
+    """Build a redacted, tenant-scoped event for the task-store transaction."""
+    return {
+        "organization_id": organization_id,
+        "actor_issuer": principal.issuer,
+        "actor_subject": principal.subject,
+        "action": action,
+        "target_type": "nexus_task",
+        "target_id": task_id,
+        "outcome": "success",
+        "request_id": uuid4().hex,
+        "metadata": metadata or {},
+    }
 
 
 def _task_response(task: TaskRecord) -> dict:
@@ -131,18 +133,21 @@ async def create_project_task(
                 owner_id=identity_owner_key(principal.issuer, principal.subject), goal=payload.task,
             ),
             plan=plan.text,
+            audit_event=_task_audit_event(
+                principal, organization_id, task_id, "nexus.task.create",
+                {"project_id": project_id, "model": plan.model, "status": TaskStatus.AWAITING_APPROVAL.value},
+            ),
         )
     except ModelConfigurationError as exc:
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
     except (PlanningError, ValueError) as exc:
         raise HTTPException(status_code=502, detail={"code": "NEXUS_PLANNING_FAILED", "message": "NEXUS could not produce a usable plan."}) from exc
+    except RuntimeError as exc:
+        logger.error("NEXUS task transaction or audit store failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Task and audit storage are temporarily unavailable."}) from exc
     except PyMongoError as exc:
         logger.warning("NEXUS planned task persistence failed: %s", type(exc).__name__)
         raise HTTPException(status_code=503, detail={"code": "TASK_STORE_UNAVAILABLE", "message": "NEXUS task storage is temporarily unavailable."}) from exc
-    await _audit_task_action(
-        request, principal, organization_id, task_id, "nexus.task.create", "success",
-        {"project_id": project_id, "model": plan.model, "status": task.status.value},
-    )
     return _task_response(task)
 
 
@@ -190,15 +195,21 @@ async def _transition_project_task(
             organization_id=organization_id, task_id=task_id,
             next_status=next_status, expected_version=payload.expected_version,
             actor_id=identity_owner_key(principal.issuer, principal.subject),
+            audit_event=_task_audit_event(
+                principal, organization_id, task_id,
+                "nexus.task.approve" if next_status is TaskStatus.APPROVED else "nexus.task.cancel",
+                {"version": payload.expected_version + 1},
+            ),
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."}) from exc
     except InvalidTaskTransition as exc:
         raise HTTPException(status_code=409, detail={"code": "TASK_VERSION_OR_STATE_CONFLICT", "message": "Task state changed or this transition is not allowed."}) from exc
+    except RuntimeError as exc:
+        logger.error("NEXUS task transaction or audit store failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Task and audit storage are temporarily unavailable."}) from exc
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "TASK_STORE_UNAVAILABLE", "message": "Task storage is temporarily unavailable."}) from exc
-    action = "nexus.task.approve" if next_status is TaskStatus.APPROVED else "nexus.task.cancel"
-    await _audit_task_action(request, principal, organization_id, task_id, action, "success", {"version": updated.version})
     return _task_response(updated)
 
 
