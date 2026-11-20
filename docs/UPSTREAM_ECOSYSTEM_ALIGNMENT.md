@@ -306,3 +306,10 @@ All references below are paths in the inspected source repository:
 ---
 
 **Maintenance rule:** update this alignment document when upstream architecture or source code materially changes. Keep implementation status, test results and security claims grounded in the target repository's own commits and CI—not inherited from upstream documentation.
+
+
+### Additional source-audit cautions
+
+- The inspected path-bridge package inventory contains implementation files and a README but no dedicated path-bridge test file in that package. This target repository must add security tests for traversal, junction/symlink escape, token handling, Origin/CSRF behavior, Windows drive/case semantics, race conditions and destructive-operation confirmation before adopting the bridge.
+- The source desktop-bridge module includes seeded recent-project examples with historical Windows paths. Seeded UI examples are not evidence that those folders exist on the current machine and must never be used to authorize filesystem access. The actual user must pick the directory or explicitly grant a handle.
+- The upstream technical specification and holistic documentation are older than several Phase 1.5 source audits. The audit records should be treated as dated evidence, not as a substitute for re-running the current test suite and inspecting current runtime behavior.
