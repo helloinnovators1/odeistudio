@@ -177,4 +177,11 @@ No phase is complete because its screens exist. Each capability needs working be
 - Added owner-only bounded active-member listing to complete the first project membership management surface; route test covers list and audit outcome. Current-head CI pending.
 
 - Owner-only project member listing and full membership lifecycle route tests passed in API CI [44804291266](https://github.com/helloinnovators1/odeistudio/actions/runs/44804291266) on `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`; all six API/web/MongoDB jobs passed.
-\n## Authenticated NEXUS chat API increment (2026-11-20)\n\n- [x] Implement initial authenticated project-scoped read-only chat API with strict consent, bounded messages/file excerpts, secret redaction and audit metadata.\n- [x] Add helper and route tests for authorization, consent, provider call constraints and audit privacy.\n- [ ] Integrate ODID browser login/token refresh and connect the IDE NEXUS composer.\n- [ ] Add durable conversation records, streaming/reconnect/cancellation and scoped workspace tools.\n- [ ] Keep write tools and command execution disabled until safe patch/approval and isolated execution services are complete.\n
+
+## Authenticated NEXUS chat API increment (2026-11-20)
+
+- [x] Implement initial authenticated project-scoped read-only chat API with strict consent, bounded messages/file excerpts, secret redaction and audit metadata.
+- [x] Add helper and route tests for authorization, consent, provider call constraints and audit privacy.
+- [ ] Integrate ODID browser login/token refresh and connect the IDE NEXUS composer.
+- [ ] Add durable conversation records, streaming/reconnect/cancellation and scoped workspace tools.
+- [ ] Keep write tools and command execution disabled until safe patch/approval and isolated execution services are complete.
