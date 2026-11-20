@@ -189,3 +189,14 @@ Earlier entries in this file describe intermediate milestones and may say task H
 - Added tests for replica-set readiness, mongos readiness, standalone rejection and MongoDB unavailability. API CI [44795590882](https://github.com/helloinnovators1/odeistudio/actions/runs/44795590882) passed all six jobs on commit `18b6f31c3c31695d092a0ef5e6a7936f5337f0c1`: Ubuntu Python 3.10/3.12, Windows Python 3.10/3.12, web tests/build and MongoDB replica-set integration. The latest documentation-only head is undergoing its own security scan.
 
 - Task transitions now emit semantic `task.approved`, `task.cancelled`, `task.completed`, `task.failed` and `task.expired` event types; intermediate transitions remain `task.status_changed`. Parameterized approval/cancellation/expiry event tests passed in API CI [44796392625](https://github.com/helloinnovators1/odeistudio/actions/runs/44796392625): all six jobs passed; Ubuntu Python 3.10/3.12 each 132 passed, 5 skipped; Windows Python 3.10/3.12 each 134 passed, 3 skipped; web tests/build and MongoDB integration passed. Security CI [44796427460](https://github.com/helloinnovators1/odeistudio/actions/runs/44796427460) passed Gitleaks, pip-audit, npm audit and CodeQL.
+
+
+## Project lifecycle and membership API (2026-11-20)
+
+- Added `apps/api/odei_api/services/projects.py` and registered its router in the FastAPI application.
+- Implemented tenant-scoped project create/list routes. Any active organization member may create a project; the creator is the project owner. Listing returns active projects where the caller is owner or has active membership, bounded to 100.
+- Implemented owner-managed membership add/remove routes. A target identity must already have active membership in the same organization. The owner is implicit; membership removals are soft deactivations.
+- API startup creates unique indexes for (organization_id, project_id) and (organization_id, project_id, issuer, subject), plus listing indexes.
+- Project creation and membership changes persist their audit record inside the same MongoDB transaction as the write. Organization/project-owner authorization denials are audited; audit failures fail closed.
+- Added route tests covering create/list/add/remove and rejecting a target without active organization membership. Current-head CI is pending; do not count this increment as verified until all API matrix, web, MongoDB integration and security jobs pass.
+- Not implemented by this increment: org member provisioning/invitations, project ownership transfer, custom project roles, patch application, isolated command execution, Monaco IDE, cloud/background agents or desktop folder scanning.
