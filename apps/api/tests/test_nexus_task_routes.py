@@ -44,10 +44,11 @@ class Audit:
 
 
 class TaskStore:
-    def __init__(self):
+    def __init__(self, audit):
         self.tasks = {}
+        self.audit = audit
 
-    async def create_planned(self, task, *, plan):
+    async def create_planned(self, task, *, plan, audit_event=None):
         current = task
         for status in (TaskStatus.CONTEXT_GATHERING, TaskStatus.PLANNING, TaskStatus.AWAITING_APPROVAL):
             current = transition_task(
@@ -55,18 +56,22 @@ class TaskStore:
                 plan=plan if status is TaskStatus.AWAITING_APPROVAL else None,
             )
         self.tasks[current.id] = current
+        if audit_event is not None:
+            await self.audit.append(**audit_event)
         return current
 
     async def get(self, *, organization_id, task_id):
         task = self.tasks.get(task_id)
         return task if task and task.organization_id == organization_id else None
 
-    async def transition(self, *, organization_id, task_id, next_status, expected_version, actor_id=None):
+    async def transition(self, *, organization_id, task_id, next_status, expected_version, actor_id=None, audit_event=None):
         current = await self.get(organization_id=organization_id, task_id=task_id)
         if current is None:
             raise KeyError("Task not found")
         updated = transition_task(current, next_status, expected_version=expected_version)
         self.tasks[task_id] = updated
+        if audit_event is not None:
+            await self.audit.append(**audit_event)
         return updated
 
 
@@ -76,7 +81,8 @@ def route_state():
         key: getattr(app.state, key, None)
         for key in ("mongo_database", "audit_event_store", "task_store")
     }
-    database, audit, tasks = Database(), Audit(), TaskStore()
+    database, audit = Database(), Audit()
+    tasks = TaskStore(audit)
     app.state.mongo_database = database
     app.state.audit_event_store = audit
     app.state.task_store = tasks
