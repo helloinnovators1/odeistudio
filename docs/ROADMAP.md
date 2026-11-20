@@ -29,7 +29,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Implement initial Chrome browser pairing UI, explicit loopback permission/request flow, multi-root navigation and read-only preview; bearer tokens remain in memory only.
 - [ ] Complete ODID user/tenant binding, explicit consent/audit lifecycle, signed Windows installer and validation on Windows 10 build 18362.
 - [x] Implement durable tenant-scoped task records and separate append-only task events with transactional state/event writes (MongoDB replica-set/sharded transaction support required).
-- [x] Atomically persist NEXUS task create/approve/cancel audit events in the same MongoDB transaction as task state and lifecycle events; audit failures roll back task mutations. Live replica-set integration testing remains open.
+- [x] Atomically persist NEXUS task create/approve/cancel audit events in the same MongoDB transaction as task state and lifecycle events; audit failures roll back task mutations. A real MongoDB 7.0 replica-set integration test passed in API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821), job `mongodb-integration` (1 passed). Production Atlas connectivity and broader transaction/failure scenarios remain open.
 - [x] Add bounded read-only NEXUS tool registry with strict schemas, injected workspace identity and unknown-tool rejection. Per-task capability enforcement and approval policy remain unchecked; this is not the complete policy/approval registry.
 - [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently. Project CRUD and membership administration remain open.
 - [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction; integrated project-scoped create/read/events/approve/cancel routes enforce membership/project/task access. Full role policy, project administration and production ODID integration remain open.
@@ -142,3 +142,5 @@ No phase is complete because its screens exist. Each capability needs working be
 
 - Added `tests/test_task_store_mongodb_integration.py` and a dedicated CI job that starts a disposable MongoDB 7.0 replica set and verifies real task/audit commit and rollback. The workflow run for the integration job is pending; do not mark real-server transaction verification complete until it passes.
 - Fixed the API CI pull-request path filter to include `apps/web/**`, so web changes trigger the web tests and production build on PRs.
+
+- Security workflow for the 8fe integration-test commit was cancelled by a later push; do not count it as a pass. A new security scan must complete on the latest branch head.
