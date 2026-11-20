@@ -8,11 +8,11 @@
 ## Current verified snapshot (2026-11-20)
 
 - Development branch: `feat/windows-handle-safe-scanner`; documentation reconciled after the latest verified code increment.
-- Latest fully verified code commit: `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`.
-- API/web CI [44804305385](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305385): **passed all six jobs** — Ubuntu and Windows with Python 3.10/3.12, web tests/build, and MongoDB 7.0 replica-set transaction integration.
-- Security scan [44804305322](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305322): **passed all four jobs** — CodeQL Python/TypeScript, Gitleaks, Python dependency audit and web dependency audit.
+- Latest fully verified NEXUS chat code commit: `1362c61d44ccaaa68ef4999a5022ae203a9eb410`; the current branch tip includes subsequent documentation-only reconciliations.
+- API/web CI [44828501275](https://github.com/helloinnovators1/odeistudio/actions/runs/44828501275): **passed all six jobs** on the code-equivalent documentation commit — Ubuntu and Windows with Python 3.10/3.12, web tests/build, and MongoDB 7.0 replica-set transaction integration. Ubuntu jobs: 146 passed / 6 skipped each; Windows jobs: 148 passed / 4 skipped each; MongoDB integration: 2 passed.
+- Security scan [44828501029](https://github.com/helloinnovators1/odeistudio/actions/runs/44828501029): **passed all four jobs** — CodeQL Python/TypeScript, Gitleaks, Python dependency audit and web dependency audit.
 - Web test output: 9 Vitest tests passed; TypeScript/Vite production build succeeded.
-- Pull request [#1](https://github.com/helloinnovators1/odeistudio/pull/1) is open and draft; not merged. The target `main` remains at `5d9f8d6f9585ee6a0f40d0a6013500ffed901082` and has not been changed. The later commits after `5f0d390` are documentation-only updates; their latest workflow reruns are queued.
+- Pull request [#1](https://github.com/helloinnovators1/odeistudio/pull/1) is open and draft; not merged. The target `main` remains at `5d9f8d6f9585ee6a0f40d0a6013500ffed901082` and has not been changed. The later commits after `1362c61` are documentation-only reconciliations; the code CI and security scans above passed on the same code state.
 - No production deployment, Atlas connection, local Windows desktop scan or Windows 10 build 18362 validation has been performed.
 
 
