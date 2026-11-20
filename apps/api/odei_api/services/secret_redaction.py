@@ -32,7 +32,7 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         r"\1[REDACTED]\2",
     ),
 )
-_SECRET_NAME = r"""["']?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?access[_-]?key|aws[_-]?secret[_-]?access[_-]?key|db[_-]?password|password|passwd|secret)\b["']?\s*[:=]\s*"""
+_SECRET_NAME = r"""["']?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?access[_-]?key|aws[_-]?secret[_-]?access[_-]?key|db[_-]?password|password|passwd|secret|credential)\b["']?\s*[:=]\s*"""
 _QUOTED_SECRET_ASSIGNMENT = re.compile(
     r"(?im)(" + _SECRET_NAME + r")([\"'])(.{8,}?)\2"
 )
