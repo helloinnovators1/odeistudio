@@ -52,7 +52,8 @@ class FakeCollection:
         return "index"
 
     async def insert_one(self, document, session=None):
-        self.documents[document.get("_id", document["event_id"])] = deepcopy(document)
+        key = document["_id"] if "_id" in document else document["event_id"]
+        self.documents[key] = deepcopy(document)
 
     async def find_one(self, query):
         document = self.documents.get(query["_id"])
