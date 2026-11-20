@@ -17,8 +17,8 @@
 - Added GitIgnoreSpec-based root/nested .gitignore support, file-count and aggregate-byte scan budgets; nested rule scope was corrected after a CI test exposed the defect.
 - Added a NEXUS planning service using the OpenAI Responses API, with no tools enabled and bounded task/context input.
 - Added a guarded NEXUS task lifecycle domain model with explicit legal transitions, terminal states, plan-before-approval enforcement and optimistic version checks.
-- Added MongoTaskStore using tenant-scoped MongoDB queries, optimistic version matching and status-change events atomically embedded in task records.
-- Added a lazy PyMongo Async client factory and secret-safe MongoDB URI configuration; no Atlas connection has been attempted because no credential is configured in the repository.
+- Added MongoTaskStore with tenant-scoped queries and optimistic version matching. The initial embedded event array has now been replaced in code with a separate append-only `task_events` collection; task state and event writes are performed in one MongoDB transaction (requires replica set/sharded-cluster transaction support). Tests for transaction behavior are being validated by the current CI run.
+- Added a lazy PyMongo Async client factory, explicit 3-second server-selection timeout, FastAPI lifespan ownership/cleanup, and a real readiness ping. Missing/unreachable MongoDB now returns 503 rather than a false healthy status. Added configuration/readiness tests; no Atlas connection has been attempted because no credential is configured in the repository.
 - GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
@@ -31,8 +31,8 @@
 - Provider integrations are documented/researched, not connected or end-to-end tested.
 
 ## Next implementation sequence
-0. Resolve the exact Ruff import-format diff from CI and restore a clean lint gate. Reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
-1. Confirm the clean CI workflow (without the temporary diagnostic step) passes and fix any remaining test failures.
+0. Keep the clean Ruff gate green and reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
+1. Confirm CI for the MongoDB lifecycle and separate event collection changes passes; fix any remaining lint/test failures.
 2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
 3. Implement authentication, organization tenancy and authorization before exposing project tools.
 4. Add durable task records and task events.
