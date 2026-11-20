@@ -26,7 +26,8 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Quality and testing](TESTING.md) — test pyramid, security checks and release gates.
 - [Desktop project ingestion](DESKTOP_INGESTION.md) — safe, user-authorized local project indexing without ZIP packaging.
 
-- [Upstream ecosystem alignment](UPSTREAM_ECOSYSTEM_ALIGNMENT.md) — audited source-repository capabilities, migration boundaries, desktop access, AI gateway, MAC/MAD and implementation work order.\n\n## Documentation rules
+- [Upstream ecosystem alignment](UPSTREAM_ECOSYSTEM_ALIGNMENT.md) — audited source-repository capabilities, migration boundaries, desktop access, AI gateway, MAC/MAD and implementation work order.
+- [Imported upstream ecosystem documentation](upstream/INDEX.md) — preserved source snapshots of Studio specifications, desktop/editor phases, MAC audits, AI gateway and ecosystem operating documents.\n\n## Documentation rules
 1. Treat this index as the canonical documentation entry point.
 2. Mark unimplemented capabilities as planned or experimental; never imply that a design document proves implementation.
 3. Record provider capabilities against official documentation and the exact account/product scope tested.
