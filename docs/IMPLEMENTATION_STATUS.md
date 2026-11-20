@@ -16,7 +16,7 @@
 - Added a guarded NEXUS task lifecycle domain model with explicit legal transitions, terminal states, plan-before-approval enforcement and optimistic version checks.
 - Added MongoTaskStore using tenant-scoped MongoDB queries, optimistic version matching and status-change events atomically embedded in task records.
 - Added a lazy PyMongo Async client factory and secret-safe MongoDB URI configuration; no Atlas connection has been attempted because no credential is configured in the repository.
-- GitHub Actions verified 21 tests passed on the nested-.gitignore fix commit; subsequent planner/config/task changes are awaiting their own CI run.
+- GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
 
