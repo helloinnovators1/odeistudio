@@ -1,7 +1,7 @@
-"""Tenant-scoped MongoDB persistence for NEXUS tasks.
+"""Tenant-scoped MongoDB task and append-only event persistence.
 
-Every read and mutation includes organization_id in its query. State updates and
-their audit event are written atomically into the same task document.
+Task state and its corresponding event are committed in one MongoDB transaction.
+The deployment must use a replica set or sharded cluster that supports transactions.
 """
 from __future__ import annotations
 
@@ -20,8 +20,10 @@ from odei_api.services.tasks import (
 
 
 class MongoTaskStore:
-    def __init__(self, collection: Any):
+    def __init__(self, collection: Any, events_collection: Any, client: Any):
         self._collection = collection
+        self._events = events_collection
+        self._client = client
 
     async def initialize(self) -> None:
         await self._collection.create_index(
@@ -29,6 +31,12 @@ class MongoTaskStore:
         )
         await self._collection.create_index(
             [("organization_id", 1), ("project_id", 1), ("created_at", -1)]
+        )
+        await self._events.create_index(
+            [("organization_id", 1), ("task_id", 1), ("version", 1)], unique=True
+        )
+        await self._events.create_index(
+            [("organization_id", 1), ("project_id", 1), ("occurred_at", -1)]
         )
 
     async def create(self, task: TaskRecord) -> TaskRecord:
@@ -44,15 +52,22 @@ class MongoTaskStore:
             "version": task.version,
             "created_at": now,
             "updated_at": now,
-            "events": [{
-                "event_id": str(uuid4()),
-                "type": "task.created",
-                "version": task.version,
-                "status": task.status.value,
-                "occurred_at": now,
-            }],
         }
-        await self._collection.insert_one(document)
+        event = {
+            "event_id": str(uuid4()),
+            "organization_id": task.organization_id,
+            "project_id": task.project_id,
+            "task_id": task.id,
+            "actor_id": task.owner_id,
+            "type": "task.created",
+            "version": task.version,
+            "status": task.status.value,
+            "occurred_at": now,
+        }
+        async with self._client.start_session() as session:
+            async with await session.start_transaction():
+                await self._collection.insert_one(document, session=session)
+                await self._events.insert_one(event, session=session)
         return self._to_record(document)
 
     async def get(self, *, organization_id: str, task_id: str) -> TaskRecord | None:
@@ -82,32 +97,41 @@ class MongoTaskStore:
         occurred_at = updated.updated_at or datetime.now(timezone.utc)
         event = {
             "event_id": str(uuid4()),
+            "organization_id": organization_id,
+            "project_id": current.project_id,
+            "task_id": task_id,
+            "actor_id": current.owner_id,
             "type": "task.status_changed",
             "from_status": current.status.value,
             "to_status": updated.status.value,
             "version": updated.version,
             "occurred_at": occurred_at,
         }
-        document = await self._collection.find_one_and_update(
-            {
-                "_id": task_id,
-                "organization_id": organization_id,
-                "version": expected_version,
-                "status": current.status.value,
-            },
-            {
-                "$set": {
-                    "status": updated.status.value,
-                    "plan": updated.plan,
-                    "updated_at": occurred_at,
-                },
-                "$inc": {"version": 1},
-                "$push": {"events": event},
-            },
-            return_document=ReturnDocument.AFTER,
-        )
-        if document is None:
-            raise InvalidTaskTransition("Task changed concurrently; reload before retrying")
+        async with self._client.start_session() as session:
+            async with await session.start_transaction():
+                document = await self._collection.find_one_and_update(
+                    {
+                        "_id": task_id,
+                        "organization_id": organization_id,
+                        "version": expected_version,
+                        "status": current.status.value,
+                    },
+                    {
+                        "$set": {
+                            "status": updated.status.value,
+                            "plan": updated.plan,
+                            "updated_at": occurred_at,
+                        },
+                        "$inc": {"version": 1},
+                    },
+                    return_document=ReturnDocument.AFTER,
+                    session=session,
+                )
+                if document is None:
+                    raise InvalidTaskTransition(
+                        "Task changed concurrently; reload before retrying"
+                    )
+                await self._events.insert_one(event, session=session)
         return self._to_record(document)
 
     @staticmethod
