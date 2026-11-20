@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import hmac
 import re
 from dataclasses import dataclass
 from typing import Mapping
@@ -90,7 +91,11 @@ def build_patch_proposal(
     New files use an expected base hash of None; updates/deletes must match the
     SHA-256 of the supplied base snapshot. Deletion is represented by None.
     """
-    if not isinstance(base_files, Mapping) or not isinstance(changes, Mapping):
+    if (
+        not isinstance(base_files, Mapping)
+        or not isinstance(changes, Mapping)
+        or not isinstance(expected_base_hashes, Mapping)
+    ):
         raise PatchProposalError("Base snapshot and changes must be mappings")
     if not changes or len(changes) > MAX_PATCH_FILES:
         raise PatchProposalError("A proposal must contain between 1 and 20 file changes")
@@ -126,6 +131,8 @@ def build_patch_proposal(
                 raise PatchProposalError("Base files must contain text, not null values")
             if expected is not None:
                 raise PatchProposalError("New files must use a null base hash")
+            if new_content is None:
+                raise PatchProposalError("A missing file cannot be deleted")
             operation = "create"
             old_hash = None
         else:
@@ -134,7 +141,7 @@ def build_patch_proposal(
             old_hash = sha256_text(old_content)
             if not isinstance(expected, str) or not _SHA256.fullmatch(expected):
                 raise PatchProposalError("Existing files require a valid SHA-256 base hash")
-            if not hashlib.compare_digest(old_hash, expected):
+            if not hmac.compare_digest(old_hash, expected):
                 raise PatchProposalError("Base hash mismatch; refresh the workspace snapshot")
             operation = "delete" if new_content is None else "update"
 
