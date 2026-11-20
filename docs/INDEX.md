@@ -9,6 +9,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Implementation roadmap](ROADMAP.md) — phased delivery, dependencies and acceptance gates.
 - [Engineering standards](ENGINEERING_STANDARDS.md) — code quality, API, testing and contribution rules.
 - [Security and privacy](SECURITY.md) — threat model, secrets, isolation, identity and incident handling.
+- [Identity integration contract](IDENTITY_INTEGRATION.md) — verified upstream ODID maturity, RFC 9068 access-token profile, required issuer contract and RBAC gates.
 
 - [Global technical research and decisions](RESEARCH_DECISIONS.md) — official sources and implementation choices.
 

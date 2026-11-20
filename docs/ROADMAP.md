@@ -14,7 +14,8 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 ## Phase 1 — NEXUS foundation
 - [x] Scaffold Python/FastAPI backend foundation; [ ] select and scaffold the frontend framework after reconciling the upstream Next.js/Monaco app.
 - [x] Add configuration validation and safe environment handling.
-- [x] Implement fail-closed RS256/JWKS verification and protected `/api/v1/auth/me` identity route.
+- [x] Implement fail-closed RFC 9068-style RS256/JWKS access-token verification and protected `/api/v1/auth/me` identity route.
+- [ ] Obtain a production ODID issuer/JWKS/access-token contract; implement server-side membership provisioning, role/permission policy and project-level authorization only against that verified contract.
 - [ ] Connect a confirmed ODID issuer/audience/JWKS, provision active memberships, and enforce tenant/project ownership and permissions.
 - [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls.
 - [x] Use native Windows handle-relative opens for file reads and `FileIdBothDirectoryInfo` enumeration; add Windows junction-exclusion and directory-handle path-swap regression tests.

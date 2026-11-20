@@ -129,3 +129,15 @@ This document records architectural research, not completed provider integration
 - Continue server-side exact Origin/Host validation and standard CORS; LNA is an additional browser control, not a replacement for server authorization.
 
 Official references: [Chrome Local Network Access guidance](https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access), [Chrome LNA launch and security rationale](https://developer.chrome.com/blog/local-network-access), [WICG Local Network Access specification](https://wicg.github.io/local-network-access/). Chrome 142 introduced the LNA permission prompt; Chrome 145 split granular `local-network` and `loopback-network` permissions. The older PNA preflight approach is superseded.
+
+
+## Identity access-token profile and upstream ODID maturity
+
+**Decision:** ODEI Studio's API expects a strict RFC 9068-style JWT access-token profile and must not accept browser-local role simulations or untyped JWTs as production identity.
+
+- RFC 9068 requires an explicit access-token type (`at+jwt` or `application/at+jwt`) and required claims including `iss`, `exp`, `aud`, `sub`, `client_id`, `iat` and `jti`. The target verifier now enforces the profile, RS256, HTTPS issuer/JWKS, bounded JWKS size/key count, compatible JWK use/key_ops and server-side membership lookup.
+- RFC 8725 requires issuer/subject and audience validation and emphasizes preventing token substitution. The explicit type check prevents an OIDC ID token from being accepted as an API access token.
+- The imported upstream ODID overview describes a historical OPMS identity seed, heuristic KYC and an MFA flag that was not enforced. The imported production roles document explicitly warns that localStorage roles, demo invite codes and client-side admin redirects are a browser-local simulation without protected server-side 401/403 enforcement. These are not trusted production authorization inputs.
+- No production ODID issuer, audience, JWKS endpoint, membership API or role contract is confirmed in this target repository. Do not enable workspace/task routes until the ODID contract and server-side membership/permission lifecycle are verified.
+
+References: https://www.rfc-editor.org/rfc/rfc9068.html ; https://www.rfc-editor.org/rfc/rfc8725.html ; https://www.rfc-editor.org/rfc/rfc8414.html ; docs/upstream/ODEI_IDENTITY_HOLISTIC_SOURCE.md ; docs/upstream/PRODUCTION_ROLES_SOURCE.md.
