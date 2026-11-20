@@ -210,3 +210,53 @@ def test_companion_rejects_invalid_port(tmp_path) -> None:
             )
     finally:
         registry.close()
+
+
+def test_companion_supports_multiple_explicitly_selected_roots(tmp_path) -> None:
+    registry = WorkspaceHandleRegistry()
+    first = tmp_path / "odei-studio"
+    second = tmp_path / "cursor-gallery"
+    first.mkdir()
+    second.mkdir()
+    (first / "README.md").write_text("ODEI project", encoding="utf-8")
+    (second / "gallery.txt").write_text("reference gallery", encoding="utf-8")
+    first_id = registry.register_selected_root(first)
+    second_id = registry.register_selected_root(second)
+    pairing = PairingManager()
+    code = pairing.issue_pairing_code()
+    app = create_companion_app(
+        registry,
+        [first_id, second_id],
+        allowed_origins=[ORIGIN],
+        pairing_manager=pairing,
+        port=8765,
+    )
+    client = TestClient(app, base_url=BASE_URL)
+    headers = {"Origin": ORIGIN}
+    try:
+        paired = client.post("/v1/pair", headers=headers, json={"code": code})
+        token = paired.json()["access_token"]
+        auth_headers = {**headers, "Authorization": f"Bearer {token}"}
+
+        workspaces = client.get("/v1/workspaces", headers=auth_headers)
+        assert workspaces.status_code == 200
+        assert [item["workspace_id"] for item in workspaces.json()["workspaces"]] == [
+            first_id,
+            second_id,
+        ]
+
+        first_files = client.get(
+            f"/v1/workspaces/{first_id}/files", headers=auth_headers
+        )
+        second_files = client.get(
+            f"/v1/workspaces/{second_id}/files", headers=auth_headers
+        )
+        assert [item["path"] for item in first_files.json()["files"]] == ["README.md"]
+        assert [item["path"] for item in second_files.json()["files"]] == ["gallery.txt"]
+
+        ambiguous = client.get("/v1/workspace/files", headers=auth_headers)
+        assert ambiguous.status_code == 409
+        unknown = client.get("/v1/workspaces/not-selected/files", headers=auth_headers)
+        assert unknown.status_code == 404
+    finally:
+        registry.close()

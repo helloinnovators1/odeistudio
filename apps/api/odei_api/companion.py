@@ -122,7 +122,7 @@ def _validate_origins(origins: Iterable[str]) -> set[str]:
 
 def create_companion_app(
     registry: WorkspaceHandleRegistry,
-    workspace_id: str,
+    workspace_ids: str | Iterable[str],
     *,
     allowed_origins: Iterable[str],
     pairing_manager: PairingManager | None = None,
@@ -132,6 +132,13 @@ def create_companion_app(
     if not 1 <= port <= 65535:
         raise ValueError("Companion port must be between 1 and 65535")
     origins = _validate_origins(allowed_origins)
+    selected_workspace_ids = (
+        (workspace_ids,) if isinstance(workspace_ids, str)
+        else tuple(dict.fromkeys(workspace_ids))
+    )
+    if not selected_workspace_ids:
+        raise ValueError("At least one selected workspace is required")
+    allowed_workspace_ids = frozenset(selected_workspace_ids)
     pairing = pairing_manager or PairingManager()
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
@@ -203,14 +210,61 @@ def create_companion_app(
             "permissions": ["workspace:read"],
         }
 
+    def require_selected_workspace(workspace_id: str) -> None:
+        if workspace_id not in allowed_workspace_ids:
+            raise HTTPException(status_code=404, detail="Workspace is unavailable")
+
+    def require_single_workspace() -> str:
+        if len(selected_workspace_ids) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Use the multi-workspace routes for this companion session",
+            )
+        return selected_workspace_ids[0]
+
+    @app.get("/v1/workspaces")
+    async def list_workspaces(request: Request):
+        require_bearer(request)
+        return {
+            "workspaces": [
+                {"workspace_id": item, "access": "read-only"}
+                for item in selected_workspace_ids
+            ]
+        }
+
+    @app.get("/v1/workspaces/{workspace_id}/files")
+    async def list_workspace_files(workspace_id: str, request: Request):
+        require_bearer(request)
+        require_selected_workspace(workspace_id)
+        files = await run_in_threadpool(registry.list_files, workspace_id)
+        return {"workspace_id": workspace_id, "files": [
+            {"path": item.path, "size": item.size} for item in files
+        ]}
+
+    @app.get("/v1/workspaces/{workspace_id}/file")
+    async def read_workspace_file(
+        workspace_id: str,
+        request: Request,
+        path: str = Query(min_length=1, max_length=1024),
+    ):
+        require_bearer(request)
+        require_selected_workspace(workspace_id)
+        try:
+            content = await run_in_threadpool(registry.read_text, workspace_id, path)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail="File is unavailable for safe reading") from exc
+        return {"workspace_id": workspace_id, "path": path, "content": content}
+
     @app.get("/v1/workspace")
     async def workspace(request: Request):
         require_bearer(request)
+        workspace_id = require_single_workspace()
         return {"workspace_id": workspace_id, "access": "read-only"}
 
     @app.get("/v1/workspace/files")
     async def list_files(request: Request):
         require_bearer(request)
+        workspace_id = require_single_workspace()
         files = await run_in_threadpool(registry.list_files, workspace_id)
         return {"files": [{"path": item.path, "size": item.size} for item in files]}
 
@@ -220,11 +274,12 @@ def create_companion_app(
         path: str = Query(min_length=1, max_length=1024),
     ):
         require_bearer(request)
+        workspace_id = require_single_workspace()
         try:
             content = await run_in_threadpool(registry.read_text, workspace_id, path)
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail="File is unavailable for safe reading") from exc
-        return {"path": path, "content": content}
+        return {"workspace_id": workspace_id, "path": path, "content": content}
 
     @app.post("/v1/session/revoke", status_code=204)
     async def revoke_session(request: Request):
@@ -282,32 +337,42 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    try:
-        selected = select_directory_native()
-    except RuntimeError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    if not selected:
-        print("Folder selection cancelled.")
+    selected_paths: list[str] = []
+    while True:
+        try:
+            selected = select_directory_native()
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        if not selected:
+            break
+        if selected not in selected_paths:
+            selected_paths.append(selected)
+        answer = input("Select another project folder? [y/N]: ").strip().casefold()
+        if answer not in {"y", "yes"}:
+            break
+    if not selected_paths:
+        print("No project folders selected.")
         return 1
 
     registry = WorkspaceHandleRegistry()
-    workspace_id = registry.register_selected_root(selected)
+    workspace_ids: list[str] = []
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
-
     try:
+        for selected_path in selected_paths:
+            workspace_ids.append(registry.register_selected_root(selected_path))
         import uvicorn
 
         app = create_companion_app(
             registry,
-            workspace_id,
+            workspace_ids,
             allowed_origins=origins,
             pairing_manager=pairing,
             port=args.port,
         )
         print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
-        print("Selected folder is held by an OS handle; access is read-only.")
+        print(f"{len(workspace_ids)} selected folder(s) are held by OS handles; access is read-only.")
         print("Enter this one-time pairing code in the ODEI Studio web app:")
         print(code)
         print("The code expires in five minutes. Do not share it with anyone.")
@@ -319,7 +384,7 @@ def main() -> int:
             access_log=False,
         )
     finally:
-        registry.revoke(workspace_id)
+        registry.close()
     return 0
 
 
