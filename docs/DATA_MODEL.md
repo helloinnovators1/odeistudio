@@ -24,6 +24,11 @@ This document defines logical domains, not a final ORM schema. Choose exact fiel
 - `artifacts`: patches, diffs, logs, reports and test output with access controls.
 - `approvals`: requested action, risk, approver, decision and expiry.
 
+## Project authorization contract (initial service implementation)
+- `projects` records use `project_id`, `organization_id`, `status`, `owner_issuer` and `owner_subject`. Only active projects are addressable.
+- `project_memberships` grants access using `organization_id`, `project_id`, `identity_issuer`, `identity_subject` and `status=active`. The owner identity is matched by issuer + subject; caller-supplied roles or project IDs never grant access.
+- The authorization helper returns the same not-found response for absent and unauthorized projects to reduce project enumeration. Project creation, membership administration and role/permission policy remain future work.
+
 ## Platform and integrations
 - `integration_connections`: provider, external account reference, status, scopes and secret reference.
 - `environment_configs`: environment, service, key metadata, version and secret reference where sensitive.

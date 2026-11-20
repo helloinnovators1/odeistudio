@@ -69,6 +69,50 @@ class MongoTaskStore:
             await self._events.insert_one(event, session=session)
         return self._to_record(document)
 
+    async def create_planned(self, task: TaskRecord, *, plan: str) -> TaskRecord:
+        """Atomically persist an approval-ready task and ordered lifecycle events."""
+        if task.status is not TaskStatus.CREATED or task.version != 0:
+            raise ValueError("A planned task must start in the created state at version zero")
+        if not isinstance(plan, str) or not plan.strip():
+            raise ValueError("A non-empty plan is required")
+        planned = task
+        event_rows = [{
+            "event_id": str(uuid4()), "organization_id": task.organization_id,
+            "project_id": task.project_id, "task_id": task.id,
+            "actor_id": task.owner_id, "type": "task.created", "version": 0,
+            "status": TaskStatus.CREATED.value, "occurred_at": datetime.now(timezone.utc),
+        }]
+        for next_status in (
+            TaskStatus.CONTEXT_GATHERING, TaskStatus.PLANNING, TaskStatus.AWAITING_APPROVAL,
+        ):
+            updated = transition_task(
+                planned, next_status, expected_version=planned.version,
+                plan=plan if next_status is TaskStatus.AWAITING_APPROVAL else None,
+            )
+            event_rows.append({
+                "event_id": str(uuid4()), "organization_id": task.organization_id,
+                "project_id": task.project_id, "task_id": task.id,
+                "actor_id": task.owner_id,
+                "type": "task.approval.requested" if next_status is TaskStatus.AWAITING_APPROVAL
+                else "task.status_changed",
+                "from_status": planned.status.value, "to_status": updated.status.value,
+                "version": updated.version,
+                "occurred_at": updated.updated_at or datetime.now(timezone.utc),
+            })
+            planned = updated
+        document = {
+            "_id": planned.id, "organization_id": planned.organization_id,
+            "project_id": planned.project_id, "owner_id": planned.owner_id,
+            "goal": planned.goal, "status": planned.status.value, "plan": planned.plan,
+            "version": planned.version, "created_at": planned.created_at,
+            "updated_at": planned.updated_at,
+        }
+        async with self._client.start_session() as session, await session.start_transaction():
+            await self._collection.insert_one(document, session=session)
+            for event in event_rows:
+                await self._events.insert_one(event, session=session)
+        return self._to_record(document)
+
     async def get(self, *, organization_id: str, task_id: str) -> TaskRecord | None:
         if not organization_id.strip() or not task_id.strip():
             raise ValueError("organization_id and task_id are required")

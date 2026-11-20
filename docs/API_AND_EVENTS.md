@@ -74,3 +74,10 @@ The service exposes append and index initialization only; it intentionally has n
 - Request fields: `task` (1–8,000 characters), optional `project_context` (0–24,000 characters), and strict boolean `cloud_model_consent`.
 - The route returns a plan identifier, organization identifier, model and plan text. It does not persist the plan as a durable task and does not execute tools or modify a workspace.
 - Plan success/failure is written to the append-only audit event collection. Audit metadata excludes task, context and plan content; audit failure returns 503.
+
+
+## Project-scoped NEXUS authorization foundation
+
+The API package includes a fail-closed project access service. A project must be active and tenant-matched; access is granted only to the exact owner issuer+subject or an active project-membership record. Missing and unauthorized projects are intentionally indistinguishable (404). This service is not yet exposed as a project API; project creation, membership administration and role policy remain unimplemented.
+
+The task store supports atomic planned-task creation: it writes the task in `awaiting_approval` and four ordered lifecycle events (created, context gathering, planning, approval requested) in one MongoDB transaction. It requires a MongoDB replica set or sharded-cluster transaction capability.

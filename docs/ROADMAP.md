@@ -30,6 +30,8 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Complete ODID user/tenant binding, explicit consent/audit lifecycle, signed Windows installer and validation on Windows 10 build 18362.
 - [x] Implement durable tenant-scoped task records and separate append-only task events with transactional state/event writes (MongoDB replica-set/sharded transaction support required).
 - [x] Add bounded read-only NEXUS tool registry with strict schemas, injected workspace identity and unknown-tool rejection. Per-task capability enforcement and approval policy remain unchecked; this is not the complete policy/approval registry.
+- [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently. Project CRUD and membership administration remain open.
+- [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction. The HTTP route and end-to-end project/task authorization integration remain open.
 - [ ] Add patch application with hash/concurrency checks and explicit approval.
 - [ ] Add isolated command runner with timeout/resource limits and network/filesystem policy.
 - [ ] Add test runner and structured diagnostics.
@@ -105,3 +107,10 @@ No phase is complete because its screens exist. Each capability needs working be
 
 - Added `POST /api/v1/organizations/{organization_id}/nexus/plan` on the implementation branch. It requires verified identity, active organization membership and explicit cloud-model consent; bounds task/context; invokes the existing server-side Responses planning service off the async event loop; and audits success/failure without persisting user task/context/plan text.
 - Verified on commit `97200eba263161595d4bef5193df409acf768dc7`: API Ruff/pytest passed on Ubuntu and Windows with Python 3.10 and 3.12; web tests/build passed; CodeQL, Gitleaks, Python dependency audit and web dependency audit passed. API/web run [44782893597](https://github.com/helloinnovators1/odeistudio/actions/runs/44782893597); security run [44782893818](https://github.com/helloinnovators1/odeistudio/actions/runs/44782893818). The endpoint does not write files, run commands or persist a resumable task; passing CI does not establish production readiness.
+
+
+## Latest project authorization and planned-task persistence increment
+
+- Added `require_project_access` with tenant-scoped active-project lookup, exact owner identity matching, active project-membership lookup and indistinguishable not-found responses for missing/unauthorized projects.
+- Added `MongoTaskStore.create_planned`: it validates the initial task and non-empty plan, persists the approval-ready task and four ordered lifecycle events atomically, and rolls back on any event insert failure.
+- Added focused service tests for project authorization and task lifecycle/rollback. These are service/persistence increments only. No task HTTP endpoint, project administration API, patch/write tool or command runner is exposed yet.

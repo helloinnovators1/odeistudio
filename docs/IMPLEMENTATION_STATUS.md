@@ -129,3 +129,10 @@
 - Added `POST /api/v1/organizations/{organization_id}/nexus/plan` to connect the existing planner to a protected API boundary. It checks verified identity and active server-side organization membership, requires strict explicit cloud-model consent, validates bounded task/context inputs, invokes the synchronous OpenAI client in a worker thread, and records plan success/failure in the audit store without retaining task/context/plan content in audit metadata.
 - The route returns only plan ID, organization ID, model and plan text. It performs no local workspace reads, file writes, command execution or durable task persistence.
 - Verified on commit `97200eba263161595d4bef5193df409acf768dc7`: API Ruff/pytest passed on Ubuntu and Windows with Python 3.10 and 3.12; web tests/build passed; CodeQL, Gitleaks, Python dependency audit and web dependency audit passed. API/web run [44782893597](https://github.com/helloinnovators1/odeistudio/actions/runs/44782893597); security run [44782893818](https://github.com/helloinnovators1/odeistudio/actions/runs/44782893818). This verifies CI for this planning increment only, not production readiness or the full coding-agent workflow.
+
+
+## Latest project authorization and planned-task persistence increment
+
+- Added a project access primitive that grants access only to the exact project owner identity or a server-stored active project membership, always scoped by organization and active project status. Absent and unauthorized projects return the same 404 response.
+- Added atomic planned-task persistence. The task and ordered lifecycle events (created, context gathering, planning, approval requested) are committed in one MongoDB transaction; an event failure rolls back the task write.
+- Added focused service tests for project authorization and planned-task lifecycle/rollback. This increment is not a project API or full NEXUS task workflow: project/membership provisioning, task HTTP routes, user approval UI, patching and isolated execution remain unimplemented.

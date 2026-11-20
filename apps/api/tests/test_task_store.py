@@ -152,3 +152,37 @@ async def test_task_transition_rejects_stale_version():
             organization_id="org-1", task_id="task-1",
             next_status=TaskStatus.PLANNING, expected_version=0,
         )
+
+
+
+@pytest.mark.asyncio
+async def test_create_planned_atomically_persists_approval_ready_task_and_lifecycle():
+    store, tasks, events = make_store()
+    await store.initialize()
+    result = await store.create_planned(make_task(), plan="Inspect, implement, test")
+    assert result.status is TaskStatus.AWAITING_APPROVAL
+    assert result.version == 3
+    assert result.plan == "Inspect, implement, test"
+    rows = sorted(events.documents.values(), key=lambda row: row["version"])
+    assert [row["version"] for row in rows] == [0, 1, 2, 3]
+    assert [row.get("to_status", row.get("status")) for row in rows] == [
+        "created", "context_gathering", "planning", "awaiting_approval",
+    ]
+    assert rows[-1]["type"] == "task.approval.requested"
+    assert tasks.documents["task-1"]["status"] == "awaiting_approval"
+
+
+@pytest.mark.asyncio
+async def test_create_planned_rolls_back_task_and_all_events_on_event_failure():
+    store, tasks, events = make_store(FailingEventCollection())
+    with pytest.raises(RuntimeError, match="event store unavailable"):
+        await store.create_planned(make_task(), plan="Plan")
+    assert tasks.documents == {}
+    assert events.documents == {}
+
+
+@pytest.mark.asyncio
+async def test_create_planned_rejects_empty_plan():
+    store, _, _ = make_store()
+    with pytest.raises(ValueError, match="non-empty plan"):
+        await store.create_planned(make_task(), plan="  ")
