@@ -33,4 +33,8 @@ A database credential was exposed in project setup material. Assume it is compro
 7. Agent orchestration and isolated execution
 8. Testing, repair, review and deployment workflows
 
-See docs/ for architecture, MAC requirements, hosting integration model and security documentation.
+## Documentation
+
+Start with [`docs/INDEX.md`](docs/INDEX.md) for the complete documentation map and [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) for the full product ecosystem. The docs cover NEXUS, workspace architecture, MAC, MAD, data model, API/events, security, integrations, deployment, testing, roadmap and safe desktop project ingestion.
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for implementation status. Documentation describes intended behavior; it does not imply that a feature is already implemented or operational.
