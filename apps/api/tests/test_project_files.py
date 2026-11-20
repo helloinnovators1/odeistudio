@@ -99,3 +99,23 @@ def test_enforces_total_scan_byte_budget(tmp_path: Path) -> None:
     (tmp_path / "b.txt").write_text("67890", encoding="utf-8")
     files = list_project_files(tmp_path, max_total_bytes=5)
     assert sum(item.size for item in files) <= 5
+
+
+def test_does_not_follow_symlink_directory(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-odei-dir"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("outside", encoding="utf-8")
+    link = tmp_path / "linked-dir"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Directory symlinks are unavailable in this environment")
+    assert list_project_files(tmp_path) == []
+    with pytest.raises(UnsafeProjectPath):
+        read_project_text_file(tmp_path, "linked-dir/secret.txt")
+
+
+def test_rejects_directory_as_text_file(tmp_path: Path) -> None:
+    (tmp_path / "folder").mkdir()
+    with pytest.raises(Exception, match="regular file"):
+        read_project_text_file(tmp_path, "folder")
