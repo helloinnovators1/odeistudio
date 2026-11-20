@@ -37,7 +37,7 @@ From a Python 3.10+ environment with Tk support:
     $env:ODEI_COMPANION_ALLOWED_ORIGINS = "https://YOUR-ODEI-STUDIO-ORIGIN"
     odei-companion
 
-Replace the placeholder with the exact ODEI Studio frontend origin (scheme and host only; no path or wildcard). ODEI_COMPANION_PORT can override the default port. The companion listens on 127.0.0.1, not the LAN. The folder picker currently selects one root per companion process. The pairing code appears in the local console, expires after five minutes and must not be shared.
+Replace the placeholder with the exact ODEI Studio frontend origin (scheme and host only; no path or wildcard). ODEI_COMPANION_PORT can override the default port. The companion listens on 127.0.0.1, not the LAN. The folder picker can be repeated in one companion process: after each selection, the console asks whether another project folder should be selected. This supports separate roots such as the ODEI Studio project and the Cursor product interface gallery. The pairing code appears in the local console, expires after five minutes and must not be shared.
 
 The frontend pairing screen/client is not implemented yet. Therefore, although the local service prototype can start, the complete browser-to-companion workflow is not yet available.
 
@@ -91,9 +91,10 @@ The local API is separate from the cloud /api/v1 API:
 |---|---|---|
 | GET | /health | Local process health only |
 | POST | /v1/pair | Exchange one-time pairing code for read-only bearer session |
-| GET | /v1/workspace | Return workspace ID and read-only access label |
-| GET | /v1/workspace/files | Return bounded relative path/size manifest |
-| GET | /v1/workspace/file?path=... | Return one bounded UTF-8 text file |
+| GET | /v1/workspaces | Return all selected workspace IDs and read-only labels |
+| GET | /v1/workspaces/{id}/files | Return one selected root's bounded relative path/size manifest |
+| GET | /v1/workspaces/{id}/file?path=... | Return one bounded UTF-8 text file from that root |
+| GET | /v1/workspace, /v1/workspace/files, /v1/workspace/file | Single-root compatibility routes; return 409 when multiple roots are selected |
 | POST | /v1/session/revoke | Revoke the current bearer session |
 
 The service accepts only configured exact browser origins and expected loopback Host headers. Pairing codes are one-time and expire after five minutes; bearer sessions expire after one hour. Responses are marked non-cacheable. There is no write, shell, terminal, deployment or arbitrary root-registration HTTP route.
@@ -102,7 +103,7 @@ The service accepts only configured exact browser origins and expected loopback 
 
 - Frontend pairing UI/client, user-gesture LNA permission flow and user-facing permission-denial guidance.
 - ODID user/tenant binding for local sessions and workspace IDs.
-- Explicit root consent/review UI, audit trail, pause/revoke controls in the Studio UI and multi-root selection in one companion process.
+- Explicit root consent/review UI, audit trail and pause/revoke controls in the Studio UI.
 - Signed Windows installer, update/uninstall lifecycle and startup UX.
 - Validate the native picker-to-handle boundary and run tests on the user's exact Windows 10 build 18362; current Windows CI uses windows-latest, not that historical OS build.
 - Add resource/rate limits and operational audit for repeated local reads.

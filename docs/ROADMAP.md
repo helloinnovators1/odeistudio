@@ -21,6 +21,7 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [x] Replace POSIX path-based directory enumeration with `os.fwalk`, descriptor-relative metadata/open operations, `O_NOFOLLOW` and `O_NONBLOCK`.
 - [x] Add an in-memory `WorkspaceHandleRegistry` that retains Windows root handles/POSIX descriptors, performs list/read through retained handles, serializes operations and supports revocation; test root path replacement after registration.
 - [x] Implement a read-only `odei-companion` prototype with OS folder selection, loopback-only API, exact Origin/Host checks, one-time pairing, short-lived read-only tokens and revocation.
+- [x] Support multiple explicitly selected project roots in one companion process with workspace-specific read routes.
 - [ ] Integrate browser pairing UI using Chrome LNA (`loopback-network`, secure HTTPS context, explicit user gesture and `targetAddressSpace: "loopback"`), ODID user/tenant authorization, consent/audit lifecycle, signed Windows installer and Windows 10 build 18362 validation.
 - [x] Implement durable tenant-scoped task records and a separate append-only task event stream with transactional state/event writes.
 - [ ] Add policy-controlled tool registry.
