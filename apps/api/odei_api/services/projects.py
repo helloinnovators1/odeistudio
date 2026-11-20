@@ -72,7 +72,7 @@ async def _audit(request: Request, principal: Principal, organization_id: str,
         }) from exc
 
 
-async def _require_org_member(database, principal: Principal, organization_id: str):
+async def _require_org_member(request: Request, database, principal: Principal, organization_id: str):
     try:
         return await require_organization_membership(
             database["organization_memberships"],
@@ -81,7 +81,11 @@ async def _require_org_member(database, principal: Principal, organization_id: s
         )
     except HTTPException as exc:
         if exc.status_code == 403:
-            raise
+            await _audit(
+                request, principal, organization_id, "project.organization_access",
+                "organization", organization_id, "denied",
+                {"reason": "active_membership_required"},
+            )
         raise
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={
@@ -135,7 +139,7 @@ async def create_project(
     if organization_id != organization_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_ORGANIZATION_ID"})
     database = _database(request)
-    await _require_org_member(database, principal, organization_id)
+    await _require_org_member(request, database, principal, organization_id)
     now = datetime.now(timezone.utc)
     project = {
         "project_id": uuid4().hex,
@@ -179,17 +183,16 @@ async def list_projects(
 ) -> dict:
     database = _database(request)
     await _require_org_member(database, principal, organization_id)
-    query = {
-        "organization_id": organization_id,
-        "status": "active",
-        "$or": [
-            {"owner_issuer": principal.issuer, "owner_subject": principal.subject},
-            {"project_id": {"$in": await _active_project_ids(
-                database, organization_id, principal
-            )}},
-        ],
-    }
     try:
+        member_project_ids = await _active_project_ids(database, organization_id, principal)
+        query = {
+            "organization_id": organization_id,
+            "status": "active",
+            "$or": [
+                {"owner_issuer": principal.issuer, "owner_subject": principal.subject},
+                {"project_id": {"$in": member_project_ids}},
+            ],
+        }
         cursor = database["projects"].find(query).sort("created_at", -1).limit(100)
         rows = await cursor.to_list(length=100)
     except PyMongoError as exc:
