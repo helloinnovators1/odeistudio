@@ -326,7 +326,7 @@ async def remove_project_member(
         raise HTTPException(status_code=422, detail={"code": "INVALID_MEMBER_IDENTITY"})
     database = _database(request)
     await _require_org_member(request, database, principal, organization_id)
-    await _require_owner(database, organization_id, project_id, principal)
+    await _require_owner(request, database, organization_id, project_id, principal)
     if (payload.identity_issuer == principal.issuer
             and payload.identity_subject == principal.subject):
         raise HTTPException(status_code=409, detail={
