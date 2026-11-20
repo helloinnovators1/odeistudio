@@ -107,13 +107,14 @@ def _validate_origins(origins: Iterable[str]) -> set[str]:
         parsed = urlsplit(origin)
         try:
             hostname = parsed.hostname
-            parsed.port  # Validate malformed/out-of-range ports before accepting the origin.
+            port = parsed.port
         except ValueError as exc:
             raise ValueError("Companion origins must contain a valid host and port") from exc
         if (
             parsed.scheme not in {"http", "https"}
             or not parsed.netloc
             or hostname is None
+            or port == 0
             or parsed.username is not None
             or parsed.password is not None
             or parsed.path not in {"", "/"}
