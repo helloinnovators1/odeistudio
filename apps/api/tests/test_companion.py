@@ -298,3 +298,22 @@ def test_companion_supports_multiple_explicitly_selected_roots(tmp_path) -> None
         assert unknown.status_code == 404
     finally:
         registry.close()
+
+
+
+def test_companion_rejects_zero_origin_port(tmp_path) -> None:
+    import pytest
+
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    try:
+        with pytest.raises(ValueError, match="exact scheme-and-host origins"):
+            create_companion_app(
+                registry,
+                workspace_id,
+                allowed_origins=["https://studio.example.test:0"],
+            )
+    finally:
+        registry.close()
