@@ -29,7 +29,7 @@ def test_read_only_workspace_tools_list_read_and_search(tmp_path: Path) -> None:
         secret_search = tools.execute("search_project_files", {"query": "api_key"})
         assert '"line":3' in secret_search
         assert secret not in secret_search
-        assert (tmp_path / "src" / "main.py").read_text(encoding="utf-8").endswith("ODEI'\n")
+        assert (tmp_path / "src" / "main.py").read_text(encoding="utf-8").endswith('api_key = "' + secret + '"\n')
     finally:
         registry.close()
 
