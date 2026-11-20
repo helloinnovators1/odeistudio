@@ -227,11 +227,7 @@ def create_companion_app(
         require_bearer(request)
         return {
             "workspaces": [
-                {
-                    "workspace_id": item,
-                    "label": await run_in_threadpool(registry.get_label, item),
-                    "access": "read-only",
-                }
+                {"workspace_id": item, "access": "read-only"}
                 for item in selected_workspace_ids
             ]
         }

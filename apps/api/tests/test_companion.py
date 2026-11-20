@@ -244,10 +244,6 @@ def test_companion_supports_multiple_explicitly_selected_roots(tmp_path) -> None
             first_id,
             second_id,
         ]
-        assert [item["label"] for item in workspaces.json()["workspaces"]] == [
-            "odei-studio",
-            "cursor-gallery",
-        ]
 
         first_files = client.get(
             f"/v1/workspaces/{first_id}/files", headers=auth_headers

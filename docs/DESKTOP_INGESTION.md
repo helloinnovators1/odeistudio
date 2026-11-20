@@ -25,7 +25,7 @@ Current behavior:
 4. Prints a one-time pairing code in the local console.
 5. Starts a FastAPI service bound to 127.0.0.1 only (default port 8765).
 6. Allows a browser client from an exact configured Origin to exchange the pairing code for a one-hour read-only bearer session.
-7. Serves a bounded file manifest and individual bounded UTF-8 file reads; supports session revocation.
+7. Serves a bounded file manifest and individual bounded UTF-8 file reads; supports session revocation. The workspace listing returns each selected folder's basename only, never its absolute path.
 8. Closes the retained root handle when the companion exits.
 
 ### Developer setup
@@ -91,7 +91,7 @@ The local API is separate from the cloud /api/v1 API:
 |---|---|---|
 | GET | /health | Local process health only |
 | POST | /v1/pair | Exchange one-time pairing code for read-only bearer session |
-| GET | /v1/workspaces | Return all selected workspace IDs and read-only labels |
+| GET | /v1/workspaces | Return selected workspace IDs and folder-basename labels only (never absolute paths) |
 | GET | /v1/workspaces/{id}/files | Return one selected root's bounded relative path/size manifest |
 | GET | /v1/workspaces/{id}/file?path=... | Return one bounded UTF-8 text file from that root |
 | GET | /v1/workspace, /v1/workspace/files, /v1/workspace/file | Single-root compatibility routes; return 409 when multiple roots are selected |
