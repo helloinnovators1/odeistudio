@@ -124,7 +124,8 @@ No phase is complete because its screens exist. Each capability needs working be
 - [x] Persist plans as approval-ready tasks and ordered lifecycle events.
 - [x] Add task read, explicit approval and cancellation endpoints with optimistic concurrency.
 - [x] Add audit append operations and focused route tests.
-- [ ] Make task persistence and audit append atomic through a shared transaction/outbox.
+- [x] Make task persistence, lifecycle events and audit append atomic through one MongoDB transaction; real replica-set integration passed in API CI run 44794850821.
+- [x] Add durable ordered task-event retrieval with bounded pagination and a reconnectable version cursor.
 - [ ] Add project creation and membership administration.
 - [ ] Implement patch proposal/review/apply, isolated execution, validation and bounded repair.
 - [ ] Build Monaco-based IDE, agent window, streaming chat, CLI, background workers and cloud agents.
@@ -136,7 +137,7 @@ No phase is complete because its screens exist. Each capability needs working be
 - Found a consistency defect: project-scoped task create/approve/cancel persisted task state and lifecycle events before separately appending audit events. An audit failure could therefore return an error after the task mutation had committed.
 - Corrected the persistence boundary: `MongoAuditEventStore.append` now accepts an optional Mongo session; `MongoTaskStore.create_planned` and `transition` append audit records inside the same transaction as task state and lifecycle events; API startup injects the shared audit store; NEXUS routes no longer audit those mutations after commit.
 - Added tests that prove successful task+audit commits and rollback of task state/lifecycle events when audit insertion fails. The route fakes were updated to exercise the new call contract. The task/task-event read and denial route tests passed in API/web CI [44794668471](https://github.com/helloinnovators1/odeistudio/actions/runs/44794668471) on commit `a907131fe2b03d66b9ff8d0f3ee821e6fda8e595` (Ubuntu 125 passed/4 skipped; Windows 127 passed/2 skipped). Security CI [44794668478](https://github.com/helloinnovators1/odeistudio/actions/runs/44794668478) also passed all four jobs.
-- This does not yet provide full audit coverage. Selected task/task-event reads and task authorization denials are instrumented; companion pairing/revocation, authentication outcomes and tool execution remain open. A live MongoDB replica-set transaction integration test and DB-level audit immutability remain release gates.
+- This does not yet provide full audit coverage. Selected task/task-event reads and task authorization denials are instrumented; companion pairing/revocation, authentication outcomes and tool execution remain open. DB-level audit immutability, retention/export and monitoring remain release gates; the real MongoDB replica-set transaction test now passes in CI.
 
 - Extended NEXUS audit coverage to successful task/task-event reads and task-not-found/owner and project-owner approval denials. Added route assertions; these newest route-hook changes await latest-head CI.
 
