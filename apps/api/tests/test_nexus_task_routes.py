@@ -109,7 +109,10 @@ def test_project_task_requires_active_project_access(route_state, monkeypatch):
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
-    assert audit.events == []
+    assert len(audit.events) == 1
+    assert audit.events[0]["action"] == "nexus.project.access"
+    assert audit.events[0]["outcome"] == "denied"
+    assert audit.events[0]["target_id"] == "project-1"
 
 
 def test_project_task_is_persisted_for_approval_and_audited(route_state, monkeypatch):
