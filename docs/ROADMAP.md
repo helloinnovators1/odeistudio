@@ -17,7 +17,8 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [x] Implement fail-closed RS256/JWKS verification and protected `/api/v1/auth/me` identity route.
 - [ ] Connect a confirmed ODID issuer/audience/JWKS, provision active memberships, and enforce tenant/project ownership and permissions.
 - [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls.
-- [x] Use native Windows handle-relative opens for file reads; [ ] replace path-based recursive enumeration and add adversarial rename/reparse-point race tests.
+- [x] Use native Windows handle-relative opens for file reads and `FileIdBothDirectoryInfo` enumeration; add Windows junction-exclusion and directory-handle path-swap regression tests.
+- [ ] Bind the selected Windows root to a trusted native folder-picker handle/identity and replace POSIX path-based directory enumeration with descriptor-relative traversal.
 - [x] Implement durable tenant-scoped task records and a separate append-only task event stream with transactional state/event writes.
 - [ ] Add policy-controlled tool registry.
 - [ ] Add patch application with hash/concurrency checks.
