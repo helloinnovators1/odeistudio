@@ -4,6 +4,18 @@
 **Repository:** https://github.com/helloinnovators1/odeistudio  
 **Default branch:** main
 
+
+## Current verified snapshot (2026-11-20)
+
+- Development branch: `feat/windows-handle-safe-scanner`; current documentation HEAD: `39c130710cf3309e082df183bc557b16efb703a9`.
+- Latest fully verified code commit: `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`.
+- API/web CI [44804305385](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305385): **passed all six jobs** — Ubuntu and Windows with Python 3.10/3.12, web tests/build, and MongoDB 7.0 replica-set transaction integration.
+- Security scan [44804305322](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305322): **passed all four jobs** — CodeQL Python/TypeScript, Gitleaks, Python dependency audit and web dependency audit.
+- Web test output: 9 Vitest tests passed; TypeScript/Vite production build succeeded.
+- Pull request [#1](https://github.com/helloinnovators1/odeistudio/pull/1) is open and draft; not merged. The target `main` remains at `5d9f8d6f9585ee6a0f40d0a6013500ffed901082` and has not been changed. The later commits after `5f0d390` are documentation-only updates; their latest workflow reruns are queued.
+- No production deployment, Atlas connection, local Windows desktop scan or Windows 10 build 18362 validation has been performed.
+
+
 ## Verified repository work
 - Audited the linked `infoedutechos/ODEI-Multi-Ecosystem` repository (recursive tree: 2,163 entries / 1,866 files) and documented the ODEI Studio source inventory, desktop path-bridge design, upstream orchestration, ODEI AI gateway boundary, Studio MAC/MAD separation, security caveats and migration work order in `docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`.
 - Imported 23 curated upstream Studio/ecosystem reference documents and made all 68 Markdown/text source documents available: 47 mirrored with original paths under `docs/upstream/mirror/` and 21 preserved as curated provenance-labelled snapshots under `docs/upstream/`. Added `docs/upstream/MIRROR_INDEX.md`; imported snapshots have credential redaction. They are historical source snapshots, not target implementation evidence.
@@ -214,4 +226,4 @@ Earlier entries in this file describe intermediate milestones and may say task H
 
 - Completed project membership management with an owner-only, bounded GET members endpoint; route test verifies membership listing and audit outcome. Latest change awaits current-head CI.
 
-- The completed project membership list route is now included in API CI [44804291266](https://github.com/helloinnovators1/odeistudio/actions/runs/44804291266) on commit `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`: all six jobs passed (Ubuntu/Windows × Python 3.10/3.12, web tests/build, MongoDB 7.0 replica-set integration). The run includes the owner-only membership-list test and real transaction rollback coverage. Current security run [44804305322](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305322) has dependency audits and secret scanning passed; CodeQL is still running.
+- The completed project membership list route is now included in API CI [44804291266](https://github.com/helloinnovators1/odeistudio/actions/runs/44804291266) on commit `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`: all six jobs passed (Ubuntu/Windows × Python 3.10/3.12, web tests/build, MongoDB 7.0 replica-set integration). The run includes the owner-only membership-list test and real transaction rollback coverage. Security scan [44804305322](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305322) subsequently completed successfully across all four jobs.
