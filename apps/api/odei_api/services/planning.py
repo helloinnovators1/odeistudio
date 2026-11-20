@@ -3,6 +3,7 @@
 Planning is intentionally separated from tool execution: model output is a
 proposal, never an authorization to modify files or run commands.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
