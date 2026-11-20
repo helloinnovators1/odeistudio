@@ -8,8 +8,8 @@ import os
 import secrets
 import sys
 import time
-from collections.abc import Callable, Iterable
 from collections import deque
+from collections.abc import Callable, Iterable
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request

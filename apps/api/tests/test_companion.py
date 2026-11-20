@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-
 from odei_api.companion import PairingManager, create_companion_app
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
