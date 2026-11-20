@@ -171,5 +171,5 @@ No phase is complete because its screens exist. Each capability needs working be
 - Replaced the basic file-preview page with a first Monaco read-only workspace shell, multi-file tabs, activity rail, explorer, bottom Problems/Output/Terminal surfaces and NEXUS panel shell.
 - Implemented Command+I (macOS) / Ctrl+I (Windows/Linux) toggle and persisted Left/Right chat-panel setting (default Right); helper tests cover persistence, invalid storage, shortcut recognition and Monaco language mapping.
 - Added `docs/IDE_WORKSPACE.md` and linked it from the documentation index.
-- Web tests/build passed on initial Monaco UI commit `6004f3122a8e724f25dcb8cfae52970b2fe22d7e`; later styling and documentation refinements await current-head CI.
+- API/web CI [44803547712](https://github.com/helloinnovators1/odeistudio/actions/runs/44803547712) passed all six jobs on `d6aa775abd516ea4aa308b43b224fac995c30b30`: four OS/Python matrix jobs, 9 Vitest tests, Vite production build and MongoDB replica-set integration.
 - The panel is not an authenticated chat yet; no streaming, patch editing, shell execution, LSP, Git, cloud agents or native desktop package is implied. The editor and companion remain read-only.
