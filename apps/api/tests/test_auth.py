@@ -179,7 +179,12 @@ class FakeMembershipCollection:
 
 @pytest.mark.asyncio
 async def test_membership_lookup_uses_verified_subject_and_tenant():
-    membership = {"organization_id": "org-1", "user_id": "user-123", "role": "developer"}
+    membership = {
+        "organization_id": "org-1",
+        "identity_issuer": "https://identity.example.test/",
+        "identity_subject": "user-123",
+        "role": "developer",
+    }
     collection = FakeMembershipCollection(membership)
     result = await require_organization_membership(
         collection,
@@ -189,7 +194,8 @@ async def test_membership_lookup_uses_verified_subject_and_tenant():
     assert result == membership
     assert collection.query == {
         "organization_id": "org-1",
-        "user_id": "user-123",
+        "identity_issuer": "https://identity.example.test/",
+        "identity_subject": "user-123",
         "status": "active",
     }
 

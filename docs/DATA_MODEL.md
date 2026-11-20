@@ -5,12 +5,13 @@ This document defines logical domains, not a final ORM schema. Choose exact fiel
 ## Tenant and identity
 - `users`: identity profile and account status.
 - `organizations`: tenant boundary and organization settings.
-- `memberships`: user-to-organization relation, role and status.
+- `memberships`: user-to-organization relation, role and status. Resolve external identity by the verified compound key `(identity_issuer, identity_subject)`; never key authorization by mutable email or subject alone. Require an immutable `organization_id`, server-assigned role/permissions and active/suspended/revoked status. Add a unique compound index on `(organization_id, identity_issuer, identity_subject)`.
 - `invitations`: expiring, single-use invitation records.
 - `roles` / `permissions`: permission definitions and assignments.
 
 ## Projects and source
 - `projects`: organization-owned project metadata.
+- `project_memberships`: optional project-scoped access grants, keyed by `(organization_id, project_id, identity_issuer, identity_subject)` where organization policy requires explicit project membership.
 - `repositories`: provider, external repository ID, default branch and installation reference.
 - `workspaces`: project execution workspace, owner, isolation profile and expiry.
 - `project_indexes`: index version, file inventory, symbols and embeddings metadata.

@@ -216,7 +216,8 @@ async def require_organization_membership(
     membership = await memberships.find_one(
         {
             "organization_id": organization_id,
-            "user_id": principal.subject,
+            "identity_issuer": principal.issuer,
+            "identity_subject": principal.subject,
             "status": "active",
         }
     )
