@@ -155,7 +155,12 @@ def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[i
             os.close(root_fd)
 
     before = target.stat()
-    file_fd = os.open(target, flags)
+    try:
+        file_fd = os.open(target, flags)
+    except OSError as exc:
+        if target.is_dir():
+            raise ProjectFileError("Requested path is not a regular file") from exc
+        raise
     try:
         metadata = os.fstat(file_fd)
         after = target.stat()
