@@ -1,10 +1,13 @@
 # Implementation Status
 
-**Last updated:** 2026-11-20  
+**Last updated:** 2026-11-20 (upstream ecosystem alignment added)  
 **Repository:** https://github.com/helloinnovators1/odeistudio  
 **Default branch:** main
 
 ## Verified repository work
+- Audited the linked `infoedutechos/ODEI-Multi-Ecosystem` repository (recursive tree: 2,163 entries / 1,866 files) and documented the ODEI Studio source inventory, desktop path-bridge design, upstream orchestration, ODEI AI gateway boundary, Studio MAC/MAD separation, security caveats and migration work order in `docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`.
+- Added the upstream alignment document to the canonical `docs/INDEX.md`. This is a requirements/evidence synthesis; upstream code has not been copied or independently tested in this repository.
+
 - Product architecture, MAC, hosting adapter scope and initial provider research were already present and re-checked.
 - Added the complete documentation index and ecosystem handbook plus NEXUS, MAD, security, data model, API/events, engineering standards, roadmap, testing, deployment and desktop-ingestion specifications.
 - Updated README with documentation navigation and API development instructions.
@@ -21,13 +24,14 @@
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
 
 ## Not yet verified
-- Python tests and Ruff linting are now configured in GitHub Actions. The latest lint-enabled workflow is queued; its result is not yet verified. Earlier runs exposed two issues: the pathspec dependency was missing from the triggering commit, and nested .gitignore rules were not applied in the directory containing the ignore file. The dependency is now in pyproject.toml; the nested-rule fix is committed and a new CI run is queued. Do not treat the current test suite as passing until that run completes successfully.
+- Python tests and Ruff linting are configured in GitHub Actions. The 30-test run on `cde52ea2e9b719fdd13727358bdd6070c6a92a89` passed, but the later Ruff-enabled runs have failed at the import-order gate in `odei_api/services/planning.py`; the test step was skipped. A diagnostic CI step has been added to print Ruff's exact proposed diff. Run `44737608056` is in progress; do not mark lint or the current full CI green until a subsequent run completes successfully.
 - No frontend application, authentication, verified tenant membership service, live Atlas connection, secret vault, sandbox runtime, GitHub App, MAC UI or MAD UI has been implemented in this work. The task store requires an authenticated caller to enforce organization membership before use. The planner is a single Responses API planning call, not yet a full autonomous agent loop.
 - Project-file utilities and the model planner are not exposed through HTTP. Authentication, tenant/workspace authorization and a safe task persistence layer are prerequisites. The scanner currently applies common exclusions and .gitignore rules but still needs cross-platform race-resistant file-handle hardening before network exposure.
 - No Windows desktop folders have been scanned; Chrome extension access does not provide unrestricted local filesystem access.
 - Provider integrations are documented/researched, not connected or end-to-end tested.
 
 ## Next implementation sequence
+0. Resolve the exact Ruff import-format diff from CI and restore a clean lint gate. Reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
 1. Confirm the queued CI run passes and fix any remaining test failures.
 2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
 3. Implement authentication, organization tenancy and authorization before exposing project tools.
