@@ -11,10 +11,9 @@ Protect source code, credentials, customer data, infrastructure and agent execut
 - Use short-lived sessions/tokens, rotation and revocation.
 
 ### Current API authentication foundation
-- The API now has a fail-closed RFC 9068-style JWT access-token verifier using configured issuer, audience and JWKS URL (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_JWKS_URL`). It requires HTTPS issuer/JWKS, explicit `typ` (`at+jwt` or `application/at+jwt`), RS256, `exp`, `sub`, `iat`, `jti` and `client_id`, verifies signature/issuer/audience, and checks `client_id` against the non-empty `AUTH_ALLOWED_CLIENT_IDS` allowlist. JWKS responses are bounded to 1 MB/100 keys and cached for five minutes.
-- JWKS documents are fetched over TLS with a bounded timeout and cached for five minutes; the cache refreshes after expiry. Signing key selection requires one matching RSA `kid`.
+- The API has a fail-closed RFC 9068-style JWT access-token verifier using configured issuer, audience and JWKS URL (AUTH_ISSUER, AUTH_AUDIENCE, AUTH_JWKS_URL). It requires HTTPS issuer/JWKS, explicit typ (at+jwt or application/at+jwt), RS256, exp, sub, iat, jti and client_id, verifies signature/issuer/audience, and checks client_id against the non-empty AUTH_ALLOWED_CLIENT_IDS allowlist. JWKS responses are bounded to 1 MB/100 keys and cached for five minutes.
 - Organization access is resolved separately from the verified subject against an active server-side membership record. Client-supplied organization IDs and token role claims do not establish membership.
-- Missing identity configuration fails closed. The dependency is not yet attached to project/task routes because those routes are not exposed; no production ODID issuer is configured. The upstream localStorage/demo-invite role simulation is explicitly not production authorization. See IDENTITY_INTEGRATION.md for the required issuer, token, membership and RBAC contract.
+- Missing identity configuration fails closed. The dependency is not yet attached to project/task routes because those routes are not exposed; no production ODID issuer is configured. The upstream localStorage/demo-invite role simulation is not production authorization. See IDENTITY_INTEGRATION.md for the required issuer, token, membership and RBAC contract.
 
 ## Secrets
 - Store secret material in a managed KMS-backed vault or external secret manager.
@@ -39,23 +38,24 @@ Classify data, minimize collection, define retention/deletion, encrypt transport
 ## Incident response
 Prepare procedures for credential compromise, tenant isolation breach, malicious agent execution, provider compromise and data loss. Include containment, credential revocation, evidence preservation, notification assessment, recovery and post-incident review.
 
-## Release gate
-No production release with known critical/high exploitable vulnerabilities, plaintext secret persistence, missing tenant authorization, unbounded agent execution or unverified destructive operations.
-
-
-### Workspace filesystem access and local companion
+## Workspace filesystem access and local companion
 - Windows reads use native NtCreateFile child opens relative to held directory handles with FILE_OPEN_REPARSE_POINT; Windows enumeration uses GetFileInformationByHandleEx(FileIdBothDirectoryInfo) on held handles. Reparse points are rejected before descending.
 - POSIX listing uses os.fwalk; file and .gitignore access is descriptor-relative with O_NOFOLLOW and O_NONBLOCK. File reads are bounded and regular-file verified.
 - WorkspaceHandleRegistry retains a selected root OS handle/descriptor, serializes operations, and closes it on revocation. CI covers root-path replacement after registration, Windows junctions, path swaps, POSIX FIFOs and traversal controls.
-- The odei-companion prototype binds only to 127.0.0.1, validates exact Origin and Host values on browser API requests, uses a one-time pairing code and short-lived hashed bearer sessions, allows only workspace:read, supports session revocation, returns folder basenames without absolute paths, and sends standard CORS headers. It does not use legacy PNA preflight headers. Chrome's loopback-network Local Network Access permission is a separate browser-side gate; the frontend must use HTTPS, an explicit user gesture and targetAddressSpace: loopback.
-- The companion is not production-ready: frontend pairing UI, ODID identity/user/tenant binding, audit trail, signed installer, Windows 10 build 18362 validation and the initial folder-picker-to-handle trust boundary remain open. The local API is separate from the cloud API and has no write/execute/deploy route. Never bind it to 0.0.0.0 or expose it to the LAN.
-
+- The odei-companion prototype binds only to 127.0.0.1, validates exact Origin and Host values, uses one-time pairing and short-lived hashed bearer sessions, allows only workspace:read, supports revocation, returns folder basenames without absolute paths and sends no-store security headers. Chrome loopback-network Local Network Access permission is a separate browser-side gate; the frontend must use HTTPS, an explicit user gesture and targetAddressSpace: loopback.
+- The companion is not production-ready: ODID identity/user/tenant binding, audit trail, signed installer, Windows 10 build 18362 validation and the initial folder-picker-to-handle trust boundary remain open. Keep it loopback-only; never bind it to 0.0.0.0 or expose it to the LAN.
 
 ## Automated security checks
-The repository configures `.github/workflows/security.yml` to run Gitleaks secret scanning, `pip-audit --strict --desc` against the API dependency environment, and CodeQL Python analysis on push, pull request, weekly schedule and manual dispatch. `.github/dependabot.yml` requests weekly update proposals for GitHub Actions and Python dependencies. A configured scanner is not evidence of a clean scan: release owners must inspect each run, triage findings, rotate exposed credentials and record remediation before release.
+.github/workflows/security.yml runs:
+- Gitleaks secret scanning over repository history and working tree.
+- Python dependency auditing of the installed API/development environment using pip-audit --local --skip-editable --strict --desc. The local ODEI package is installed editable and intentionally excluded from third-party vulnerability lookup; its dependencies remain in the audit.
+- npm audit against the web dependency tree.
+- CodeQL analysis for Python and JavaScript/TypeScript.
+- Scheduled, push, pull-request and manual workflow triggers.
 
+The latest pre-fix run on commit 02da0ca4fb1e915c307789584f51d7e18bd3de73 passed Gitleaks but failed Python auditing because pip-audit attempted to query the unpublished local odei-studio-api package on PyPI; CodeQL was cancelled. The workflow was corrected in commit ea4458fdf229b60c7d37ab6f2db03c032f419931. Verification of that correction is pending. A configured scanner is not evidence of a clean scan; review every run and triage findings before release.
 
 ## Cloud model data transfer
 - Sending repository text to a hosted model is a separate data-transfer decision from selecting a local folder. Require explicit consent tied to the authenticated user/session before any planner or agent call includes workspace context.
 - Redact common secrets before model submission and redact model/tool output before display or logs. Redaction is best-effort defense-in-depth and does not guarantee detection of every credential; secret files remain excluded at the filesystem layer.
-- Responses requests set `store=false` and replay stateless history. This disables Responses application-state storage, but does not itself enable Zero Data Retention or disable default abuse-monitoring retention. Confirm the account's retention controls and customer obligations before production use.
+- Responses requests set store=false and replay stateless history. This disables Responses application-state storage, but does not itself enable Zero Data Retention or disable default abuse-monitoring retention. Confirm the account's retention controls and customer obligations before production use.
