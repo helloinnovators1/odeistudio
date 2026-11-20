@@ -39,7 +39,7 @@ async def test_audit_store_appends_tenant_scoped_event_and_redacts_metadata():
         metadata={
             "role": "developer",
             "api_token": "do-not-store",
-            "note": "credential=super-secret-value",
+            "note": "api_key=super-secret-value",
         },
         occurred_at=occurred_at,
     )
