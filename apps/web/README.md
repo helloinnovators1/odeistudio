@@ -1,5 +1,9 @@
-ODEI Studio web workspace preview
+# ODEI Studio web workspace
 
-Run npm install and npm run dev in this directory. The dev server binds to 127.0.0.1:3002. Configure ODEI_COMPANION_ALLOWED_ORIGINS to exactly http://127.0.0.1:3002 (or the exact origin you use). Never use wildcard origins.
+Run `npm install` and `npm run dev` in this directory. The dev server binds to `127.0.0.1:3002`. Configure `ODEI_COMPANION_ALLOWED_ORIGINS` to the exact browser origin; never use wildcard origins.
 
-The client initiates loopback access only after a user click, queries Chrome loopback-network permission when available, uses targetAddressSpace=loopback, stores the pairing token only in React memory, and requests revocation on disconnect. It only lists and reads files; it does not write, execute commands, deploy or upload project files to the cloud. ODID tenant authorization and full IDE editing remain future work.
+The current workspace shell uses Monaco for read-only source inspection. It includes a local companion connection/pairing flow, project explorer, multiple open tabs, a bottom status/output surface and the NEXUS chat panel shell. Command+I (macOS) or Ctrl+I (Windows/Linux) toggles NEXUS chat. Settings lets the user choose Left or Right; the preference is stored locally in this browser and defaults to Right.
+
+The NEXUS panel is currently a UI shell only. Authenticated chat, streaming, repository-aware tool execution, patch review and isolated command execution are not connected. The editor is read-only: no Save, file write, rename, delete or terminal execution is exposed. The companion remains loopback-only and read-only; it only lists and reads folders explicitly selected by the user. Pairing tokens remain in memory and are revoked on disconnect where possible. Project files are not uploaded to a cloud model by this UI.
+
+ODID tenant authorization and the complete MAC/MAD administration experience remain future work. This shell is not a native Code-OSS/Electron desktop IDE, and local scanning has not been validated on Windows 10 build 18362.
