@@ -1,5 +1,15 @@
 # Implementation Status
 
+## Latest continuation — 2026-11-20
+
+- Branch HEAD before this continuation: `67e0cd28f1f1de42aa9c8e57130f7cc725e5f965`. API/web CI [44831115598](https://github.com/helloinnovators1/odeistudio/actions/runs/44831115598) and Security Scanning [44831115568](https://github.com/helloinnovators1/odeistudio/actions/runs/44831115568) both completed successfully on that exact commit.
+- Added client-side Explorer path filtering over the already-authorized companion file listing. Matching is case-insensitive, trims surrounding query whitespace, searches relative paths and never performs additional filesystem reads or broadens companion permissions.
+- Added focused Vitest coverage for empty queries, case-insensitive file/directory/extension matching and no-match results.
+- Updated the Monaco workspace UI with a filter field, visible/total file count, and explicit empty/no-match states. The filter is cleared when changing workspaces or disconnecting.
+- These new Explorer changes are committed on `feat/windows-handle-safe-scanner`; their API/web and security CI runs must complete before they are considered verified. No local test execution was possible in this hosted repository-editing session.
+- Current scope remains read-only: no file writes, patch application, shell execution, terminal, diagnostics, agent orchestration, cloud/background agents or production deployment are claimed by this increment.
+
+
 **Last updated:** 2026-11-20  
 **Repository:** https://github.com/helloinnovators1/odeistudio  
 **Default branch:** main
