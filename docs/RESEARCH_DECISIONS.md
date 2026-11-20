@@ -180,3 +180,5 @@ Primary sources: https://developers.openai.com/api/docs/guides/conversation-stat
 - https://www.mongodb.com/docs/languages/python/pymongo-driver/current/crud/transactions/
 - https://www.mongodb.com/docs/manual/core/transactions/
 - https://www.mongodb.com/docs/manual/core/transactions-production-consideration/
+
+- Verification update (2026-11-20): the real MongoDB 7.0 replica-set integration test passed in API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821), job `mongodb-integration`. It covered planned-task creation, rollback on simulated audit failure, and successful approval. This is not a substitute for production Atlas connection testing or broader failure/retention testing.
