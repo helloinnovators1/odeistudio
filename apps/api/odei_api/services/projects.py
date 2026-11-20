@@ -232,6 +232,44 @@ async def _active_project_ids(database, organization_id: str, principal: Princip
     return [row["project_id"] for row in rows if isinstance(row.get("project_id"), str)]
 
 
+
+
+@router.get(f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/members",
+            tags=["projects"])
+async def list_project_members(
+    request: Request,
+    organization_id: str = Path(min_length=1, max_length=128),
+    project_id: str = Path(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    database = _database(request)
+    await _require_org_member(request, database, principal, organization_id)
+    await _require_owner(request, database, organization_id, project_id, principal)
+    try:
+        cursor = database["project_memberships"].find({
+            "organization_id": organization_id,
+            "project_id": project_id,
+            "status": "active",
+        }, {"_id": 0, "identity_issuer": 1, "identity_subject": 1, "created_at": 1})
+        rows = await cursor.sort("created_at", 1).limit(100).to_list(length=100)
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "PROJECT_STORE_UNAVAILABLE",
+            "message": "Project membership listing is temporarily unavailable.",
+        }) from exc
+    await _audit(
+        request, principal, organization_id, "project.member.list",
+        "project", project_id, "success", {"returned_count": len(rows)},
+    )
+    return {
+        "members": [{
+            "identity_issuer": row["identity_issuer"],
+            "identity_subject": row["identity_subject"],
+            "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        } for row in rows],
+        "limit": 100,
+    }
+
 @router.put(f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/members",
             status_code=200, tags=["projects"])
 async def add_project_member(
