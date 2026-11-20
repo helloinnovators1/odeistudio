@@ -6,6 +6,7 @@
 
 ## Verified repository work
 - Audited the linked `infoedutechos/ODEI-Multi-Ecosystem` repository (recursive tree: 2,163 entries / 1,866 files) and documented the ODEI Studio source inventory, desktop path-bridge design, upstream orchestration, ODEI AI gateway boundary, Studio MAC/MAD separation, security caveats and migration work order in `docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`.
+- Imported 20 dated upstream Studio/ecosystem specification, audit, desktop bridge, MAC, AI gateway and hosting reference documents under `docs/upstream/`, with provenance headers and a separate index. They are historical source snapshots, not target implementation evidence.
 - Added the upstream alignment document to the canonical `docs/INDEX.md`. This is a requirements/evidence synthesis; upstream code has not been copied or independently tested in this repository.
 
 - Product architecture, MAC, hosting adapter scope and initial provider research were already present and re-checked.
@@ -17,8 +18,9 @@
 - Added GitIgnoreSpec-based root/nested .gitignore support, file-count and aggregate-byte scan budgets; nested rule scope was corrected after a CI test exposed the defect.
 - Added a NEXUS planning service using the OpenAI Responses API, with no tools enabled and bounded task/context input.
 - Added a guarded NEXUS task lifecycle domain model with explicit legal transitions, terminal states, plan-before-approval enforcement and optimistic version checks.
-- Added MongoTaskStore with tenant-scoped queries and optimistic version matching. The initial embedded event array has now been replaced in code with a separate append-only `task_events` collection; task state and event writes are performed in one MongoDB transaction (requires replica set/sharded-cluster transaction support). Tests for transaction behavior are being validated by the current CI run.
+- Added MongoTaskStore with tenant-scoped queries and optimistic version matching. Replaced the unbounded embedded event array with a separate append-only `task_events` collection; task state and event writes are committed in one MongoDB transaction (requires replica set/sharded-cluster transaction support).
 - Added a lazy PyMongo Async client factory, explicit 3-second server-selection timeout, FastAPI lifespan ownership/cleanup, and a real readiness ping. Missing/unreachable MongoDB now returns 503 rather than a false healthy status. Added configuration/readiness tests; no Atlas connection has been attempted because no credential is configured in the repository.
+- GitHub Actions run [44738162641](https://github.com/helloinnovators1/odeistudio/actions/runs/44738162641) passed on commit `f2c7f818f7e85eaf9d83a25003919fa34a0496f6`: Ruff `All checks passed!`; pytest `34 passed, 1 warning`. This run includes Mongo client lifecycle/readiness and transactional task event persistence.
 - GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
@@ -32,11 +34,11 @@
 
 ## Next implementation sequence
 0. Keep the clean Ruff gate green and reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
-1. Confirm CI for the MongoDB lifecycle and separate event collection changes passes; fix any remaining lint/test failures.
+1. Implement trusted authentication, tenant membership and project-level authorization before exposing workspace/task endpoints.
 2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
-3. Implement authentication, organization tenancy and authorization before exposing project tools.
-4. Add durable task records and task events.
-5. Add patch application with concurrency checks and diff generation.
-6. Add isolated command execution with approval, resource limits and cancellation.
-7. Build the React/TypeScript workspace around the NEXUS vertical slice.
-8. Implement MAC/MAD backend services and provider adapters behind capability contracts.
+3. Add authenticated read-only workspace APIs with user-approved local folder ingestion.
+4. Add patch application with concurrency checks, diffs and approval records.
+5. Add isolated command execution with approval, resource limits and cancellation.
+6. Integrate the upstream React/TypeScript/Monaco Agents and Editor experience after service boundaries are settled.
+7. Implement Studio MAC/MAD APIs and surfaces with live data and role-gated operations.
+8. Integrate ODEI AI gateway, GitHub App and hosting/DNS adapters using verified capability contracts.
