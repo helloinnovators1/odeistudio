@@ -21,7 +21,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Select and scaffold the canonical frontend after reconciling the upstream Next.js/Monaco Agents and Editor application. Current React/TypeScript/Vite client is an initial read-only companion workspace, not the full editor.
 - [x] Add configuration validation and safe environment handling.
 - [x] Implement fail-closed RS256/JWKS verification and protected `/api/v1/auth/me` identity route.
-- [ ] Connect a confirmed production ODID issuer/audience/JWKS contract, provision active memberships, and enforce tenant/project ownership and permissions. A protected read-only organization-membership lookup exists; production issuer configuration, membership provisioning and project authorization do not.
+- [ ] Connect a confirmed production ODID issuer/audience/JWKS contract, provision active memberships, and enforce tenant/project ownership and permissions. A protected organization-membership lookup and initial project/task authorization routes exist; production issuer configuration, membership provisioning, project CRUD and role/permission policy remain open.
 - [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls.
 - [x] Implement native Windows handle-relative opens and FileIdBothDirectoryInfo enumeration; retain selected root handles, reject reparse points and test path-swap/junction cases.
 - [x] Implement POSIX descriptor-relative traversal and reads with no-follow/non-blocking controls.
@@ -32,7 +32,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Atomically persist NEXUS task create/approve/cancel audit events in the same MongoDB transaction as task state and lifecycle events; audit failures roll back task mutations. Live replica-set integration testing remains open.
 - [x] Add bounded read-only NEXUS tool registry with strict schemas, injected workspace identity and unknown-tool rejection. Per-task capability enforcement and approval policy remain unchecked; this is not the complete policy/approval registry.
 - [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently. Project CRUD and membership administration remain open.
-- [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction. The HTTP route and end-to-end project/task authorization integration remain open.
+- [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction; integrated project-scoped create/read/events/approve/cancel routes enforce membership/project/task access. Full role policy, project administration and production ODID integration remain open.
 - [ ] Add patch application with hash/concurrency checks and explicit approval.
 - [ ] Add isolated command runner with timeout/resource limits and network/filesystem policy.
 - [ ] Add test runner and structured diagnostics.
@@ -114,7 +114,7 @@ No phase is complete because its screens exist. Each capability needs working be
 
 - Added `require_project_access` with tenant-scoped active-project lookup, exact owner identity matching, active project-membership lookup and indistinguishable not-found responses for missing/unauthorized projects.
 - Added `MongoTaskStore.create_planned`: it validates the initial task and non-empty plan, persists the approval-ready task and four ordered lifecycle events atomically, and rolls back on any event insert failure.
-- Added focused service tests for project authorization and task lifecycle/rollback. These are service/persistence increments only. No task HTTP endpoint, project administration API, patch/write tool or command runner is exposed yet.
+- Added focused service tests for project authorization and task lifecycle/rollback. The initial project-scoped task HTTP API is now implemented; project administration, patch/write tools and command runner remain unimplemented.
 
 
 ## 2026-11-20 increment — project-scoped NEXUS task API
@@ -136,6 +136,6 @@ No phase is complete because its screens exist. Each capability needs working be
 - Found a consistency defect: project-scoped task create/approve/cancel persisted task state and lifecycle events before separately appending audit events. An audit failure could therefore return an error after the task mutation had committed.
 - Corrected the persistence boundary: `MongoAuditEventStore.append` now accepts an optional Mongo session; `MongoTaskStore.create_planned` and `transition` append audit records inside the same transaction as task state and lifecycle events; API startup injects the shared audit store; NEXUS routes no longer audit those mutations after commit.
 - Added tests that prove successful task+audit commits and rollback of task state/lifecycle events when audit insertion fails. The route fakes were updated to exercise the new call contract. These tests await the latest-head CI result.
-- This does not yet provide full audit coverage. Task reads/denials, companion pairing/revocation, authentication outcomes and tool execution remain open; a live MongoDB replica-set transaction integration test and DB-level audit immutability remain release gates.
+- This does not yet provide full audit coverage. Selected task/task-event reads and task authorization denials are instrumented; companion pairing/revocation, authentication outcomes and tool execution remain open. A live MongoDB replica-set transaction integration test and DB-level audit immutability remain release gates.
 
 - Extended NEXUS audit coverage to successful task/task-event reads and task-not-found/owner and project-owner approval denials. Added route assertions; these newest route-hook changes await latest-head CI.
