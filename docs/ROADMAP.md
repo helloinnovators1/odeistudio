@@ -9,7 +9,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Add canonical documentation index and ecosystem specifications.
 - [x] Audit the upstream Studio/ecosystem source tree and preserve all 68 Markdown/text source documents with provenance (47 path-preserving mirrors and 21 curated snapshots); complete target-repository inventory remains ongoing.
 - [ ] Rotate any credential previously exposed in project setup material and verify rotation in the source environment.
-- [x] Add linting and GitHub Actions CI (Ruff + pytest) on Ubuntu/Windows and Python 3.10/3.12.
+- [x] Add linting and GitHub Actions CI (Ruff + pytest) on Ubuntu/Windows and Python 3.10/3.12; pull-request path filters include `apps/web/**` so frontend changes trigger web tests/build.
 - [x] Add secret scanning (Gitleaks), Python dependency auditing (pip-audit), web dependency auditing (npm audit) and CodeQL for Python/TypeScript.
 - [x] Verify the latest API/web CI on corrected audit-store head: [44776939214](https://github.com/helloinnovators1/odeistudio/actions/runs/44776939214) — Ubuntu/Windows × Python 3.10/3.12 and web tests/build all passed on `b44d732c884475d469527b001d88216feaa0ae05`.
 - [x] Verify the latest security workflow on the same head: [44776939169](https://github.com/helloinnovators1/odeistudio/actions/runs/44776939169) — Gitleaks, pip-audit, npm audit and CodeQL Python/TypeScript all passed.
@@ -30,6 +30,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Complete ODID user/tenant binding, explicit consent/audit lifecycle, signed Windows installer and validation on Windows 10 build 18362.
 - [x] Implement durable tenant-scoped task records and separate append-only task events with transactional state/event writes (MongoDB replica-set/sharded transaction support required).
 - [x] Atomically persist NEXUS task create/approve/cancel audit events in the same MongoDB transaction as task state and lifecycle events; audit failures roll back task mutations. A real MongoDB 7.0 replica-set integration test passed in API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821), job `mongodb-integration` (1 passed). Production Atlas connectivity and broader transaction/failure scenarios remain open.
+- [x] Make readiness verify MongoDB ping plus transaction-capable topology (`setName` or `isdbgrid`); standalone MongoDB is not ready for NEXUS task/audit workflows.
 - [x] Add bounded read-only NEXUS tool registry with strict schemas, injected workspace identity and unknown-tool rejection. Per-task capability enforcement and approval policy remain unchecked; this is not the complete policy/approval registry.
 - [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently. Project CRUD and membership administration remain open.
 - [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction; integrated project-scoped create/read/events/approve/cancel routes enforce membership/project/task access. Full role policy, project administration and production ODID integration remain open.
@@ -147,3 +148,5 @@ No phase is complete because its screens exist. Each capability needs working be
 - Security workflow for the 8fe integration-test commit was cancelled by a later push; do not count it as a pass. A new security scan must complete on the latest branch head.
 
 - Full API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821) passed all six jobs on `8fe8fd1f6f924919cb922e96a5c255017abb5976`: four OS/Python matrix jobs, web tests/build, and real MongoDB 7.0 replica-set integration. The integration test reported `1 passed in 0.24s`.
+
+- Readiness tests passed in API CI [44795590882](https://github.com/helloinnovators1/odeistudio/actions/runs/44795590882) on commit `18b6f31c3c31695d092a0ef5e6a7936f5337f0c1`; the full six-job run passed the four-way Python matrix, web tests/build and MongoDB replica-set integration.
