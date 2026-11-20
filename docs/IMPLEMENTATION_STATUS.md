@@ -24,7 +24,7 @@
 - GitHub Actions run [44738649409](https://github.com/helloinnovators1/odeistudio/actions/runs/44738649409) passed on commit `8580f228405a19c327d318ca70d8de2bd0fb989c`: Ruff `All checks passed!`; pytest `44 passed, 2 warnings`. This includes the OIDC/JWKS verifier and organization-membership tests.
 - GitHub Actions run [44738839514](https://github.com/helloinnovators1/odeistudio/actions/runs/44738839514) passed on commit `faa97e292f2c5b0e24ee23614cc4a22fd0d96389`: Ruff `All checks passed!`; pytest `46 passed, 2 warnings`. This includes the protected current-identity route and fail-closed behavior when OIDC is not configured.
 - GitHub Actions run [44739135487](https://github.com/helloinnovators1/odeistudio/actions/runs/44739135487) passed on commit `04af4b0951c8c999f3d570ac514aa7d3f7e56cdc`: Ruff `All checks passed!`; pytest `48 passed, 2 warnings`. This includes POSIX descriptor-based file reads, symlink-directory rejection and Windows reparse-point detection.
-- The Windows/Linux × Python 3.10/3.12 matrix is running as [44740133426](https://github.com/helloinnovators1/odeistudio/actions/runs/44740133426). Earlier matrix attempts exposed Windows directory-open behavior and a Ruff redundant-exception finding; both were corrected. Do not claim the matrix is green until all four jobs complete.
+- The Windows/Linux × Python 3.10/3.12 matrix [44740133426](https://github.com/helloinnovators1/odeistudio/actions/runs/44740133426) passed all four jobs. Each OS/Python combination reported Ruff `All checks passed!` and pytest `48 passed, 2 warnings`. Earlier matrix attempts exposed Windows directory-open behavior and a Ruff redundant-exception finding; both were corrected.
 - GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
 - Added a fail-closed OIDC/JWKS access-token verifier: RS256-only signature verification, required expiry/subject, issuer/audience checks, 5-minute JWKS cache and server-side active-membership lookup. Added a minimal protected `/api/v1/auth/me` route that returns only the verified subject and issuer; project/task routes remain unexposed and no production ODID issuer is configured.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
@@ -43,7 +43,7 @@
 
 ## Next implementation sequence
 0. Keep the clean Ruff gate green and reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
-1. Complete the Windows/Linux and Python 3.10/3.12 CI matrix, then implement native Windows handle-relative filesystem access and tests.
+1. Implement native Windows handle-relative filesystem access and reparse-point tests before exposing local scanning through a companion or API.
 2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
 3. Add authenticated read-only workspace APIs with user-approved local folder ingestion.
 4. Add patch application with concurrency checks, diffs and approval records.
