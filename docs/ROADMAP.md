@@ -18,7 +18,8 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [ ] Connect a confirmed ODID issuer/audience/JWKS, provision active memberships, and enforce tenant/project ownership and permissions.
 - [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls.
 - [x] Use native Windows handle-relative opens for file reads and `FileIdBothDirectoryInfo` enumeration; add Windows junction-exclusion and directory-handle path-swap regression tests.
-- [ ] Bind the selected Windows root to a trusted native folder-picker handle/identity and replace POSIX path-based directory enumeration with descriptor-relative traversal.
+- [x] Replace POSIX path-based directory enumeration with `os.fwalk`, descriptor-relative metadata/open operations, `O_NOFOLLOW` and `O_NONBLOCK`.
+- [ ] Bind the selected Windows/POSIX root to a trusted native folder-picker handle/identity and add adversarial root-replacement tests.
 - [x] Implement durable tenant-scoped task records and a separate append-only task event stream with transactional state/event writes.
 - [ ] Add policy-controlled tool registry.
 - [ ] Add patch application with hash/concurrency checks.
