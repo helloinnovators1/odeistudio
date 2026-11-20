@@ -91,19 +91,9 @@ The API now exposes the following project-scoped task routes. Every operation re
 |---|---|---|
 | POST | `/organizations/{organization_id}/projects/{project_id}/tasks` | Requires explicit cloud-model consent, generates a plan, and atomically persists an approval-ready task with lifecycle events. |
 | GET | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}` | Returns a task only within the authorized organization and project; task owner or project owner only. |
+| GET | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/events` | Returns ordered durable events with bounded `limit`, `after_version`, `has_more` and `next_after_version` cursor. |
 | POST | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/approve` | Uses expected-version concurrency and records `approved`; it does not execute code. |
 | POST | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/cancel` | Uses expected-version concurrency to cancel a task. |
 
-Approval is now an explicit domain state between `awaiting_approval` and `executing`. The execution transition remains unavailable through HTTP until the controlled execution fabric exists. Task create/approve/cancel operations append audit records. Task persistence and audit append are separate operations in this increment; production hardening must move the task event and audit record into a shared transaction or transactional outbox before treating audit as atomic with task state. Project creation and membership administration are still not exposed; project records must be provisioned by a trusted administrative process.
+Approval is now an explicit domain state between `awaiting_approval` and `executing`. The execution transition remains unavailable through HTTP until the controlled execution fabric exists. Task create/approve/cancel operations append audit records in the same MongoDB transaction as task state and lifecycle events; audit failure aborts the transaction. Task and task-event reads and authorization denials are audited before returning. Live MongoDB replica-set integration remains a release gate. Project creation and membership administration are still not exposed; project records must be provisioned by a trusted administrative process.
 
-
-## Implemented NEXUS project-task API
-
-The following routes require a verified identity, active organization membership, an active project, and project owner or active project-member access:
-- \`POST /api/v1/organizations/{organization_id}/projects/{project_id}/tasks\`: requires strict \`cloud_model_consent=true\`, plans with the configured cloud model, and atomically persists task state, lifecycle events and the audit record in one MongoDB transaction.
-- \`GET /api/v1/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}\`: task creator or project owner only.
-- \`GET /api/v1/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/events?after_version=-1&limit=50\`: task creator or project owner only; returns ordered persisted events, a \`has_more\` flag and \`next_after_version\` cursor for reconnect/pagination. Page size is capped at 100.
-- \`POST .../tasks/{task_id}/approve\`: project owner only; records approval and does not execute code.
-- \`POST .../tasks/{task_id}/cancel\`: task creator or project owner, with expected-version concurrency.
-
-Task ownership is stored as the canonical JSON tuple \`[verified issuer, verified subject]\`; subject-only comparisons are not authorization. Task create/approve/cancel audit writes participate in the same MongoDB transaction as the task mutation and lifecycle event. Project creation/membership administration, live MongoDB replica-set integration, event streaming transport and event retention/archival remain outstanding.
