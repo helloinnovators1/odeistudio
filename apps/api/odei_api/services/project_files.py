@@ -133,6 +133,8 @@ def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[i
 
         try:
             return open_readonly_file(root, parts)
+        except IsADirectoryError as exc:
+            raise ProjectFileError("Requested path is not a regular file") from exc
         except UnsafeWindowsPath as exc:
             raise UnsafeProjectPath(str(exc)) from exc
 

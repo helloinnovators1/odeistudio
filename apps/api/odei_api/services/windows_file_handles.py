@@ -144,6 +144,13 @@ def _open_child(kernel32, ntdll, parent, name: str, *, directory: bool):
         FILE_OPEN, options, None, 0,
     )
     if status < 0:
+        unsigned_status = status & 0xFFFFFFFF
+        # STATUS_FILE_IS_A_DIRECTORY is returned when FILE_NON_DIRECTORY_FILE
+        # is used against a directory. Preserve a useful, stable Python error.
+        if unsigned_status == 0xC00000BA:
+            raise IsADirectoryError("Requested path is not a regular file")
+        if unsigned_status == 0xC0000103:
+            raise NotADirectoryError("A parent path component is not a directory")
         raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
     try:
         _check_type(kernel32, child, directory=directory)
@@ -184,7 +191,7 @@ def open_readonly_file(root: str | Path, parts: tuple[str, ...]) -> tuple[int, o
             kernel32, ntdll, parent, parts[-1], directory=False
         )
         descriptor = msvcrt.open_osfhandle(
-            int(file_handle), os.O_RDONLY | getattr(os, "O_BINARY", 0)
+            int(file_handle.value), os.O_RDONLY | getattr(os, "O_BINARY", 0)
         )
         file_handle = None  # The CRT descriptor now owns this handle.
         try:
