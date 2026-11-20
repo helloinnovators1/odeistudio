@@ -1,5 +1,11 @@
 # Implementation Status
 
+## Explorer path-collision remediation — 2026-11-20
+
+- The first collision-hardening CI attempt [44835374813](https://github.com/helloinnovators1/odeistudio/actions/runs/44835374813) exposed an implementation defect: after detecting a file used as a parent directory, the builder stopped descending but still inserted the descendant at the workspace root. The web job correctly failed (23 passed, 1 failed); this is not counted as a pass.
+- Corrected the builder to mark and skip the entire invalid hierarchy, and expanded tests for both root-level and nested file/directory collisions in either input order. Fix commit: [66483ba](https://github.com/helloinnovators1/odeistudio/commit/66483ba97d7a80ef4c5f53fde7cebf2144f36d41); added nested regression coverage in [5d910c8](https://github.com/helloinnovators1/odeistudio/commit/5d910c86a7a372be44322505bb8c72d45913970f).
+- The failed CI merge ref predates the correction; a new current-head run is required before this fix is marked verified. No local test execution is available in this hosted repository-editing session.
+
 ## Latest continuation — 2026-11-20 (hierarchical Explorer)
 
 - Added `workspace-tree.ts`, a deterministic tree builder over the already-authorized companion listing. It groups nested relative paths, sorts folders before files, preserves file metadata and rejects absolute, malformed, dot-segment and backslash paths.
