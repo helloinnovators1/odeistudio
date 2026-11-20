@@ -102,3 +102,13 @@
 - Added unit tests for successful append, validation failures, metadata limits/redaction and index initialization. The new audit-store tests are awaiting CI on the new branch head; do not count them as passed until the workflow completes.
 - Updated API/event, security and data-model documentation. The audit writer is not yet wired into membership decisions, companion pairing/revocation, task operations or other authorization events. MongoDB role-level update/delete denial, replica-set integration tests, retention and audit read/export controls remain required for production.
 - The full ecosystem documentation remains indexed under `docs/INDEX.md`, including 47 path-preserving upstream mirrors and 21 provenance-labelled snapshots under `docs/upstream/`.
+
+## Latest roadmap and audit verification — 2026-11-20
+
+- Reconciled `docs/ROADMAP.md` with repository evidence and the dependency-ordered phase plan. Checked items refer to existing artifacts and successful CI, not production readiness.
+- API/web CI [44776939214](https://github.com/helloinnovators1/odeistudio/actions/runs/44776939214) passed all five jobs on `b44d732c884475d469527b001d88216feaa0ae05`: Ubuntu and Windows on Python 3.10/3.12 plus web tests and production build.
+- Security CI [44776939169](https://github.com/helloinnovators1/odeistudio/actions/runs/44776939169) passed all four jobs on the same commit: Gitleaks, pip-audit, npm audit and CodeQL Python/TypeScript.
+- Audit-store regression was corrected by extending the shared secret redactor to include `credential=`; the regression fixture checks that exact case. Audit-store tests passed in the completed API matrix.
+- The audit writer remains a primitive, not a complete audit trail: no authorization/session/task hooks, audit query/export API, DB-level immutable role, retention, or replica-set integration test has been completed.
+- Remaining high-priority gates: credential rotation verification, production ODID contract and membership provisioning, project authorization, policy-controlled tool registry, safe patch/command/test execution, full Monaco workspace, MAC/MAD, signed Windows installer and Windows 10 build 18362 validation.
+- No local Desktop folders have been scanned. The user must launch the local companion and explicitly choose the folders.
