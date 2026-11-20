@@ -20,11 +20,11 @@ Do not copy the local role storage or invite-code logic into ODEI Studio backend
 ## Implemented target verifier
 
 The API security module currently:
-- Requires HTTPS issuer and HTTPS JWKS URL.
+- Requires HTTPS issuer and HTTPS JWKS URL, plus a non-empty explicit allowlist of registered OAuth client_id values (AUTH_ALLOWED_CLIENT_IDS).
 - Fetches JWKS with a five-second timeout, five-minute cache, one-megabyte response cap and maximum 100 keys.
 - Accepts RS256 only and requires a unique matching RSA key ID. If supplied, JWK alg/use/key_ops must be compatible with RS256 signature verification.
 - Requires an explicit JWT access-token type: at+jwt or application/at+jwt.
-- Verifies issuer, audience, signature and expiry, and requires sub, iat, jti and client_id.
+- Verifies issuer, audience, signature and expiry, requires sub, iat, jti and client_id, and rejects client_id values outside the configured allowlist.
 - Parses the optional space-delimited scope claim into the verified Principal.
 - Resolves organization membership separately from server-side storage using verified issuer/subject context and an active membership record.
 
@@ -48,7 +48,7 @@ The Identity service owner must publish and verify the following versioned contr
 ## Target authorization rules
 
 - Verify access tokens at the API boundary; never accept ID tokens as API bearer access tokens.
-- Use verified issuer + subject as the identity key. Do not key authorization by mutable email.
+- Use verified issuer + subject as the identity key. Do not key authorization by mutable email. Restrict client_id to explicitly registered Studio API clients.
 - Resolve memberships and project access from server-side storage. Never trust role, tenant or project identifiers supplied only by the browser.
 - Apply tenant filters to every tenant-owned database query.
 - Distinguish 401 (missing/invalid token), 403 (valid identity but no permission), and 503 (identity provider/configuration unavailable).
@@ -58,7 +58,7 @@ The Identity service owner must publish and verify the following versioned contr
 
 ## Current limitations
 
-- No real ODID issuer, audience or JWKS endpoint is configured in this repository.
+- No real ODID issuer, audience, JWKS endpoint or allowed client IDs are configured in this repository.
 - The protected API route currently exposes only verified identity metadata; workspace/task routes are not exposed.
 - The membership helper checks active organization membership but does not yet enforce a production role vocabulary or project-level permissions.
 - There is no membership provisioning/invitation lifecycle, refresh/revocation integration, MFA step-up enforcement or production audit pipeline.
