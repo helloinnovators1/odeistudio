@@ -1,9 +1,31 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
 
 client = TestClient(app)
+
+
+class FakeAuditStore:
+    def __init__(self):
+        self.events = []
+
+    async def append(self, **event):
+        self.events.append(event)
+        return event
+
+
+@pytest.fixture
+def audit_store():
+    previous = getattr(app.state, "audit_event_store", None)
+    store = FakeAuditStore()
+    app.state.audit_event_store = store
+    try:
+        yield store
+    finally:
+        app.state.audit_event_store = previous
+
 
 
 def test_root_reports_service_identity() -> None:
@@ -69,7 +91,7 @@ class FakeDatabase:
         return self.collection
 
 
-def test_organization_membership_uses_verified_identity_and_returns_safe_fields() -> None:
+def test_organization_membership_uses_verified_identity_and_returns_safe_fields(audit_store) -> None:
     collection = FakeMembershipCollection(
         {
             "organization_id": "org-1",
@@ -99,6 +121,10 @@ def test_organization_membership_uses_verified_identity_and_returns_safe_fields(
         "status": "active",
     }
     assert "must-never-leak" not in response.text
+    assert len(audit_store.events) == 1
+    assert audit_store.events[0]["action"] == "organization.membership.read"
+    assert audit_store.events[0]["outcome"] == "success"
+    assert audit_store.events[0]["organization_id"] == "org-1"
 
 
 def test_organization_membership_fails_closed_when_store_is_missing() -> None:
@@ -116,7 +142,7 @@ def test_organization_membership_fails_closed_when_store_is_missing() -> None:
     assert response.json()["detail"]["code"] == "MEMBERSHIP_STORE_UNAVAILABLE"
 
 
-def test_organization_membership_denies_unknown_tenant() -> None:
+def test_organization_membership_denies_unknown_tenant(audit_store) -> None:
     previous_database = getattr(app.state, "mongo_database", None)
     app.state.mongo_database = FakeDatabase(FakeMembershipCollection(None))
     app.dependency_overrides[get_current_principal] = lambda: Principal(
@@ -129,6 +155,9 @@ def test_organization_membership_denies_unknown_tenant() -> None:
         app.state.mongo_database = previous_database
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "ORGANIZATION_ACCESS_DENIED"
+    assert len(audit_store.events) == 1
+    assert audit_store.events[0]["outcome"] == "denied"
+    assert audit_store.events[0]["metadata"] == {"reason": "active_membership_required"}
 
 
 def test_organization_membership_rejects_whitespace_padded_tenant_id() -> None:
