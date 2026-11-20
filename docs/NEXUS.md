@@ -102,3 +102,10 @@ Parallel agents, remote cloud workspaces, browser automation, advanced semantic 
 The API now exposes `POST /api/v1/organizations/{organization_id}/nexus/plan` as the first authenticated NEXUS workflow slice. It requires a verified bearer principal, an active server-side organization membership and an explicit `cloud_model_consent: true` value. Task text and caller-supplied project context are bounded, secret-redacted by the planning service and sent through the server-side OpenAI Responses client with `store=false`. The route writes a tenant/actor-scoped audit outcome without storing task text, repository context or plan content. Audit failure blocks the response.
 
 This endpoint produces a plan only. It does not connect to the local companion, inspect local files, create durable tasks, apply patches, run commands or authorize implementation. The supplied project context is untrusted caller input, not verified repository evidence. Production use still requires configured ODID issuer/audience/JWKS/client allowlist, membership provisioning, MongoDB and OpenAI credentials, plus the remaining authorization and runtime controls.
+
+
+## Project-scoped task API
+
+NEXUS now has an authenticated project-scoped task API for create, read, approve and cancel. Creation checks active organization membership and active project owner/member access, requires explicit cloud-model consent, and persists an approval-ready task with its lifecycle events. Approval is a distinct `approved` state and is deliberately not an execution trigger. Task retrieval is limited to the task owner or project owner. Mutations use optimistic version checks and append audit records.
+
+This increment does not add file mutation, shell execution, test execution, repair, event streaming, CLI, desktop editor or cloud agents. The local companion remains read-only.

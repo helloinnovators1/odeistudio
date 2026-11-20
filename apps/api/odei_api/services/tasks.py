@@ -16,6 +16,7 @@ class TaskStatus(str, Enum):
     CONTEXT_GATHERING = "context_gathering"
     PLANNING = "planning"
     AWAITING_APPROVAL = "awaiting_approval"
+    APPROVED = "approved"
     EXECUTING = "executing"
     VALIDATING = "validating"
     REPAIRING = "repairing"
@@ -37,7 +38,8 @@ ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.CREATED: {TaskStatus.CONTEXT_GATHERING, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.CONTEXT_GATHERING: {TaskStatus.PLANNING, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.PLANNING: {TaskStatus.AWAITING_APPROVAL, TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.FAILED},
-    TaskStatus.AWAITING_APPROVAL: {TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
+    TaskStatus.AWAITING_APPROVAL: {TaskStatus.APPROVED, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
+    TaskStatus.APPROVED: {TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
     TaskStatus.EXECUTING: {TaskStatus.VALIDATING, TaskStatus.REPAIRING, TaskStatus.REVIEW_READY, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.VALIDATING: {TaskStatus.REPAIRING, TaskStatus.REVIEW_READY, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.REPAIRING: {TaskStatus.EXECUTING, TaskStatus.VALIDATING, TaskStatus.REVIEW_READY, TaskStatus.CANCELLED, TaskStatus.FAILED},

@@ -81,3 +81,17 @@ The service exposes append and index initialization only; it intentionally has n
 The API package includes a fail-closed project access service. A project must be active and tenant-matched; access is granted only to the exact owner issuer+subject or an active project-membership record. Missing and unauthorized projects are intentionally indistinguishable (404). This service is not yet exposed as a project API; project creation, membership administration and role policy remain unimplemented.
 
 The task store supports atomic planned-task creation: it writes the task in `awaiting_approval` and four ordered lifecycle events (created, context gathering, planning, approval requested) in one MongoDB transaction. It requires a MongoDB replica set or sharded-cluster transaction capability.
+
+
+## Project-scoped NEXUS task HTTP API (first integrated slice)
+
+The API now exposes the following project-scoped task routes. Every operation requires a verified bearer identity, active organization membership, an active tenant-matched project, and either exact project ownership or active project membership.
+
+| Method | Route suffix | Behavior |
+|---|---|---|
+| POST | `/organizations/{organization_id}/projects/{project_id}/tasks` | Requires explicit cloud-model consent, generates a plan, and atomically persists an approval-ready task with lifecycle events. |
+| GET | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}` | Returns a task only within the authorized organization and project; task owner or project owner only. |
+| POST | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/approve` | Uses expected-version concurrency and records `approved`; it does not execute code. |
+| POST | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/cancel` | Uses expected-version concurrency to cancel a task. |
+
+Approval is now an explicit domain state between `awaiting_approval` and `executing`. The execution transition remains unavailable through HTTP until the controlled execution fabric exists. Task create/approve/cancel operations append audit records. Task persistence and audit append are separate operations in this increment; production hardening must move the task event and audit record into a shared transaction or transactional outbox before treating audit as atomic with task state. Project creation and membership administration are still not exposed; project records must be provisioned by a trusted administrative process.

@@ -136,3 +136,18 @@
 - Added a project access primitive that grants access only to the exact project owner identity or a server-stored active project membership, always scoped by organization and active project status. Absent and unauthorized projects return the same 404 response.
 - Added atomic planned-task persistence. The task and ordered lifecycle events (created, context gathering, planning, approval requested) are committed in one MongoDB transaction; an event failure rolls back the task write.
 - Added focused service tests for project authorization and planned-task lifecycle/rollback. This increment is not a project API or full NEXUS task workflow: project/membership provisioning, task HTTP routes, user approval UI, patching and isolated execution remain unimplemented.
+
+
+## 2026-11-20 — project-authorized NEXUS task API increment
+
+Implemented a first HTTP integration over the existing project authorization and task persistence services:
+- Startup initializes MongoDB task/event indexes alongside the audit store.
+- Project-scoped task creation verifies active organization membership and project owner/member access before cloud planning.
+- Task creation requires explicit cloud-model consent and persists an approval-ready task plus ordered lifecycle events.
+- Task retrieval is tenant/project scoped and restricted to the task owner or project owner.
+- Approval is a distinct `approved` state with optimistic version checks; it does not trigger execution.
+- Cancellation is exposed with optimistic version checks.
+- Create/approve/cancel actions append audit events.
+- Focused API route tests cover consent, project access denial, durable approval-ready creation, approval and stale-version conflict.
+
+Still not implemented: project creation or membership administration APIs; atomic task+audit transaction/outbox; task event streaming; code patch tools; file writes; isolated command execution; test runner; autonomous repair; CLI; Monaco IDE; cloud or parallel agents. The companion remains read-only. No local user folders have been scanned.

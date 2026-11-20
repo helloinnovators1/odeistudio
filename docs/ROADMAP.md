@@ -114,3 +114,16 @@ No phase is complete because its screens exist. Each capability needs working be
 - Added `require_project_access` with tenant-scoped active-project lookup, exact owner identity matching, active project-membership lookup and indistinguishable not-found responses for missing/unauthorized projects.
 - Added `MongoTaskStore.create_planned`: it validates the initial task and non-empty plan, persists the approval-ready task and four ordered lifecycle events atomically, and rolls back on any event insert failure.
 - Added focused service tests for project authorization and task lifecycle/rollback. These are service/persistence increments only. No task HTTP endpoint, project administration API, patch/write tool or command runner is exposed yet.
+
+
+## 2026-11-20 increment — project-scoped NEXUS task API
+
+- [x] Initialize durable task/event indexes during API startup.
+- [x] Add project-authorized task creation with explicit cloud-model consent.
+- [x] Persist plans as approval-ready tasks and ordered lifecycle events.
+- [x] Add task read, explicit approval and cancellation endpoints with optimistic concurrency.
+- [x] Add audit append operations and focused route tests.
+- [ ] Make task persistence and audit append atomic through a shared transaction/outbox.
+- [ ] Add project creation and membership administration.
+- [ ] Implement patch proposal/review/apply, isolated execution, validation and bounded repair.
+- [ ] Build Monaco-based IDE, agent window, streaming chat, CLI, background workers and cloud agents.
