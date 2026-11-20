@@ -65,7 +65,7 @@ The UI must not imply that a disabled capability is operational. The NEXUS compo
 
 ## Hierarchical Explorer
 
-The browser workspace builds a nested tree from the already-authorized relative-path listing. Directories render before files and are alphabetically/numerically sorted; folders can be collapsed, and a non-empty path filter expands matching ancestors automatically. The tree builder rejects malformed relative paths (absolute paths, empty segments, dot segments and backslash separators), preserves the companion's file metadata, and performs no filesystem access. The UI remains read-only.
+The browser workspace builds a nested tree from the already-authorized relative-path listing. Directories render before files and are alphabetically/numerically sorted; folders can be collapsed, and a non-empty path filter expands matching ancestors automatically. The tree builder rejects malformed relative paths (absolute paths, empty segments, dot segments and backslash separators), resolves file/directory path collisions deterministically without emitting duplicate nodes, preserves the companion's file metadata, and performs no filesystem access. The UI remains read-only.
 
 Unit coverage lives in `apps/web/src/workspace-tree.test.ts`; the Explorer integration is in `apps/web/src/App.tsx`.
 
