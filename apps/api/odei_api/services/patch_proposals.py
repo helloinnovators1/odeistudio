@@ -137,6 +137,7 @@ def build_patch_proposal(
                 raise PatchProposalError("A changed file cannot also be a parent directory")
 
     total_content = 0
+    total_base = 0
     total_diff = 0
     proposed: list[ProposedFileChange] = []
     for path in sorted(changes):
@@ -157,6 +158,12 @@ def build_patch_proposal(
         else:
             if not isinstance(old_content, str):
                 raise PatchProposalError("Base snapshot values must be UTF-8 text")
+            old_size = len(old_content.encode("utf-8", errors="strict"))
+            if old_size > MAX_FILE_BYTES:
+                raise PatchProposalError("A base file exceeds the 1 MB limit")
+            total_base += old_size
+            if total_base > MAX_TOTAL_BYTES:
+                raise PatchProposalError("Base snapshot exceeds the 5 MB aggregate budget")
             old_hash = sha256_text(old_content)
             if not isinstance(expected, str) or not _SHA256.fullmatch(expected):
                 raise PatchProposalError("Existing files require a valid SHA-256 base hash")
