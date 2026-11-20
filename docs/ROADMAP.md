@@ -6,16 +6,17 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [x] Verify repository access and default branch.
 - [x] Establish architecture and initial MAC/provider requirements.
 - [x] Add canonical documentation index and ecosystem specifications.
-- [ ] Inspect complete source tree and CI configuration.
+- [x] Audit the upstream Studio/ecosystem source tree and mirror its 68 core documentation files; complete target-repository inventory remains ongoing.
 - [ ] Rotate any credential previously exposed in project setup material.
-- [x] Add linting and baseline GitHub Actions CI (Ruff + pytest).
+- [x] Add linting and GitHub Actions CI (Ruff + pytest) on Ubuntu/Windows and Python 3.10/3.12.
 - [ ] Add secret scanning and dependency vulnerability scanning.
 
 ## Phase 1 — NEXUS foundation
-- [ ] Select and scaffold backend/frontend workspace.
+- [x] Scaffold Python/FastAPI backend foundation; [ ] select and scaffold the frontend framework after reconciling the upstream Next.js/Monaco app.
 - [x] Add configuration validation and safe environment handling.
-- [ ] Complete OIDC/ODID issuer integration, active membership provisioning and tenant-aware project ownership (JWT verification foundation exists but is not wired to routes).
-- [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, binary and size controls.
+- [x] Implement fail-closed RS256/JWKS verification and protected `/api/v1/auth/me` identity route.
+- [ ] Connect a confirmed ODID issuer/audience/JWKS, provision active memberships, and enforce tenant/project ownership and permissions.
+- [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls (native Windows handle-relative hardening remains a release gate).
 - [x] Implement durable tenant-scoped task records and a separate append-only task event stream with transactional state/event writes.
 - [ ] Add policy-controlled tool registry.
 - [ ] Add patch application with hash/concurrency checks.
