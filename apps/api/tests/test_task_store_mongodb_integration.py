@@ -118,3 +118,95 @@ async def test_task_lifecycle_and_audit_share_real_mongodb_transaction():
     finally:
         await client.drop_database(database_name)
         await client.close()
+
+
+
+@pytest.mark.asyncio
+async def test_project_membership_and_audit_share_real_mongodb_transaction():
+    uri = os.getenv("MONGODB_TEST_URI")
+    if not uri:
+        pytest.skip("MONGODB_TEST_URI is not configured")
+
+    client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
+    database_name = f"odei_project_transaction_test_{uuid4().hex}"
+    database = client[database_name]
+    audit_store = MongoAuditEventStore(database["audit_events"])
+    project_id = uuid4().hex
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    project = {
+        "project_id": project_id,
+        "organization_id": "org-project-integration",
+        "name": "transaction test",
+        "description": "",
+        "status": "active",
+        "owner_issuer": "https://identity.example.test/",
+        "owner_subject": "integration-owner",
+        "created_at": now,
+        "updated_at": now,
+    }
+    membership = {
+        "organization_id": "org-project-integration",
+        "project_id": project_id,
+        "identity_issuer": "https://identity.example.test/",
+        "identity_subject": "integration-member",
+        "status": "active",
+        "created_at": now,
+        "updated_at": now,
+    }
+    audit_event = {
+        "organization_id": "org-project-integration",
+        "actor_issuer": "https://identity.example.test/",
+        "actor_subject": "integration-owner",
+        "action": "project.create",
+        "target_type": "project",
+        "target_id": project_id,
+        "outcome": "success",
+        "request_id": f"req-{uuid4().hex}",
+        "metadata": {"source": "replica-set-integration"},
+    }
+
+    try:
+        topology = await client.admin.command("hello")
+        assert topology.get("setName") or topology.get("msg") == "isdbgrid"
+        await audit_store.initialize()
+        await database["projects"].create_index(
+            [("organization_id", 1), ("project_id", 1)], unique=True
+        )
+        await database["project_memberships"].create_index(
+            [("organization_id", 1), ("project_id", 1),
+             ("identity_issuer", 1), ("identity_subject", 1)], unique=True
+        )
+
+        async with client.start_session() as session, session.start_transaction():
+            await database["projects"].insert_one(project, session=session)
+            await audit_store.append(**audit_event, session=session)
+        assert await database["projects"].count_documents({"project_id": project_id}) == 1
+        assert await database["audit_events"].count_documents({
+            "target_id": project_id, "action": "project.create",
+        }) == 1
+
+        class FailingAuditStore:
+            async def append(self, **_kwargs):
+                raise RuntimeError("simulated project audit failure")
+
+        with pytest.raises(RuntimeError, match="simulated project audit failure"):
+            async with client.start_session() as session, session.start_transaction():
+                await database["project_memberships"].insert_one(membership, session=session)
+                await FailingAuditStore().append(
+                    **(audit_event | {
+                        "action": "project.member.add",
+                        "target_id": project_id,
+                        "request_id": f"req-{uuid4().hex}",
+                    }),
+                    session=session,
+                )
+
+        assert await database["project_memberships"].count_documents({
+            "project_id": project_id,
+        }) == 0
+        assert await database["audit_events"].count_documents({
+            "target_id": project_id,
+        }) == 1
+    finally:
+        await client.drop_database(database_name)
+        await client.close()
