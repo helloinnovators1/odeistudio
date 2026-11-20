@@ -28,7 +28,9 @@ Additional terminal states: `failed`, `cancelled`, `expired`. Every transition i
 ## Current implementation
 - `services/planning.py` calls the OpenAI Responses API through an injected client, with bounded task/context inputs and no tools enabled. Its output is an untrusted proposal only.
 - `model_client.py` creates a server-side OpenAI client from `OPENAI_API_KEY` and requires a configured `ODEI_MODEL`.
-- `services/tasks.py` defines task states, legal transitions, terminal states, plan-before-approval and optimistic version checks. Persistence and authenticated access are not yet wired.
+- `services/tasks.py` defines task states, legal transitions, terminal states, plan-before-approval and optimistic version checks.
+- `services/task_store.py` persists tasks in MongoDB with organization-scoped reads/writes, optimistic version matching and atomic status-change event append. The caller must enforce organization membership and task permissions.
+- `mongo_client.py` constructs a lazy PyMongo Async client from a private `MONGODB_URI`; live database connectivity has not yet been configured or tested.
 - `services/project_files.py` lists, reads and searches bounded text files with common secret exclusions, GitIgnoreSpec rules and scan budgets. It is not exposed to HTTP callers.
 
 ## Initial tool contract
