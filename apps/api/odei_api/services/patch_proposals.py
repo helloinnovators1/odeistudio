@@ -112,7 +112,7 @@ def build_patch_proposal(
 
     base_paths: dict[str, str] = {}
     for base_path in base_files:
-        base_parts = _validate_path(base_path)
+        _validate_path(base_path)
         base_key = base_path.casefold()
         if base_key in base_paths:
             raise PatchProposalError("Base snapshot contains case-insensitive duplicate paths")
@@ -126,9 +126,7 @@ def build_patch_proposal(
         for index in range(1, len(parts)):
             if "/".join(parts[:index]).casefold() in base_paths:
                 raise PatchProposalError("A changed path has an existing file as a parent")
-        if key not in base_paths and any(
-            candidate.startswith(key + "/") for candidate in base_paths
-        ):
+        if any(candidate.startswith(key + "/") for candidate in base_paths):
             raise PatchProposalError("A new file path would replace an existing directory")
 
     # A file cannot simultaneously be another changed file's parent directory.
