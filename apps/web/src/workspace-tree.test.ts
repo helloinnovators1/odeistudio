@@ -28,6 +28,16 @@ describe("buildWorkspaceTree", () => {
     expect(tree[0].children[0].children[0].file?.size).toBe(40);
   });
 
+  it("resolves file/directory path collisions deterministically without duplicate tree nodes", () => {
+    const conflicting = [
+      { path: "a/b.txt", size: 1 },
+      { path: "a", size: 2 },
+    ];
+    const expected = [{ name: "a", path: "a", kind: "file", file: { path: "a", size: 2 }, children: [] }];
+    expect(buildWorkspaceTree(conflicting)).toEqual(expected);
+    expect(buildWorkspaceTree([...conflicting].reverse())).toEqual(expected);
+  });
+
   it("ignores unsafe or malformed relative paths", () => {
     expect(buildWorkspaceTree([
       { path: "../outside.txt", size: 1 },
