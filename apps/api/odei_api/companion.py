@@ -105,15 +105,29 @@ def _validate_origins(origins: Iterable[str]) -> set[str]:
     allowed: set[str] = set()
     for origin in origins:
         parsed = urlsplit(origin)
+        try:
+            hostname = parsed.hostname
+            parsed.port  # Validate malformed/out-of-range ports before accepting the origin.
+        except ValueError as exc:
+            raise ValueError("Companion origins must contain a valid host and port") from exc
         if (
             parsed.scheme not in {"http", "https"}
             or not parsed.netloc
+            or hostname is None
+            or parsed.username is not None
+            or parsed.password is not None
             or parsed.path not in {"", "/"}
             or parsed.query
             or parsed.fragment
             or origin != f"{parsed.scheme}://{parsed.netloc}"
         ):
             raise ValueError("Companion origins must be exact scheme-and-host origins")
+        # A public web application must use HTTPS. Permit plain HTTP only for
+        # loopback development origins, which browsers treat as secure contexts.
+        if parsed.scheme == "http" and hostname.casefold() not in {
+            "localhost", "127.0.0.1", "::1"
+        }:
+            raise ValueError("Non-loopback companion origins must use HTTPS")
         allowed.add(origin)
     if not allowed:
         raise ValueError("At least one explicit companion browser origin is required")
