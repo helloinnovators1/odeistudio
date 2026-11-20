@@ -10,13 +10,14 @@ on:
     paths:
       - "apps/api/**"
       - ".github/workflows/api-ci.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: api-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   test:
