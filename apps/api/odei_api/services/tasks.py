@@ -6,10 +6,10 @@ invoking these transitions or persisting their results.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
-import json
 
 
 class TaskStatus(str, Enum):
