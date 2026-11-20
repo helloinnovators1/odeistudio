@@ -14,7 +14,7 @@
 - Updated README with documentation navigation and API development instructions.
 - Added initial FastAPI application, validated settings, liveness and readiness endpoints.
 - Added initial health endpoint tests and GitHub Actions API test workflow.
-- Added read-only project file listing, bounded UTF-8 reading and literal search utilities with path traversal, symlink, binary, oversized-file and common-secret exclusions.
+- Added read-only project file listing, bounded UTF-8 reading and literal search utilities with path traversal, symlink/junction/reparse-point, binary, oversized-file and common-secret exclusions. Reads use POSIX directory-descriptor traversal with no-follow flags where supported; Windows has a documented identity/containment fallback that still needs native handle-relative hardening.
 - Added GitIgnoreSpec-based root/nested .gitignore support, file-count and aggregate-byte scan budgets; nested rule scope was corrected after a CI test exposed the defect.
 - Added a NEXUS planning service using the OpenAI Responses API, with no tools enabled and bounded task/context input.
 - Added a guarded NEXUS task lifecycle domain model with explicit legal transitions, terminal states, plan-before-approval enforcement and optimistic version checks.
@@ -23,6 +23,7 @@
 - GitHub Actions run [44738162641](https://github.com/helloinnovators1/odeistudio/actions/runs/44738162641) passed on commit `f2c7f818f7e85eaf9d83a25003919fa34a0496f6`: Ruff `All checks passed!`; pytest `34 passed, 1 warning`. This run includes Mongo client lifecycle/readiness and transactional task event persistence.
 - GitHub Actions run [44738649409](https://github.com/helloinnovators1/odeistudio/actions/runs/44738649409) passed on commit `8580f228405a19c327d318ca70d8de2bd0fb989c`: Ruff `All checks passed!`; pytest `44 passed, 2 warnings`. This includes the OIDC/JWKS verifier and organization-membership tests.
 - GitHub Actions run [44738839514](https://github.com/helloinnovators1/odeistudio/actions/runs/44738839514) passed on commit `faa97e292f2c5b0e24ee23614cc4a22fd0d96389`: Ruff `All checks passed!`; pytest `46 passed, 2 warnings`. This includes the protected current-identity route and fail-closed behavior when OIDC is not configured.
+- GitHub Actions run [44739135487](https://github.com/helloinnovators1/odeistudio/actions/runs/44739135487) passed on commit `04af4b0951c8c999f3d570ac514aa7d3f7e56cdc`: Ruff `All checks passed!`; pytest `48 passed, 2 warnings`. This includes POSIX descriptor-based file reads, symlink-directory rejection and Windows reparse-point detection.
 - GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
 - Added a fail-closed OIDC/JWKS access-token verifier: RS256-only signature verification, required expiry/subject, issuer/audience checks, 5-minute JWKS cache and server-side active-membership lookup. Added a minimal protected `/api/v1/auth/me` route that returns only the verified subject and issuer; project/task routes remain unexposed and no production ODID issuer is configured.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
@@ -33,14 +34,14 @@
 - No React/TypeScript/Monaco frontend has been integrated into this target repository. The upstream UI remains reference material until service ownership and migration contracts are settled.
 - No live Atlas connection, secret vault, sandbox runtime, GitHub App, Studio MAC UI or MAD UI has been implemented here.
 - The task store requires authenticated callers to enforce organization membership, project access and owner permissions before use. The planner is one Responses API planning call, not a full autonomous agent loop.
-- Project-file utilities are not exposed through HTTP. The scanner still needs cross-platform race-resistant file-handle hardening and workspace ownership checks before exposure.
+- Project-file utilities are not exposed through HTTP. The scanner still needs native Windows handle-relative/reparse-point hardening, workspace ownership checks and explicit user consent integration before exposure.
 - No Windows desktop folders have been scanned. The user's Chrome extension does not grant unrestricted filesystem access; the upstream path-bridge is a design/code reference and has not been ported or installed on the user's machine.
 - Provider integrations are documented/researched, not connected or end-to-end tested.
 - No live MongoDB/Atlas connection has been attempted because no valid credential is configured in this repository. The task-event transaction code has unit-test coverage but still needs integration tests against a replica-set deployment.
 
 ## Next implementation sequence
 0. Keep the clean Ruff gate green and reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
-1. Connect the verified OIDC dependency to protected routes only after ODID issuer/audience/JWKS values and membership provisioning are confirmed; add role/permission and project ownership authorization.
+1. Complete the Windows/Linux and Python 3.10/3.12 CI matrix, then implement native Windows handle-relative filesystem access and tests.
 2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
 3. Add authenticated read-only workspace APIs with user-approved local folder ingestion.
 4. Add patch application with concurrency checks, diffs and approval records.
