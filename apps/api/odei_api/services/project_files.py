@@ -160,10 +160,7 @@ def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[i
     try:
         file_fd = os.open(target, flags)
     except OSError as exc:
-        try:
-            current = target.stat()
-        except OSError:
-            raise
+        current = target.stat()
         if not stat.S_ISREG(current.st_mode):
             raise ProjectFileError("Requested path is not a regular file") from exc
         raise
