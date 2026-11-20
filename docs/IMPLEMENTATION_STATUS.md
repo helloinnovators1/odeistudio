@@ -14,7 +14,7 @@
 - Updated README with documentation navigation and API development instructions.
 - Added initial FastAPI application, validated settings, liveness and readiness endpoints.
 - Added initial health endpoint tests and GitHub Actions API test workflow.
-- Added read-only project file listing, bounded UTF-8 reading and literal search utilities with path traversal, symlink/junction/reparse-point, binary, oversized-file and common-secret exclusions. POSIX reads use directory-descriptor traversal with no-follow flags. Windows file reads now use native `NtCreateFile` opens relative to held directory handles, opening each component with `FILE_OPEN_REPARSE_POINT` and rejecting reparse points before descending. This protects file opening against ancestor replacement races; directory enumeration remains path-based and is still a release gate pending handle-based enumeration.
+- Added read-only project file listing, bounded UTF-8 reading and literal search utilities with path traversal, symlink/junction/reparse-point, binary, oversized-file and common-secret exclusions. POSIX reads use directory-descriptor traversal with no-follow flags. Windows file reads now use native `NtCreateFile` opens relative to held directory handles, opening each component with `FILE_OPEN_REPARSE_POINT` and rejecting reparse points before descending. The first Windows CI run exposed a ctypes handle-conversion defect and a directory/file NTSTATUS mapping defect; both were corrected. The second CI run passed all four OS/Python matrix jobs. Recursive directory enumeration remains path-based and is still a release gate pending handle-based enumeration.
 - Added GitIgnoreSpec-based root/nested .gitignore support, file-count and aggregate-byte scan budgets; nested rule scope was corrected after a CI test exposed the defect.
 - Added a NEXUS planning service using the OpenAI Responses API, with no tools enabled and bounded task/context input.
 - Added a guarded NEXUS task lifecycle domain model with explicit legal transitions, terminal states, plan-before-approval enforcement and optimistic version checks.
@@ -24,7 +24,8 @@
 - GitHub Actions run [44738649409](https://github.com/helloinnovators1/odeistudio/actions/runs/44738649409) passed on commit `8580f228405a19c327d318ca70d8de2bd0fb989c`: Ruff `All checks passed!`; pytest `44 passed, 2 warnings`. This includes the OIDC/JWKS verifier and organization-membership tests.
 - GitHub Actions run [44738839514](https://github.com/helloinnovators1/odeistudio/actions/runs/44738839514) passed on commit `faa97e292f2c5b0e24ee23614cc4a22fd0d96389`: Ruff `All checks passed!`; pytest `46 passed, 2 warnings`. This includes the protected current-identity route and fail-closed behavior when OIDC is not configured.
 - GitHub Actions run [44739135487](https://github.com/helloinnovators1/odeistudio/actions/runs/44739135487) passed on commit `04af4b0951c8c999f3d570ac514aa7d3f7e56cdc`: Ruff `All checks passed!`; pytest `48 passed, 2 warnings`. This includes POSIX descriptor-based file reads, symlink-directory rejection and Windows reparse-point detection.
-- The Windows/Linux × Python 3.10/3.12 matrix [44740133426](https://github.com/helloinnovators1/odeistudio/actions/runs/44740133426) passed all four jobs. Each OS/Python combination reported Ruff `All checks passed!` and pytest `48 passed, 2 warnings`. Earlier matrix attempts exposed Windows directory-open behavior and a Ruff redundant-exception finding; both were corrected.
+- The Windows/Linux × Python 3.10/3.12 matrix [44740133426](https://github.com/helloinnovators1/odeistudio/actions/runs/44740133426) passed all four jobs. Each OS/Python combination reported Ruff `All checks passed!` and pytest `48 passed, 2 warnings` before native Windows file opens were added.
+- The native Windows handle-relative file-open revision passed matrix [44746632712](https://github.com/helloinnovators1/odeistudio/actions/runs/44746632712): Ubuntu/Python 3.10 and 3.12 each `48 passed, 1 skipped, 2 warnings`; Windows/Python 3.10 and 3.12 each `49 passed, 2 warnings`. Ruff passed in all four jobs. The skip is the POSIX-only descriptor traversal test on Windows.
 - GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
 - Added a fail-closed OIDC/JWKS access-token verifier: RS256-only signature verification, required expiry/subject, issuer/audience checks, 5-minute JWKS cache and server-side active-membership lookup. Added a minimal protected `/api/v1/auth/me` route that returns only the verified subject and issuer; project/task routes remain unexposed and no production ODID issuer is configured.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
@@ -35,7 +36,7 @@
 - No React/TypeScript/Monaco frontend has been integrated into this target repository. The upstream UI remains reference material until service ownership and migration contracts are settled.
 - No live Atlas connection, secret vault, sandbox runtime, GitHub App, Studio MAC UI or MAD UI has been implemented here.
 - The task store requires authenticated callers to enforce organization membership, project access and owner permissions before use. The planner is one Responses API planning call, not a full autonomous agent loop.
-- Project-file utilities are not exposed through HTTP. The scanner still needs native Windows handle-relative/reparse-point hardening, workspace ownership checks and explicit user consent integration before exposure.
+- Project-file utilities are not exposed through HTTP. Windows file reads use native handle-relative opens and reject reparse points, but recursive directory enumeration is still path-based; root-handle anchoring, workspace ownership checks and explicit user consent integration remain required before exposure.
 - No Windows desktop folders have been scanned. The user's Chrome extension does not grant unrestricted filesystem access; the upstream path-bridge is a design/code reference and has not been ported or installed on the user's machine.
 - The upstream `STUDIO_API_KEY_GATE.md` contained hard-coded local development API/gateway credentials. The target mirror redacts those values. Rotate them in the source environment if they are still active; do not reuse historical local keys.
 - Provider integrations are documented/researched, not connected or end-to-end tested.
@@ -43,8 +44,8 @@
 
 ## Next implementation sequence
 0. Keep the clean Ruff gate green and reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
-1. Replace path-based Windows recursive enumeration with handle-relative enumeration, then add adversarial concurrent rename/reparse-point race tests before exposing local scanning through a companion or API.
-2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
+1. Replace path-based Windows recursive enumeration with handle-relative enumeration; anchor selected roots safely and add adversarial concurrent rename/reparse-point race tests before exposing local scanning through a companion or API.
+2. Complete workspace ownership boundaries and explicit local-root consent; keep the scanner read-only.
 3. Add authenticated read-only workspace APIs with user-approved local folder ingestion.
 4. Add patch application with concurrency checks, diffs and approval records.
 5. Add isolated command execution with approval, resource limits and cancellation.

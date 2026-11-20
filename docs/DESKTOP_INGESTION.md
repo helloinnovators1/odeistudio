@@ -26,7 +26,15 @@ A normal browser extension or web page cannot silently enumerate arbitrary Windo
 
 ## Current implementation status
 
-A read-only Python project-file utility has been added under `apps/api/odei_api/services/project_files.py`. It lists, reads and searches bounded UTF-8 files under an explicitly selected root, rejects traversal and symlinks, and excludes common secret/dependency paths. It is not exposed through HTTP because authentication, tenant ownership and explicit workspace authorization are not implemented yet. It respects root and nested `.gitignore` files and enforces file-count/aggregate-byte budgets. Reads use descriptor-based `O_NOFOLLOW` traversal on POSIX; the Windows fallback compares file identity before/after open and checks resolved containment, but still needs native Windows handle/reparse-point hardening before hostile, concurrently mutable workspaces are trusted. It does not provide a Windows companion service or stream files to the server.
+A read-only Python project-file utility has been added under `apps/api/odei_api/services/project_files.py`. It lists, reads and searches bounded UTF-8 files under an explicitly selected root, rejects traversal and symlinks, and excludes common secret/dependency paths. It is not exposed through HTTP because authentication, tenant ownership and explicit workspace authorization are not implemented yet. It respects root and nested `.gitignore` files and enforces file-count/aggregate-byte budgets. Reads use descriptor-based `O_NOFOLLOW` traversal on POSIX. Windows file reads now use native `NtCreateFile` opens relative to held directory handles, open components without following reparse points, and reject reparse points; this passed the Windows/Linux × Python 3.10/3.12 CI matrix. However, recursive directory enumeration still uses path-based `os.walk`, and selected-root anchoring, concurrent mutation tests, ownership and explicit consent remain unfinished security gates. It does not provide a Windows companion service or stream files to the server.
+
+## Current security boundary and next work
+
+- Do not expose this scanner through HTTP or a local network service yet.
+- Replace Windows path-based recursive enumeration with handle-relative enumeration and keep directory handles open while enumerating.
+- Bind the selected root to a trusted OS folder-picker result/handle; do not treat a canonicalized path string alone as a durable authorization anchor.
+- Add adversarial tests for concurrent rename/swap, junction and reparse-point insertion, root replacement, permission revocation and handle cleanup.
+- Keep reads read-only; a future mutation API must use separate permission and approval flows.
 
 ## Initial implementation stages
 1. Local CLI lists files under an explicitly supplied root and applies safe excludes.
