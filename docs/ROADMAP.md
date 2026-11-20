@@ -54,7 +54,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Add secret references and vault integration.
 - [ ] Add environment configuration lifecycle.
 - [ ] Add provider connection registry and capability discovery.
-- [ ] Complete audit log integration across authentication, authorization, companion sessions, approvals and task operations; add privileged approvals and access-controlled audit queries. The insert-only Mongo audit writer is wired to organization-membership outcomes and NEXUS task create/approve/cancel transactions. Companion sessions, authentication outcomes, task reads/denials, tool executions, audit query/export and database-level controls remain outstanding.
+- [ ] Complete audit log integration across authentication, authorization, companion sessions, approvals and task operations; add privileged approvals and access-controlled audit queries. The insert-only Mongo audit writer is wired to organization-membership outcomes and NEXUS task create/approve/cancel transactions. Companion sessions, authentication outcomes, tool executions, audit query/export and database-level controls remain outstanding. Task and task-event reads, task-not-found/owner denials and project-owner approval denials are now instrumented; full route-by-route coverage review remains open.
 - [ ] Add database-level audit writer permissions that deny update/delete, replica-set integration tests, retention/archival, monitoring and access review.
 - [ ] Implement MAD operational metrics with source, freshness, aggregation and ownership definitions.
 
@@ -137,3 +137,5 @@ No phase is complete because its screens exist. Each capability needs working be
 - Corrected the persistence boundary: `MongoAuditEventStore.append` now accepts an optional Mongo session; `MongoTaskStore.create_planned` and `transition` append audit records inside the same transaction as task state and lifecycle events; API startup injects the shared audit store; NEXUS routes no longer audit those mutations after commit.
 - Added tests that prove successful task+audit commits and rollback of task state/lifecycle events when audit insertion fails. The route fakes were updated to exercise the new call contract. These tests await the latest-head CI result.
 - This does not yet provide full audit coverage. Task reads/denials, companion pairing/revocation, authentication outcomes and tool execution remain open; a live MongoDB replica-set transaction integration test and DB-level audit immutability remain release gates.
+
+- Extended NEXUS audit coverage to successful task/task-event reads and task-not-found/owner and project-owner approval denials. Added route assertions; these newest route-hook changes await latest-head CI.
