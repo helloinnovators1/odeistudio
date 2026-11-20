@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import pytest
 
+from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.task_store import MongoTaskStore
 from odei_api.services.tasks import InvalidTaskTransition, TaskRecord, TaskStatus
 
@@ -86,11 +87,13 @@ def make_task():
     )
 
 
-def make_store(events_collection=None):
+def make_store(events_collection=None, audit_collection=None):
     tasks = FakeCollection()
     events = events_collection or FakeCollection()
-    client = FakeClient([tasks, events])
-    return MongoTaskStore(tasks, events, client), tasks, events
+    audit_events = audit_collection or FakeCollection()
+    client = FakeClient([tasks, events, audit_events])
+    audit_store = MongoAuditEventStore(audit_events)
+    return MongoTaskStore(tasks, events, client, audit_store=audit_store), tasks, events
 
 
 @pytest.mark.asyncio
@@ -155,11 +158,27 @@ async def test_task_transition_rejects_stale_version():
 
 
 
+def audit_event():
+    return {
+        "organization_id": "org-1",
+        "actor_issuer": "https://identity.example.test/",
+        "actor_subject": "user-1",
+        "action": "nexus.task.create",
+        "target_type": "nexus_task",
+        "target_id": "task-1",
+        "outcome": "success",
+        "request_id": "req-task-1",
+        "metadata": {"project_id": "project-1"},
+    }
+
+
 @pytest.mark.asyncio
-async def test_create_planned_atomically_persists_approval_ready_task_and_lifecycle():
+async def test_create_planned_atomically_persists_approval_ready_task_lifecycle_and_audit():
     store, tasks, events = make_store()
     await store.initialize()
-    result = await store.create_planned(make_task(), plan="Inspect, implement, test")
+    result = await store.create_planned(
+        make_task(), plan="Inspect, implement, test", audit_event=audit_event()
+    )
     assert result.status is TaskStatus.AWAITING_APPROVAL
     assert result.version == 3
     assert result.plan == "Inspect, implement, test"
@@ -170,6 +189,10 @@ async def test_create_planned_atomically_persists_approval_ready_task_and_lifecy
     ]
     assert rows[-1]["type"] == "task.approval.requested"
     assert tasks.documents["task-1"]["status"] == "awaiting_approval"
+    audit_rows = list(store._audit_store._collection.documents.values())
+    assert len(audit_rows) == 1
+    assert audit_rows[0]["action"] == "nexus.task.create"
+    assert audit_rows[0]["target_id"] == "task-1"
 
 
 @pytest.mark.asyncio
@@ -186,3 +209,51 @@ async def test_create_planned_rejects_empty_plan():
     store, _, _ = make_store()
     with pytest.raises(ValueError, match="non-empty plan"):
         await store.create_planned(make_task(), plan="  ")
+
+
+
+class FailingAuditCollection(FakeCollection):
+    async def insert_one(self, document, session=None):
+        raise RuntimeError("audit store unavailable")
+
+
+@pytest.mark.asyncio
+async def test_planned_task_and_lifecycle_roll_back_when_audit_insert_fails():
+    store, tasks, events = make_store(audit_collection=FailingAuditCollection())
+    with pytest.raises(RuntimeError, match="audit store unavailable"):
+        await store.create_planned(
+            make_task(), plan="Plan", audit_event=audit_event()
+        )
+    assert tasks.documents == {}
+    assert events.documents == {}
+
+
+@pytest.mark.asyncio
+async def test_task_transition_and_event_roll_back_when_audit_insert_fails():
+    store, tasks, events = make_store(audit_collection=FailingAuditCollection())
+    await store.create(make_task())
+    with pytest.raises(RuntimeError, match="audit store unavailable"):
+        await store.transition(
+            organization_id="org-1", task_id="task-1",
+            next_status=TaskStatus.CONTEXT_GATHERING, expected_version=0,
+            audit_event=audit_event(),
+        )
+    assert tasks.documents["task-1"]["status"] == "created"
+    assert tasks.documents["task-1"]["version"] == 0
+    assert len(events.documents) == 1
+
+
+@pytest.mark.asyncio
+async def test_task_transition_commits_audit_and_state_together():
+    store, tasks, events = make_store()
+    await store.create(make_task())
+    updated = await store.transition(
+        organization_id="org-1", task_id="task-1",
+        next_status=TaskStatus.CONTEXT_GATHERING, expected_version=0,
+        audit_event=audit_event(),
+    )
+    audit_rows = list(store._audit_store._collection.documents.values())
+    assert updated.status is TaskStatus.CONTEXT_GATHERING
+    assert tasks.documents["task-1"]["status"] == "context_gathering"
+    assert len(events.documents) == 2
+    assert len(audit_rows) == 1
