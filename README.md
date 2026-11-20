@@ -18,7 +18,7 @@ The Master Admin Console is the overall management and configuration authority f
 Provider operations must use supported APIs and permission scopes. The MAC must never imply unsupported capabilities or expose secret values after saving them.
 
 ## Current status
-The repository now contains the product/architecture documentation, a FastAPI foundation, bounded project-file utilities, a Responses API planning service, guarded task lifecycle, transactional MongoDB task/event persistence, MongoDB readiness checks and an OIDC/JWKS verification foundation. The latest verified API CI run passed Ruff and 44 tests. Authentication is not yet connected to a confirmed ODID issuer or protected workspace/task routes. The application is not yet a complete coding agent or production-ready platform; each capability must be built and verified incrementally. UI prototypes are not evidence that backend services are operational.
+The repository contains the complete ecosystem documentation mirror, a FastAPI/NEXUS backend foundation, secure read-only local companion prototype, and an initial React/TypeScript browser workspace client for pairing, multi-root browsing and file preview. Python tests run on Ubuntu/Windows with Python 3.10/3.12; the web client has unit tests and a production build; Gitleaks, pip-audit, npm audit and CodeQL are being integrated into CI. This remains an early read-only vertical slice, not a complete coding agent or production-ready platform. ODID issuer/tenant authorization, editing, sandboxed execution, MAC/MAD and provider integrations remain outstanding.
 
 ## Security
 A database credential was exposed in project setup material. Assume it is compromised and rotate it immediately in MongoDB Atlas. Never commit secrets. Store secret values in a managed secret store and use server-only environment variables for runtime injection.
@@ -54,3 +54,15 @@ uvicorn odei_api.main:app --reload
 ```
 
 The health endpoints are `/api/v1/health/live` and `/api/v1/health/ready`. Readiness performs a bounded MongoDB ping and returns HTTP 503 when MongoDB is not configured or unavailable.
+
+## Web workspace preview
+
+The initial read-only browser client lives in `apps/web`:
+
+```powershell
+cd apps/web
+npm install
+npm run dev
+```
+
+It binds to `127.0.0.1:3002`. Configure the local companion's `ODEI_COMPANION_ALLOWED_ORIGINS` to the exact origin `http://127.0.0.1:3002` (or the exact `localhost` origin if you open it that way). The browser pairing request must be initiated by the Connect button. The client keeps the bearer token in memory only and supports read-only file preview; it is not yet the full IDE.

@@ -141,3 +141,12 @@ Official references: [Chrome Local Network Access guidance](https://developer.ch
 - No production ODID issuer, audience, JWKS endpoint, membership API or role contract is confirmed in this target repository. Do not enable workspace/task routes until the ODID contract and server-side membership/permission lifecycle are verified.
 
 References: https://www.rfc-editor.org/rfc/rfc9068.html ; https://www.rfc-editor.org/rfc/rfc8725.html ; https://www.rfc-editor.org/rfc/rfc8414.html ; docs/upstream/ODEI_IDENTITY_HOLISTIC_SOURCE.md ; docs/upstream/PRODUCTION_ROLES_SOURCE.md.
+
+
+## Web dependency security and CI
+
+- CI's first npm audit detected the affected ranges for Vite (through 6.4.3), esbuild (through 0.24.2), Vitest (through 4.1.10), and transitive tinypool (through 2.1.1), including critical worker-option prototype-pollution advisories.
+- Decision: upgrade the web toolchain to Vite 6.4.4 and Vitest 4.1.12; retain a blocking npm audit job at high severity or above. Keep the audit active so future dependency changes are checked rather than relying on a one-time version pin.
+- CI also audits declared Python dependencies with pip-audit, scans repository history/working tree with Gitleaks, and runs CodeQL for Python and JavaScript/TypeScript.
+
+Primary sources: https://github.com/advisories/GHSA-82fw-gwwq-j7x9 ; https://github.com/advisories/GHSA-qxg6-89mg-rqv8 ; https://github.com/advisories/GHSA-67mh-4wv8-2f99 ; https://github.com/advisories/GHSA-5gmw-xhrv-c9v3 ; https://github.com/pypa/pip-audit ; https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql.

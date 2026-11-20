@@ -24,7 +24,8 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [x] Implement a read-only `odei-companion` prototype with OS folder selection, loopback-only API, exact Origin/Host checks, one-time pairing, short-lived read-only tokens and revocation.
 - [x] Support multiple explicitly selected project roots in one companion process with workspace-specific read routes.
 - [x] Implement initial browser pairing UI using Chrome LNA, read-only workspace navigation and file preview; keep bearer tokens in memory only.
-- [ ] Integrate browser pairing UI using Chrome LNA (`loopback-network`, secure HTTPS context, explicit user gesture and `targetAddressSpace: "loopback"`), ODID user/tenant authorization, consent/audit lifecycle, signed Windows installer and Windows 10 build 18362 validation.
+- [x] Implement initial browser pairing UI using Chrome LNA, read-only workspace navigation and file preview; keep bearer tokens in memory only.
+- [ ] Integrate ODID user/tenant authorization, consent/audit lifecycle, signed Windows installer and Windows 10 build 18362 validation. (`loopback-network`, secure HTTPS context, explicit user gesture and `targetAddressSpace: "loopback"`), ODID user/tenant authorization, consent/audit lifecycle, signed Windows installer and Windows 10 build 18362 validation.
 - [x] Implement durable tenant-scoped task records and a separate append-only task event stream with transactional state/event writes.
 - [ ] Add policy-controlled tool registry.
 - [ ] Add patch application with hash/concurrency checks.
@@ -62,9 +63,10 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [ ] Enterprise deployment, compliance and support operations.
 
 ## Security automation
-- [x] Add scheduled/manual/push/PR security workflow for Gitleaks, pip-audit and CodeQL.
+- [x] Add scheduled/manual/push/PR security workflow for Gitleaks, pip-audit, npm audit and CodeQL for Python plus TypeScript.
 - [x] Add weekly Dependabot update proposals for GitHub Actions and Python dependencies.
-- [ ] Verify initial workflow results and remediate/triage all findings.
+- [x] Verify secret scan, Python dependency audit and web dependency audit; upgrade vulnerable Vite/Vitest tooling.
+- [ ] Verify CodeQL completion and continue triaging scheduled findings.
 
 ## Release gates
 No phase is complete because its screens exist. Each capability needs working behavior, server-side authorization, tests, observability, documentation and failure handling. Production deployment additionally requires backup/restore, incident response, security review and operational ownership.

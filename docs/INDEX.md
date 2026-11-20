@@ -26,6 +26,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Deployment and environments](DEPLOYMENT.md) — local, preview, staging and production deployment.
 - [Quality and testing](TESTING.md) — test pyramid, security checks and release gates.
 - [Desktop project ingestion](DESKTOP_INGESTION.md) — safe, user-authorized local project indexing without ZIP packaging.
+- [Web workspace client](../apps/web/README.md) — initial read-only browser pairing, workspace explorer and file preview.
 
 - [Upstream ecosystem alignment](UPSTREAM_ECOSYSTEM_ALIGNMENT.md) — audited source-repository capabilities, migration boundaries, desktop access, AI gateway, MAC/MAD and implementation work order.
 - [Imported upstream ecosystem documentation](upstream/INDEX.md) — preserved source snapshots of Studio specifications, desktop/editor phases, MAC audits, AI gateway and ecosystem operating documents.\n\n## Documentation rules

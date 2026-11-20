@@ -101,7 +101,7 @@ The service accepts only configured exact browser origins and expected loopback 
 
 ## Not yet complete / release gates
 
-- Frontend pairing UI/client, user-gesture LNA permission flow and user-facing permission-denial guidance.
+- The first frontend pairing client and user-gesture LNA request flow exist in `apps/web`; remaining work is production HTTPS deployment, polished permission-denial guidance and full IDE integration.
 - ODID user/tenant binding for local sessions and workspace IDs.
 - Explicit root consent/review UI, audit trail and pause/revoke controls in the Studio UI.
 - Signed Windows installer, update/uninstall lifecycle and startup UX.
