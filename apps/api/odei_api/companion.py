@@ -18,7 +18,6 @@ from pydantic import BaseModel
 
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
-
 DEFAULT_PORT = 8765
 DEFAULT_PAIRING_TTL_SECONDS = 300
 DEFAULT_TOKEN_TTL_SECONDS = 3600
