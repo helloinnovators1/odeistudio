@@ -14,7 +14,7 @@
 - Updated README with documentation navigation and API development instructions.
 - Added initial FastAPI application, validated settings, liveness and readiness endpoints.
 - Added initial health endpoint tests and GitHub Actions API test workflow.
-- Added read-only project file listing, bounded UTF-8 reading and literal search utilities with path traversal, symlink/junction/reparse-point, binary, oversized-file and common-secret exclusions. Reads use POSIX directory-descriptor traversal with no-follow flags where supported; Windows has a documented identity/containment fallback that still needs native handle-relative hardening.
+- Added read-only project file listing, bounded UTF-8 reading and literal search utilities with path traversal, symlink/junction/reparse-point, binary, oversized-file and common-secret exclusions. POSIX reads use directory-descriptor traversal with no-follow flags. Windows file reads now use native `NtCreateFile` opens relative to held directory handles, opening each component with `FILE_OPEN_REPARSE_POINT` and rejecting reparse points before descending. This protects file opening against ancestor replacement races; directory enumeration remains path-based and is still a release gate pending handle-based enumeration.
 - Added GitIgnoreSpec-based root/nested .gitignore support, file-count and aggregate-byte scan budgets; nested rule scope was corrected after a CI test exposed the defect.
 - Added a NEXUS planning service using the OpenAI Responses API, with no tools enabled and bounded task/context input.
 - Added a guarded NEXUS task lifecycle domain model with explicit legal transitions, terminal states, plan-before-approval enforcement and optimistic version checks.
@@ -43,7 +43,7 @@
 
 ## Next implementation sequence
 0. Keep the clean Ruff gate green and reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
-1. Implement native Windows handle-relative filesystem access and reparse-point tests before exposing local scanning through a companion or API.
+1. Replace path-based Windows recursive enumeration with handle-relative enumeration, then add adversarial concurrent rename/reparse-point race tests before exposing local scanning through a companion or API.
 2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
 3. Add authenticated read-only workspace APIs with user-approved local folder ingestion.
 4. Add patch application with concurrency checks, diffs and approval records.

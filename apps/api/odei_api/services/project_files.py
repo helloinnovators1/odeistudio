@@ -125,6 +125,17 @@ def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[i
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     directory = getattr(os, "O_DIRECTORY", 0)
 
+    if os.name == "nt":
+        from odei_api.services.windows_file_handles import (
+            UnsafeWindowsPath,
+            open_readonly_file,
+        )
+
+        try:
+            return open_readonly_file(root, parts)
+        except UnsafeWindowsPath as exc:
+            raise UnsafeProjectPath(str(exc)) from exc
+
     if (
         os.name == "posix"
         and nofollow

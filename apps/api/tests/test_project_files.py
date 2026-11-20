@@ -120,3 +120,33 @@ def test_rejects_directory_as_text_file(tmp_path: Path) -> None:
     (tmp_path / "folder").mkdir()
     with pytest.raises(ProjectFileError, match="regular file"):
         read_project_text_file(tmp_path, "folder")
+
+
+def test_windows_native_open_rejects_junction_directory(tmp_path: Path) -> None:
+    import os
+    import subprocess
+
+    if os.name != "nt":
+        pytest.skip("Windows-only junction test")
+    from odei_api.services.windows_file_handles import (
+        UnsafeWindowsPath,
+        open_readonly_file,
+    )
+
+    outside = tmp_path.parent / "odei-outside-junction"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("must not be read", encoding="utf-8")
+    junction = tmp_path / "junction"
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip("Junction creation is unavailable")
+    try:
+        with pytest.raises(UnsafeWindowsPath):
+            open_readonly_file(tmp_path, ("junction", "secret.txt"))
+    finally:
+        junction.rmdir()
