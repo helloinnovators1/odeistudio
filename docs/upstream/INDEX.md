@@ -1,5 +1,7 @@
 # Imported upstream ecosystem documentation
 
+**Complete source mirror:** [MIRROR_INDEX.md](MIRROR_INDEX.md) — all 68 Markdown/text documents across the upstream Studio, AI, ecosystem and audit directories, preserved with source paths and credential redaction. The curated files below provide the most important entry points.
+
 These are source snapshots from the user's linked repository, [infoedutechos/ODEI-Multi-Ecosystem](https://github.com/infoedutechos/ODEI-Multi-Ecosystem), inspected at source tree commit `b9878e8dcc34942ec10fa5fddea34028a5456b42`.
 
 **Important:** these files preserve historical product requirements and audit records. They are not evidence that the same capabilities exist or pass tests in this target repository. For the current reconciled architecture, security interpretation and migration order, start with [UPSTREAM_ECOSYSTEM_ALIGNMENT.md](../UPSTREAM_ECOSYSTEM_ALIGNMENT.md). Check each source file's own date and status before relying on its operational claims.
