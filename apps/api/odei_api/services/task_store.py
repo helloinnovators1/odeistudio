@@ -131,6 +131,24 @@ class MongoTaskStore:
             await self._append_audit_in_transaction(audit_event, session)
         return self._to_record(document)
 
+    async def list_events(
+        self, *, organization_id: str, task_id: str,
+        after_version: int = -1, limit: int = 50,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Return ordered task events after a durable version cursor."""
+        if not organization_id.strip() or not task_id.strip():
+            raise ValueError("organization_id and task_id are required")
+        if after_version < -1 or limit < 1 or limit > 100:
+            raise ValueError("event cursor or page size is invalid")
+        cursor = self._events.find({
+            "organization_id": organization_id,
+            "task_id": task_id,
+            "version": {"$gt": after_version},
+        }).sort("version", 1).limit(limit + 1)
+        rows = await cursor.to_list(length=limit + 1)
+        has_more = len(rows) > limit
+        return rows[:limit], has_more
+
     async def get(self, *, organization_id: str, task_id: str) -> TaskRecord | None:
         if not organization_id.strip() or not task_id.strip():
             raise ValueError("organization_id and task_id are required")
