@@ -181,6 +181,7 @@ class MongoTaskStore:
             TaskStatus.CANCELLED: "task.cancelled",
             TaskStatus.COMPLETED: "task.completed",
             TaskStatus.FAILED: "task.failed",
+            TaskStatus.EXPIRED: "task.expired",
         }.get(updated.status, "task.status_changed")
         event = {
             "event_id": str(uuid4()),
