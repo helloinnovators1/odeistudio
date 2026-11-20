@@ -5,16 +5,19 @@ authentication, tenant authorization and workspace ownership before exposing it.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 DEFAULT_EXCLUDED_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "node_modules",
     "__pycache__", ".next", "dist", "build", "coverage",
+    ".ssh", ".aws", ".azure", ".gnupg",
 }
 DEFAULT_EXCLUDED_NAMES = {
     ".env", ".env.local", ".env.development", ".env.production",
-    "id_rsa", "id_ed25519", "credentials", "secrets.json",
+    "id_rsa", "id_ed25519", "credentials", "credentials.json",
+    ".npmrc", ".pypirc", ".envrc",
 }
 SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
 MAX_TEXT_FILE_BYTES = 1_000_000
@@ -102,7 +105,7 @@ def list_project_files(
     workspace = _workspace_root(root)
     found: list[ProjectFile] = []
 
-    for current_dir, dirnames, filenames in __import__("os").walk(
+    for current_dir, dirnames, filenames in os.walk(
         workspace, topdown=True, followlinks=False
     ):
         current = Path(current_dir)
