@@ -173,7 +173,7 @@ def test_organization_membership_rejects_whitespace_padded_tenant_id() -> None:
 
 
 
-def test_organization_membership_fails_closed_on_malformed_record() -> None:
+def test_organization_membership_fails_closed_on_malformed_record(audit_store) -> None:
     previous_database = getattr(app.state, "mongo_database", None)
     app.state.mongo_database = FakeDatabase(FakeMembershipCollection({"status": "active"}))
     app.dependency_overrides[get_current_principal] = lambda: Principal(
@@ -186,6 +186,9 @@ def test_organization_membership_fails_closed_on_malformed_record() -> None:
         app.state.mongo_database = previous_database
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "MEMBERSHIP_RECORD_INVALID"
+    assert len(audit_store.events) == 1
+    assert audit_store.events[0]["outcome"] == "failure"
+    assert audit_store.events[0]["metadata"] == {"reason": "membership_record_invalid"}
 
 
 def test_organization_membership_fails_closed_on_database_error() -> None:
