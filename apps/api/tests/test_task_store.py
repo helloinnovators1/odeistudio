@@ -341,6 +341,7 @@ async def test_task_events_reject_invalid_cursor_and_limit():
     [
         (TaskStatus.APPROVED, "task.approved"),
         (TaskStatus.CANCELLED, "task.cancelled"),
+        (TaskStatus.EXPIRED, "task.expired"),
     ],
 )
 async def test_task_approval_and_cancellation_emit_semantic_event_types(
