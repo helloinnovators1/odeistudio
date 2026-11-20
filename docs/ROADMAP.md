@@ -43,6 +43,8 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 
 ## Phase 2 — Workspace experience
 
+- [x] Add initial React/TypeScript Monaco workspace shell with read-only companion-backed files, multi-tabs and configurable NEXUS chat panel side (Cmd/Ctrl+I). This is not full IDE parity or an authenticated agent chat.
+
 - [ ] Integrate the upstream React/Next.js/TypeScript/Monaco Agents and Editor experience after settling the canonical service boundary.
 - [ ] Deliver full project explorer, editor, tabs and multi-card/multi-tab persistence.
 - [ ] Add agent chat, task plan and approval UI.
@@ -162,3 +164,12 @@ No phase is complete because its screens exist. Each capability needs working be
 - Added unique project and membership indexes during API startup. Project creation and membership changes append audit records in the same MongoDB transaction as the mutation; authorization denials are audited.
 - Added route tests for create/list/add/remove and rejection of a target without active organization membership. These latest tests and changes are pending CI; this item is implemented but not marked verified until current-head API and security workflows pass.
 - Remaining boundaries: no org membership provisioning, project ownership transfer, invitation/acceptance workflow, arbitrary project roles, patch/write API, shell execution, IDE integration or local desktop scan.
+
+
+## IDE workspace shell increment (2026-11-20)
+
+- Replaced the basic file-preview page with a first Monaco read-only workspace shell, multi-file tabs, activity rail, explorer, bottom Problems/Output/Terminal surfaces and NEXUS panel shell.
+- Implemented Command+I (macOS) / Ctrl+I (Windows/Linux) toggle and persisted Left/Right chat-panel setting (default Right); helper tests cover persistence, invalid storage, shortcut recognition and Monaco language mapping.
+- Added `docs/IDE_WORKSPACE.md` and linked it from the documentation index.
+- Web tests/build passed on initial Monaco UI commit `6004f3122a8e724f25dcb8cfae52970b2fe22d7e`; later styling and documentation refinements await current-head CI.
+- The panel is not an authenticated chat yet; no streaming, patch editing, shell execution, LSP, Git, cloud agents or native desktop package is implied. The editor and companion remain read-only.
