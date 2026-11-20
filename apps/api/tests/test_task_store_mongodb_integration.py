@@ -5,6 +5,7 @@ Set MONGODB_TEST_URI to a disposable replica-set URI to enable these tests.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -132,7 +133,7 @@ async def test_project_membership_and_audit_share_real_mongodb_transaction():
     database = client[database_name]
     audit_store = MongoAuditEventStore(database["audit_events"])
     project_id = uuid4().hex
-    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    now = datetime.now(timezone.utc)
     project = {
         "project_id": project_id,
         "organization_id": "org-project-integration",
