@@ -13,12 +13,14 @@
 - Added read-only project file listing, bounded UTF-8 reading and literal search utilities with path traversal, symlink, binary, oversized-file and common-secret exclusions.
 - Added GitIgnoreSpec-based root/nested .gitignore support, file-count and aggregate-byte scan budgets; nested rule scope was corrected after a CI test exposed the defect.
 - Added a NEXUS planning service using the OpenAI Responses API, with no tools enabled and bounded task/context input.
+- Added a guarded NEXUS task lifecycle domain model with explicit legal transitions, terminal states, plan-before-approval enforcement and optimistic version checks.
+- GitHub Actions verified 21 tests passed on the nested-.gitignore fix commit; subsequent planner/config/task changes are awaiting their own CI run.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
 
 ## Not yet verified
 - Python tests are running in GitHub Actions. Earlier runs exposed two issues: the pathspec dependency was missing from the triggering commit, and nested .gitignore rules were not applied in the directory containing the ignore file. The dependency is now in pyproject.toml; the nested-rule fix is committed and a new CI run is queued. Do not treat the current test suite as passing until that run completes successfully.
-- No frontend application, authentication, tenant model, database integration, secret vault, agent/model loop, sandbox runtime, GitHub App, MAC UI or MAD UI has been implemented in this work.
+- No frontend application, authentication, tenant model, database integration, secret vault, sandbox runtime, GitHub App, MAC UI or MAD UI has been implemented in this work. The planner is a single Responses API planning call, not yet a full autonomous agent loop.
 - Project-file utilities and the model planner are not exposed through HTTP. Authentication, tenant/workspace authorization and a safe task persistence layer are prerequisites. The scanner currently applies common exclusions and .gitignore rules but still needs cross-platform race-resistant file-handle hardening before network exposure.
 - No Windows desktop folders have been scanned; Chrome extension access does not provide unrestricted local filesystem access.
 - Provider integrations are documented/researched, not connected or end-to-end tested.
