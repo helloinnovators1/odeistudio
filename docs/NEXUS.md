@@ -129,3 +129,10 @@ Task lifecycle transitions emit semantic event types for approval and terminal o
 The API now provides tenant-scoped project creation and listing, plus project-owner membership administration. Any active organization member may create a project and becomes its owner. Project listing is limited to active projects owned by or actively shared with the caller. Only the project owner can add/remove project members, and a target must already be an active member of the same organization. The owner is implicit (not duplicated in the membership collection); removals are soft deactivations.
 
 Project and membership mutations append their audit record in the same MongoDB transaction as the data change. Unique compound indexes enforce organization/project and organization/project/identity uniqueness. This is an initial project lifecycle contract, not a complete organization/role system: provisioning, invitations, ownership transfer, custom roles and admin workflows remain open. The routes do not grant file-write or command-execution capabilities.
+
+
+## IDE workspace shell and chat-panel preference
+
+The web client now has an initial Monaco-based IDE shell with a read-only explorer/editor, multiple tabs and bottom status surfaces. `Command+I` on macOS and `Ctrl+I` on Windows/Linux toggle the NEXUS chat panel. Workspace Settings lets the user choose the panel side (Left or Right); Right is the default and the choice is persisted locally in the browser. See [IDE workspace implementation](IDE_WORKSPACE.md).
+
+The panel is currently a non-operational shell: no authenticated chat transport, streaming, agent tool calls or repository-aware conversation is connected. Monaco is read-only; the terminal is disabled and is not a browser shell. The current React/Vite workspace is not the full upstream Next.js/Code-OSS desktop editor.
