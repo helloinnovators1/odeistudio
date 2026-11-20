@@ -78,7 +78,7 @@ The service exposes append and index initialization only; it intentionally has n
 
 ## Project-scoped NEXUS authorization foundation
 
-The API package includes a fail-closed project access service. A project must be active and tenant-matched; access is granted only to the exact owner issuer+subject or an active project-membership record. Missing and unauthorized projects are intentionally indistinguishable (404). This service is consumed by the project-scoped NEXUS task API, but is not yet exposed as a standalone project CRUD API; project creation, membership administration and role policy remain unimplemented.
+The API exposes tenant-scoped project creation and listing plus owner-managed membership administration. Any active organization member may create a project; the creator becomes its owner. Project lists include only active projects owned by the caller or containing an active membership for the caller. Only the project owner may add/remove project members, and a target must already have active membership in the same organization. Membership removal is a soft status transition, preserving history. The existing project access service continues to require an active tenant-matched project and exact owner issuer+subject or active project membership; unauthorized project access is hidden as 404.
 
 The task store supports atomic planned-task creation: it writes the task in `awaiting_approval` and four ordered lifecycle events (created, context gathering, planning, approval requested) in one MongoDB transaction. It requires a MongoDB replica set or sharded-cluster transaction capability.
 
@@ -105,3 +105,15 @@ Approval is now an explicit domain state between `awaiting_approval` and `execut
 |---|---|---|
 | GET | `/api/v1/health/live` | Process liveness; does not imply dependencies are ready. |
 | GET | `/api/v1/health/ready` | Performs MongoDB ping plus topology detection. Returns ready only for a replica set or mongos/sharded deployment; standalone MongoDB returns 503 because task/audit persistence requires multi-document transactions. |
+
+
+## Project lifecycle and membership routes
+
+| Method | Route | Behavior |
+|---|---|---|
+| POST | `/organizations/{organization_id}/projects` | Creates an active project for an active organization member; creator becomes owner. Returns 201. |
+| GET | `/organizations/{organization_id}/projects` | Lists up to 100 active projects owned by or actively shared with the caller. |
+| PUT | `/organizations/{organization_id}/projects/{project_id}/members` | Project owner adds an already-active organization member. |
+| DELETE | `/organizations/{organization_id}/projects/{project_id}/members` | Project owner marks an active member inactive; history is retained. |
+
+Project and membership writes use MongoDB transactions with audit insertion in the same session. Startup creates unique tenant/project and tenant/project/issuer/subject indexes. The project owner is an implicit member and is not stored as a separate membership row. Project creation/listing and membership management require configured MongoDB, verified identity and active organization membership. These routes do not implement organization administration, project ownership transfer, arbitrary roles or invitation/provisioning flows.
