@@ -156,6 +156,40 @@ def test_pairing_manager_rejects_non_ascii_and_rate_limits_failures() -> None:
     assert manager.exchange(code, ORIGIN) is None
 
 
+def test_companion_rejects_insecure_public_origin(tmp_path) -> None:
+    import pytest
+
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    try:
+        with pytest.raises(ValueError, match="must use HTTPS"):
+            create_companion_app(
+                registry,
+                workspace_id,
+                allowed_origins=["http://studio.example.test"],
+            )
+    finally:
+        registry.close()
+
+
+def test_companion_allows_loopback_http_development_origin(tmp_path) -> None:
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    try:
+        app = create_companion_app(
+            registry,
+            workspace_id,
+            allowed_origins=["http://localhost:3002"],
+        )
+        assert app.title == "ODEI Local Workspace Companion"
+    finally:
+        registry.close()
+
+
 def test_companion_rejects_non_origin_configuration(tmp_path) -> None:
     import pytest
 
