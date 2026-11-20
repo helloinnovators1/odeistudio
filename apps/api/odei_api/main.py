@@ -139,7 +139,7 @@ async def current_organization_membership(
             },
         ) from exc
 
-    role = membership.get("role")
+    role = membership.get("role") if isinstance(membership, dict) else None
     if not isinstance(role, str) or not role.strip():
         logger.error("Organization membership record has no valid role")
         raise HTTPException(
