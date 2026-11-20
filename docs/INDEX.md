@@ -14,6 +14,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 
 ## Product and platform
 - [NEXUS agent specification](NEXUS.md) — AI software engineering agent, tools, loop and runtime.
+- [IDE workspace implementation](IDE_WORKSPACE.md) — Monaco shell, NEXUS chat-panel side preference, shortcuts and explicit capability boundaries.
 - [Master Admin Console requirements](MAC_REQUIREMENTS.md) — central configuration and governance plane.
 - [Master Admin Dashboard](MAD.md) — operational and executive visibility.
 - [Data model](DATA_MODEL.md) — canonical entities, tenancy and persistence rules.
@@ -25,7 +26,8 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Deployment and environments](DEPLOYMENT.md) — local, preview, staging and production deployment.
 - [Quality and testing](TESTING.md) — test pyramid, security checks and release gates.
 - [Desktop project ingestion](DESKTOP_INGESTION.md) — safe, user-authorized local project indexing without ZIP packaging.
-- [Web workspace client](../apps/web/README.md) — initial read-only browser pairing, workspace explorer and file preview.
+- [Web workspace client](../apps/web/README.md) — Monaco read-only workspace, local pairing and configurable NEXUS panel.
+- [Project lifecycle and membership API](API_AND_EVENTS.md#project-lifecycle-and-membership-routes) — tenant-scoped projects and owner-managed members.
 
 ## Upstream ecosystem source material
 - [Upstream ecosystem alignment](UPSTREAM_ECOSYSTEM_ALIGNMENT.md) — audited source-repository capabilities, migration boundaries, desktop access, AI gateway, MAC/MAD and implementation work order.
