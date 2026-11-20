@@ -94,6 +94,7 @@ class MongoAuditEventStore:
         trace_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
         occurred_at: datetime | None = None,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         organization_id = _required_identifier(organization_id, "organization_id")
         actor_subject = _required_identifier(actor_subject, "actor_subject")
@@ -130,5 +131,8 @@ class MongoAuditEventStore:
             "occurred_at": timestamp.astimezone(timezone.utc),
             "metadata": _safe_metadata(metadata or {}),
         }
-        await self._collection.insert_one(document)
+        if session is None:
+            await self._collection.insert_one(document)
+        else:
+            await self._collection.insert_one(document, session=session)
         return document
