@@ -23,10 +23,14 @@ export function buildWorkspaceTree(files: CompanionFile[]): WorkspaceTreeNode[] 
 
     let siblings = roots;
     let parentPath = "";
+    let invalidHierarchy = false;
     for (const segment of segments.slice(0, -1)) {
       const path = parentPath ? parentPath + "/" + segment : segment;
       const conflictingFile = siblings.find((node) => node.name === segment && node.kind === "file");
-      if (conflictingFile) break;
+      if (conflictingFile) {
+        invalidHierarchy = true;
+        break;
+      }
       let directory = directories.get(path);
       if (!directory) {
         directory = { name: segment, path, kind: "directory", children: [] };
@@ -37,6 +41,7 @@ export function buildWorkspaceTree(files: CompanionFile[]): WorkspaceTreeNode[] 
       parentPath = path;
     }
 
+    if (invalidHierarchy) continue;
     const name = segments.at(-1)!;
     if (siblings.some((node) => node.name === name)) continue;
     siblings.push({
