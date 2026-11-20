@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
