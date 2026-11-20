@@ -5,14 +5,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from odei_api.config import get_settings
 from odei_api.mongo_client import create_mongo_client
+from odei_api.security.auth import Principal, get_current_principal
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+auth_principal_dependency = Depends(get_current_principal)
 
 
 @asynccontextmanager
@@ -85,3 +87,9 @@ async def readiness(request: Request) -> dict[str, object]:
             detail={"status": "not_ready", "checks": {"mongodb": "unavailable"}},
         ) from exc
     return {"status": "ready", "checks": {"mongodb": "ok"}}
+
+
+@app.get(f"{settings.api_prefix}/auth/me", tags=["auth"])
+async def current_identity(principal: Principal = auth_principal_dependency) -> dict[str, str]:
+    """Return only the verified caller identity; no client-supplied roles or tenant claims."""
+    return {"subject": principal.subject, "issuer": principal.issuer}
