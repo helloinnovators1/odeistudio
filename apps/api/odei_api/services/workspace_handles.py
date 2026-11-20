@@ -14,7 +14,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from collections.abc import Iterator
 
 from odei_api.services.project_files import (
     DEFAULT_MAX_FILES,
