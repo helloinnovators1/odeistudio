@@ -1,9 +1,9 @@
 """FastAPI application entry point and dependency lifecycle."""
 import asyncio
 import logging
-from uuid import uuid4
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Path, Request
@@ -33,12 +33,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.http_client = http_client
     application.state.jwks_cache = None
     application.state.jwks_lock = asyncio.Lock()
-    if settings.mongodb_uri is not None and settings.mongodb_uri.get_secret_value():
-        client, database_name = create_mongo_client(settings)
-    application.state.mongo_client = client
-    application.state.mongo_database = client[database_name] if client and database_name else None
-    application.state.audit_event_store = None
     try:
+        if settings.mongodb_uri is not None and settings.mongodb_uri.get_secret_value():
+            client, database_name = create_mongo_client(settings)
+        application.state.mongo_client = client
+        application.state.mongo_database = client[database_name] if client and database_name else None
+        application.state.audit_event_store = None
         if application.state.mongo_database is not None:
             audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
             await audit_store.initialize()
