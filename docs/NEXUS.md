@@ -1,7 +1,7 @@
 # ODEI NEXUS — AI Software Engineering Agent
 
 **Priority:** First major product implementation.  
-**Status:** Initial planning service, bounded read-only Responses API tool loop and secure workspace indexing primitives are committed. No authenticated agent API, mutating tools or sandbox is implemented yet.
+**Status:** Initial planning service, bounded read-only Responses API tool loop, secure workspace indexing primitives and an authenticated planning-only API are committed. No authenticated execution-agent API, mutating tools or sandbox is implemented yet.
 
 ## Mission
 NEXUS is the repository-aware coding agent at the heart of ODEI Studio. It turns a developer's goal into a reviewable, tested set of code changes while respecting workspace permissions and execution policy.
