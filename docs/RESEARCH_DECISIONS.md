@@ -109,3 +109,10 @@ This document records architectural research, not completed provider integration
 - IETF RFC 8725 (JWT Best Current Practices): https://www.rfc-editor.org/rfc/rfc8725.html
 - Decision: the initial API verifier pins RS256, verifies the signature against a configured issuer JWKS, validates issuer and audience, requires expiry and subject, and never follows token-provided `jku`/`x5u` URLs. Organization membership is resolved from server-side storage rather than trusting client-supplied tenant IDs or role claims.
 - Remaining profile decision: confirm the actual ODID access-token type/claim contract before enforcing `typ`, `azp`, scopes or provider-specific role claims. Do not infer those claims from the browser-local auth UI or local role registry documented upstream.
+
+
+## Filesystem path and symlink safety
+
+- Python `os` documentation: https://docs.python.org/3/library/os.html (directory descriptors, `dir_fd`, no-follow behavior, and platform support).
+- Decision: on supported POSIX systems, project reads traverse each path component relative to an opened workspace directory descriptor and use no-follow flags; the final handle must be a regular file and reads are byte-bounded. Directory/file listing rejects symlinks and detectable reparse points.
+- Python documents that `dir_fd` support is platform-dependent and currently unavailable on Windows. The Windows implementation therefore uses a separate identity/containment fallback and is explicitly not considered race-proof. A native Windows handle-relative implementation and Windows CI coverage are required before enabling remote workspace access.
