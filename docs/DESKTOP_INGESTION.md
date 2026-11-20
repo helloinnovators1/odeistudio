@@ -24,6 +24,10 @@ A normal browser extension or web page cannot silently enumerate arbitrary Windo
 - Provide incremental indexing by content hash and file metadata.
 - Never execute scanned files automatically.
 
+## Current implementation status
+
+A read-only Python project-file utility has been added under `apps/api/odei_api/services/project_files.py`. It lists, reads and searches bounded UTF-8 files under an explicitly selected root, rejects traversal and symlinks, and excludes common secret/dependency paths. It is not exposed through HTTP because authentication, tenant ownership and explicit workspace authorization are not implemented yet. It does not yet parse `.gitignore`, provide a Windows companion service, or stream files to the server.
+
 ## Initial implementation stages
 1. Local CLI lists files under an explicitly supplied root and applies safe excludes.
 2. CLI emits a manifest with relative path, size, modified time and content hash.
