@@ -5,7 +5,6 @@ proposal, never an authorization to modify files or run commands.
 """
 
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Protocol
 
