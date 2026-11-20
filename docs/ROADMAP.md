@@ -29,7 +29,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Implement initial Chrome browser pairing UI, explicit loopback permission/request flow, multi-root navigation and read-only preview; bearer tokens remain in memory only.
 - [ ] Complete ODID user/tenant binding, explicit consent/audit lifecycle, signed Windows installer and validation on Windows 10 build 18362.
 - [x] Implement durable tenant-scoped task records and separate append-only task events with transactional state/event writes (MongoDB replica-set/sharded transaction support required).
-- [ ] Add policy-controlled tool registry and per-task capability enforcement. Existing NEXUS loop is bounded and read-only; it is not the complete policy/approval registry.
+- [x] Add bounded read-only NEXUS tool registry with strict schemas, injected workspace identity and unknown-tool rejection. Per-task capability enforcement and approval policy remain unchecked; this is not the complete policy/approval registry.
 - [ ] Add patch application with hash/concurrency checks and explicit approval.
 - [ ] Add isolated command runner with timeout/resource limits and network/filesystem policy.
 - [ ] Add test runner and structured diagnostics.
@@ -50,7 +50,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Add secret references and vault integration.
 - [ ] Add environment configuration lifecycle.
 - [ ] Add provider connection registry and capability discovery.
-- [ ] Complete audit log integration across authentication, authorization, companion sessions, approvals and task operations; add privileged approvals and access-controlled audit queries. An initial redacting insert-only Mongo audit writer exists but is not yet wired into authorization decisions.
+- [ ] Complete audit log integration across authentication, authorization, companion sessions, approvals and task operations; add privileged approvals and access-controlled audit queries. The insert-only Mongo audit writer is now wired to organization-membership success, denial and malformed-record decisions, but companion/session/task hooks and the remaining controls are outstanding.
 - [ ] Add database-level audit writer permissions that deny update/delete, replica-set integration tests, retention/archival, monitoring and access review.
 - [ ] Implement MAD operational metrics with source, freshness, aggregation and ownership definitions.
 
@@ -88,3 +88,11 @@ No phase is complete because its screens exist. Each capability needs working be
 - Security CI: [44776939169](https://github.com/helloinnovators1/odeistudio/actions/runs/44776939169) — all four jobs successful.
 - Audit writer tests include successful append/redaction, invalid identity/action/outcome/timestamp, metadata bounds and index initialization. These tests passed as part of the API CI run.
 - Local Desktop folder scanning has not been performed; it requires running the companion locally and explicit folder selection by the user.
+
+
+## Latest continuation — membership audit integration
+
+- Added Mongo-backed audit index initialization to API startup when a database is configured. Startup fails rather than serving an API without the configured audit collection/indexes; startup cleanup closes the HTTP and Mongo clients if initialization fails.
+- Wired the organization-membership route to append success, denial and malformed-record outcomes before returning a result. Audit storage absence or append failure returns 503 (`AUDIT_STORE_UNAVAILABLE`); authorization results are not returned unaudited.
+- Added route tests for successful, denied and malformed-record audit events, plus missing/failing audit persistence. These tests are committed but awaiting CI on the latest branch head; do not count them as verified until the run completes.
+- This is only a narrow membership authorization audit integration. Authentication failures, companion pairing/revocation, task and tool actions, audit querying/export, database role-level immutability, retention and replica-set integration tests remain open.
