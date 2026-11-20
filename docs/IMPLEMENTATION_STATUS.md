@@ -3,8 +3,8 @@
 ## Explorer path-collision remediation — 2026-11-20
 
 - The first collision-hardening CI attempt [44835374813](https://github.com/helloinnovators1/odeistudio/actions/runs/44835374813) exposed an implementation defect: after detecting a file used as a parent directory, the builder stopped descending but still inserted the descendant at the workspace root. The web job correctly failed (23 passed, 1 failed); this is not counted as a pass.
-- Corrected the builder to mark and skip the entire invalid hierarchy, and expanded tests for both root-level and nested file/directory collisions in either input order. Fix commit: [66483ba](https://github.com/helloinnovators1/odeistudio/commit/66483ba97d7a80ef4c5f53fde7cebf2144f36d41); added nested regression coverage in [5d910c8](https://github.com/helloinnovators1/odeistudio/commit/5d910c86a7a372be44322505bb8c72d45913970f).
-- The failed CI merge ref predates the correction; a new current-head run is required before this fix is marked verified. No local test execution is available in this hosted repository-editing session.
+- Corrected the builder to mark and skip the entire invalid hierarchy, expanded root-level and nested collision regression tests, and replaced locale-aware path sorting with stable code-unit ordering so parent paths always precede descendants. Fix commit: [66483ba](https://github.com/helloinnovators1/odeistudio/commit/66483ba97d7a80ef4c5f53fde7cebf2144f36d41); nested regression coverage: [5d910c8](https://github.com/helloinnovators1/odeistudio/commit/5d910c86a7a372be44322505bb8c72d45913970f); ordering correction: [c21f9b9](https://github.com/helloinnovators1/odeistudio/commit/c21f9b94d15f51f1af8417ad7e571e030cc9d6c2).
+- The failed CI merge ref predates the final ordering correction. A new pull-request CI run against the corrected head is required before this fix is marked verified. No local test execution is available in this hosted repository-editing session.
 
 ## Latest continuation — 2026-11-20 (hierarchical Explorer)
 
