@@ -280,3 +280,66 @@ def test_task_events_are_project_authorized_and_cursor_paginated(route_state):
     assert audit.events[-1]["action"] == "nexus.task.events.read"
     assert audit.events[-1]["outcome"] == "success"
     assert audit.events[-1]["metadata"]["returned_count"] == 2
+
+
+def test_project_nexus_chat_requires_explicit_cloud_consent(route_state):
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat",
+        json={
+            "messages": [{"role": "user", "content": "Review this project"}],
+            "cloud_model_consent": False,
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "CLOUD_MODEL_CONSENT_REQUIRED"
+
+
+def test_project_nexus_chat_is_authorized_read_only_and_audited(route_state, monkeypatch):
+    _, audit, _ = route_state
+
+    class Responses:
+        def create(self, **kwargs):
+            assert kwargs["store"] is False
+            assert "tools" not in kwargs
+            return SimpleNamespace(output_text="I reviewed the selected source.")
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_tasks.get_openai_client",
+        lambda: (SimpleNamespace(responses=Responses()), "test-model"),
+    )
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat",
+        json={
+            "messages": [{"role": "user", "content": "Review this project"}],
+            "workspace_files": [{"path": "src/main.py", "content": "print('hello')"}],
+            "cloud_model_consent": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "answer": "I reviewed the selected source.",
+        "model": "test-model",
+        "read_only": True,
+        "tools_executed": 0,
+        "conversation_persisted": False,
+    }
+    assert [event["outcome"] for event in audit.events] == ["started", "success"]
+    assert all("Review this project" not in str(event) for event in audit.events)
+    assert audit.events[-1]["action"] == "nexus.chat.request"
+    assert audit.events[-1]["metadata"]["workspace_file_count"] == 1
+
+
+def test_project_nexus_chat_requires_authorized_project(route_state):
+    database, audit, _ = route_state
+    database.collections["projects"].document = None
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat",
+        json={
+            "messages": [{"role": "user", "content": "Review this project"}],
+            "cloud_model_consent": True,
+        },
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
+    assert audit.events[-1]["action"] == "nexus.project.access"
+    assert audit.events[-1]["outcome"] == "denied"
