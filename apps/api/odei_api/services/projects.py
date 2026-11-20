@@ -94,18 +94,33 @@ async def _require_org_member(request: Request, database, principal: Principal, 
         }) from exc
 
 
-async def _require_owner(database, organization_id: str, project_id: str, principal: Principal):
-    project = await database["projects"].find_one({
-        "organization_id": organization_id,
-        "project_id": project_id,
-        "status": "active",
-    })
+async def _require_owner(request: Request, database, organization_id: str,
+                        project_id: str, principal: Principal):
+    try:
+        project = await database["projects"].find_one({
+            "organization_id": organization_id,
+            "project_id": project_id,
+            "status": "active",
+        })
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "PROJECT_STORE_UNAVAILABLE",
+            "message": "Project authorization is temporarily unavailable.",
+        }) from exc
     if project is None:
+        await _audit(
+            request, principal, organization_id, "project.membership.manage",
+            "project", project_id, "denied", {"reason": "project_not_found"},
+        )
         raise HTTPException(status_code=404, detail={
             "code": "PROJECT_NOT_FOUND", "message": "Project was not found.",
         })
     if (project.get("owner_issuer") != principal.issuer
             or project.get("owner_subject") != principal.subject):
+        await _audit(
+            request, principal, organization_id, "project.membership.manage",
+            "project", project_id, "denied", {"reason": "project_owner_required"},
+        )
         raise HTTPException(status_code=403, detail={
             "code": "PROJECT_OWNER_REQUIRED",
             "message": "Only the project owner may manage project memberships.",
@@ -233,7 +248,12 @@ async def add_project_member(
         raise HTTPException(status_code=422, detail={"code": "INVALID_MEMBER_IDENTITY"})
     database = _database(request)
     await _require_org_member(database, principal, organization_id)
-    await _require_owner(database, organization_id, project_id, principal)
+    await _require_owner(request, database, organization_id, project_id, principal)
+    if payload.identity_issuer == principal.issuer and payload.identity_subject == principal.subject:
+        raise HTTPException(status_code=409, detail={
+            "code": "PROJECT_OWNER_IS_IMPLICIT_MEMBER",
+            "message": "The project owner already has access and is not stored as a project member.",
+        })
     try:
         target = await database["organization_memberships"].find_one({
             "organization_id": organization_id,
