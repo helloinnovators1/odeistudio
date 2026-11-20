@@ -21,7 +21,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Select and scaffold the canonical frontend after reconciling the upstream Next.js/Monaco Agents and Editor application. Current React/TypeScript/Vite client is an initial read-only companion workspace, not the full editor.
 - [x] Add configuration validation and safe environment handling.
 - [x] Implement fail-closed RS256/JWKS verification and protected `/api/v1/auth/me` identity route.
-- [ ] Connect a confirmed production ODID issuer/audience/JWKS contract, provision active memberships, and enforce tenant/project ownership and permissions. A protected organization-membership lookup and initial project/task authorization routes exist; production issuer configuration, membership provisioning, project CRUD and role/permission policy remain open.
+- [ ] Connect a confirmed production ODID issuer/audience/JWKS contract, provision active memberships, and enforce tenant/project ownership and permissions. A protected organization-membership lookup and initial project/task authorization routes exist; production issuer configuration, membership provisioning, ownership transfer, invitations and complete role/permission policy remain open; initial project create/list and owner-managed membership routes now exist.
 - [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls.
 - [x] Implement native Windows handle-relative opens and FileIdBothDirectoryInfo enumeration; retain selected root handles, reject reparse points and test path-swap/junction cases.
 - [x] Implement POSIX descriptor-relative traversal and reads with no-follow/non-blocking controls.
