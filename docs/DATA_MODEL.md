@@ -33,7 +33,7 @@ This document defines logical domains, not a final ORM schema. Choose exact fiel
 - `usage_records`: measured model/runtime/provider usage and cost provenance.
 
 ## Governance and operations
-- `audit_events`: actor, tenant, action, target, outcome, timestamp, request/trace ID and redacted metadata.
+- `audit_events`: actor, tenant, action, target, outcome, timestamp, request/trace ID and redacted metadata. Initial Mongo writer exists in `odei_api.services.audit_store`; authorization hooks, read/export APIs and database-level immutability controls remain outstanding.
 - `incidents`: severity, owner, status, timeline and runbook.
 - `service_health`: measured health checks with freshness metadata.
 
