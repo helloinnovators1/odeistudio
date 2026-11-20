@@ -158,13 +158,13 @@ def build_patch_proposal(
         else:
             if not isinstance(old_content, str):
                 raise PatchProposalError("Base snapshot values must be UTF-8 text")
-            old_size = len(old_content.encode("utf-8", errors="strict"))
+            old_hash = sha256_text(old_content)
+            old_size = len(old_content.encode("utf-8"))
             if old_size > MAX_FILE_BYTES:
                 raise PatchProposalError("A base file exceeds the 1 MB limit")
             total_base += old_size
             if total_base > MAX_TOTAL_BYTES:
                 raise PatchProposalError("Base snapshot exceeds the 5 MB aggregate budget")
-            old_hash = sha256_text(old_content)
             if not isinstance(expected, str) or not _SHA256.fullmatch(expected):
                 raise PatchProposalError("Existing files require a valid SHA-256 base hash")
             if not hmac.compare_digest(old_hash, expected):
@@ -176,11 +176,11 @@ def build_patch_proposal(
                 raise PatchProposalError("New content must be UTF-8 text or null for deletion")
             if "\x00" in new_content:
                 raise PatchProposalError("Binary content is not supported by text patch proposals")
+            result_hash = sha256_text(new_content)
             new_size = len(new_content.encode("utf-8"))
             if new_size > MAX_FILE_BYTES:
                 raise PatchProposalError("A changed file exceeds the 1 MB limit")
             total_content += new_size
-            result_hash = sha256_text(new_content)
         else:
             result_hash = None
 
