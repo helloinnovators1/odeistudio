@@ -317,6 +317,122 @@ def _list_project_files_windows(
     finally:
         close_directory_handle(kernel32, root_handle)
 
+def _read_ignore_spec_from_fd(directory_fd: int) -> GitIgnoreSpec | None:
+    """Read .gitignore relative to a held POSIX directory descriptor."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(".gitignore", flags, dir_fd=directory_fd)
+    except OSError:
+        return None
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 1_000_000:
+            return None
+        data = bytearray()
+        while len(data) <= 1_000_000:
+            chunk = os.read(descriptor, min(65536, 1_000_001 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > 1_000_000 or b"\x00" in data:
+            return None
+        try:
+            return GitIgnoreSpec.from_lines(data.decode("utf-8").splitlines())
+        except UnicodeDecodeError:
+            return None
+    finally:
+        os.close(descriptor)
+
+
+def _list_project_files_posix(
+    workspace: Path,
+    *,
+    max_files: int,
+    max_total_bytes: int,
+) -> list[ProjectFile]:
+    """List files using descriptor-relative traversal on POSIX."""
+    if not hasattr(os, "fwalk") or os.open not in os.supports_dir_fd:
+        raise ProjectFileError("This POSIX platform lacks safe descriptor traversal")
+
+    found: list[ProjectFile] = []
+    total_bytes = 0
+    specs_by_directory: dict[
+        tuple[str, ...], list[tuple[tuple[str, ...], GitIgnoreSpec]]
+    ] = {(): []}
+    open_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+
+    for current_dir, dirnames, filenames, directory_fd in os.fwalk(
+        workspace, topdown=True, follow_symlinks=False
+    ):
+        relative_directory = Path(current_dir).relative_to(workspace)
+        directory_parts = relative_directory.parts
+        current_specs = list(specs_by_directory.pop(directory_parts, []))
+        local_spec = _read_ignore_spec_from_fd(directory_fd)
+        if local_spec is not None:
+            current_specs.append((directory_parts, local_spec))
+
+        kept_directories: list[str] = []
+        for name in sorted(dirnames):
+            parts = (*directory_parts, name)
+            if _is_excluded(parts):
+                continue
+            try:
+                metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            except OSError:
+                continue
+            if not stat.S_ISDIR(metadata.st_mode):
+                continue
+            ignored = False
+            for prefix, spec in current_specs:
+                relative_name = PurePosixPath(*parts[len(prefix):]).as_posix() + "/"
+                if spec.match_file(relative_name):
+                    ignored = True
+            if ignored:
+                continue
+            kept_directories.append(name)
+            specs_by_directory[parts] = current_specs
+        dirnames[:] = kept_directories
+
+        for name in sorted(filenames):
+            parts = (*directory_parts, name)
+            if _is_excluded(parts):
+                continue
+            ignored = False
+            for prefix, spec in current_specs:
+                relative_name = PurePosixPath(*parts[len(prefix):]).as_posix()
+                if spec.match_file(relative_name):
+                    ignored = True
+            if ignored:
+                continue
+
+            descriptor = None
+            try:
+                descriptor = os.open(name, open_flags, dir_fd=directory_fd)
+                metadata = os.fstat(descriptor)
+                if not stat.S_ISREG(metadata.st_mode):
+                    continue
+            except OSError:
+                continue
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+
+            if total_bytes + metadata.st_size > max_total_bytes:
+                return found
+            found.append(
+                ProjectFile(path=PurePosixPath(*parts).as_posix(), size=metadata.st_size)
+            )
+            total_bytes += metadata.st_size
+            if len(found) >= max_files:
+                return found
+    return found
+
+
 def list_project_files(
     root: str | Path,
     *,
@@ -329,6 +445,10 @@ def list_project_files(
     workspace = _workspace_root(root)
     if os.name == "nt":
         return _list_project_files_windows(
+            workspace, max_files=max_files, max_total_bytes=max_total_bytes
+        )
+    if os.name == "posix":
+        return _list_project_files_posix(
             workspace, max_files=max_files, max_total_bytes=max_total_bytes
         )
     found: list[ProjectFile] = []
