@@ -193,6 +193,8 @@ export default function App() {
         return (
           <div key={node.path}>
             <button
+              role="treeitem"
+              aria-level={depth + 1}
               className="file-row folder-row"
               style={{ paddingLeft: `${7 + depth * 12}px` }}
               aria-expanded={!collapsed}
@@ -201,13 +203,16 @@ export default function App() {
               <span className="file-glyph">{collapsed ? "▸" : "▾"}</span>
               <span className="file-name">{node.name}</span>
             </button>
-            {!collapsed && renderTree(node.children, depth + 1)}
+            {!collapsed && <div role="group">{renderTree(node.children, depth + 1)}</div>}
           </div>
         );
       }
       return (
         <button
           key={node.path}
+          role="treeitem"
+          aria-level={depth + 1}
+          aria-selected={activePath === node.path}
           className={activePath === node.path ? "file-row active" : "file-row"}
           style={{ paddingLeft: `${7 + depth * 12}px` }}
           onClick={() => node.file && void chooseFile(node.file)}
