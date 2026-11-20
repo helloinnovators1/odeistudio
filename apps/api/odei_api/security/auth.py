@@ -14,6 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from odei_api.config import get_settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
+bearer_credentials_dependency = Depends(bearer_scheme)
 JWKS_CACHE_TTL_SECONDS = 300
 JWKS_FETCH_TIMEOUT_SECONDS = 5.0
 
@@ -52,7 +53,7 @@ async def load_jwks(request: Request, jwks_url: str) -> dict[str, Any]:
         response.raise_for_status()
         document = response.json()
         if not isinstance(document, dict) or not isinstance(document.get("keys"), list):
-            raise ValueError("Identity provider returned an invalid JWKS document")
+            raise TypeError("Identity provider returned an invalid JWKS document")
         state.jwks_cache = {
             "document": document,
             "expires_at": now + JWKS_CACHE_TTL_SECONDS,
@@ -98,7 +99,7 @@ def verify_access_token(
 
 async def get_current_principal(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = bearer_credentials_dependency,
 ) -> Principal:
     """FastAPI dependency for routes that require a trusted ODEI Identity token."""
     settings = get_settings()
@@ -128,7 +129,7 @@ async def get_current_principal(
             detail={"code": "INVALID_ACCESS_TOKEN", "message": "The access token is invalid."},
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
-    except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+    except (httpx.HTTPError, ValueError, TypeError, RuntimeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "IDENTITY_PROVIDER_UNAVAILABLE", "message": "Identity verification is temporarily unavailable."},
