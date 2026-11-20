@@ -14,7 +14,8 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
@@ -24,7 +25,7 @@ DEFAULT_TOKEN_TTL_SECONDS = 3600
 
 
 class PairRequest(BaseModel):
-    code: str
+    code: str = Field(min_length=1, max_length=128)
 
 
 class PairingManager:
@@ -68,6 +69,8 @@ class PairingManager:
         valid = (
             self._pairing_code is not None
             and now < self._pairing_expires_at
+            and code.isascii()
+            and 1 <= len(code) <= 128
             and hmac.compare_digest(code, self._pairing_code)
         )
         if not valid:
@@ -126,6 +129,8 @@ def create_companion_app(
     port: int = DEFAULT_PORT,
 ) -> FastAPI:
     """Create a loopback-only companion API with exact Origin and Host checks."""
+    if not 1 <= port <= 65535:
+        raise ValueError("Companion port must be between 1 and 65535")
     origins = _validate_origins(allowed_origins)
     pairing = pairing_manager or PairingManager()
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
@@ -202,7 +207,7 @@ def create_companion_app(
     @app.get("/v1/workspace/files")
     async def list_files(request: Request):
         require_bearer(request)
-        files = registry.list_files(workspace_id)
+        files = await run_in_threadpool(registry.list_files, workspace_id)
         return {"files": [{"path": item.path, "size": item.size} for item in files]}
 
     @app.get("/v1/workspace/file")
@@ -212,7 +217,7 @@ def create_companion_app(
     ):
         require_bearer(request)
         try:
-            content = registry.read_text(workspace_id, path)
+            content = await run_in_threadpool(registry.read_text, workspace_id, path)
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail="File is unavailable for safe reading") from exc
         return {"path": path, "content": content}
@@ -235,8 +240,8 @@ def select_directory_native() -> str | None:
         raise RuntimeError("This Python installation does not include Tk support") from exc
 
     root = tk.Tk()
-    root.withdraw()
     try:
+        root.withdraw()
         root.attributes("-topmost", True)
         selected = filedialog.askdirectory(
             parent=root,
@@ -264,6 +269,14 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    if not 1 <= args.port <= 65535:
+        print("ODEI_COMPANION_PORT must be between 1 and 65535.", file=sys.stderr)
+        return 2
+    try:
+        _validate_origins(origins)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     try:
         selected = select_directory_native()
@@ -278,22 +291,22 @@ def main() -> int:
     workspace_id = registry.register_selected_root(selected)
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
-    print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
-    print("Selected folder is held by an OS handle; access is read-only.")
-    print("Enter this one-time pairing code in the ODEI Studio web app:")
-    print(code)
-    print("The code expires in five minutes. Do not share it with anyone.")
 
-    import uvicorn
-
-    app = create_companion_app(
-        registry,
-        workspace_id,
-        allowed_origins=origins,
-        pairing_manager=pairing,
-        port=args.port,
-    )
     try:
+        import uvicorn
+
+        app = create_companion_app(
+            registry,
+            workspace_id,
+            allowed_origins=origins,
+            pairing_manager=pairing,
+            port=args.port,
+        )
+        print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
+        print("Selected folder is held by an OS handle; access is read-only.")
+        print("Enter this one-time pairing code in the ODEI Studio web app:")
+        print(code)
+        print("The code expires in five minutes. Do not share it with anyone.")
         uvicorn.run(
             app,
             host="127.0.0.1",

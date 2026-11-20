@@ -144,3 +144,67 @@ def test_pairing_manager_expires_codes_and_tokens() -> None:
     assert manager.is_valid(token)
     now[0] += 21
     assert not manager.is_valid(token)
+
+
+def test_pairing_manager_rejects_non_ascii_and_rate_limits_failures() -> None:
+    manager = PairingManager(max_failed_attempts=2)
+    code = manager.issue_pairing_code()
+    assert manager.exchange("🔐", ORIGIN) is None
+    assert manager.exchange("wrong-one", ORIGIN) is None
+    assert manager.exchange(code, ORIGIN) is None
+
+
+def test_companion_rejects_non_origin_configuration(tmp_path) -> None:
+    import pytest
+
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    try:
+        with pytest.raises(ValueError):
+            create_companion_app(
+                registry,
+                workspace_id,
+                allowed_origins=["https://studio.example.test/untrusted-path"],
+            )
+    finally:
+        registry.close()
+
+
+def test_companion_rejects_path_traversal(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        paired = client.post(
+            "/v1/pair",
+            headers={"Origin": ORIGIN},
+            json={"code": code},
+        )
+        token = paired.json()["access_token"]
+        response = client.get(
+            "/v1/workspace/file",
+            params={"path": "../outside.txt"},
+            headers={"Origin": ORIGIN, "Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 400
+    finally:
+        registry.close()
+
+
+def test_companion_rejects_invalid_port(tmp_path) -> None:
+    import pytest
+
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    try:
+        with pytest.raises(ValueError):
+            create_companion_app(
+                registry,
+                workspace_id,
+                allowed_origins=[ORIGIN],
+                port=0,
+            )
+    finally:
+        registry.close()
