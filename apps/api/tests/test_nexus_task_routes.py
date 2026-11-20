@@ -60,6 +60,18 @@ class TaskStore:
             await self.audit.append(**audit_event)
         return current
 
+    async def list_events(self, *, organization_id, task_id, after_version=-1, limit=50):
+        task = await self.get(organization_id=organization_id, task_id=task_id)
+        if task is None:
+            return [], False
+        rows = [
+            {"event_id": f"event-{version}", "type": "task.status_changed",
+             "version": version, "from_status": "planning",
+             "to_status": "awaiting_approval", "occurred_at": datetime.now(timezone.utc)}
+            for version in range(4) if version > after_version
+        ]
+        return rows[:limit], len(rows) > limit
+
     async def get(self, *, organization_id, task_id):
         task = self.tasks.get(task_id)
         return task if task and task.organization_id == organization_id else None
@@ -223,3 +235,22 @@ def test_same_subject_from_different_issuer_cannot_read_task(route_state):
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-cross-issuer"
     )
     assert response.status_code == 404
+
+
+def test_task_events_are_project_authorized_and_cursor_paginated(route_state):
+    _, _, tasks = route_state
+    task = TaskRecord(
+        id="task-1", organization_id="org-1", project_id="project-1",
+        owner_id=identity_owner_key("https://identity.example/", "user-1"),
+        goal="Task events", plan="Plan", status=TaskStatus.AWAITING_APPROVAL, version=3,
+    )
+    tasks.tasks[task.id] = task
+    response = TestClient(app).get(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/events",
+        params={"after_version": 1, "limit": 2},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert [event["version"] for event in body["events"]] == [2, 3]
+    assert body["next_after_version"] == 3
+    assert body["has_more"] is False

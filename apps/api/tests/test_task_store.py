@@ -45,6 +45,22 @@ class FakeClient:
         return FakeSession(self.collections)
 
 
+class FakeCursor:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def sort(self, field, direction):
+        self.documents.sort(key=lambda row: row[field], reverse=direction < 0)
+        return self
+
+    def limit(self, count):
+        self.documents = self.documents[:count]
+        return self
+
+    async def to_list(self, length):
+        return deepcopy(self.documents[:length])
+
+
 class FakeCollection:
     def __init__(self):
         self.documents = {}
@@ -55,6 +71,16 @@ class FakeCollection:
     async def insert_one(self, document, session=None):
         key = document["_id"] if "_id" in document else document["event_id"]
         self.documents[key] = deepcopy(document)
+
+    def find(self, query):
+        minimum = query["version"]["$gt"]
+        rows = [
+            deepcopy(row) for row in self.documents.values()
+            if row.get("organization_id") == query["organization_id"]
+            and row.get("task_id") == query["task_id"]
+            and row.get("version", -1) > minimum
+        ]
+        return FakeCursor(rows)
 
     async def find_one(self, query):
         document = self.documents.get(query["_id"])
@@ -277,3 +303,32 @@ async def test_basic_task_create_rolls_back_when_audit_insert_fails():
         await store.create(make_task(), audit_event=audit_event())
     assert tasks.documents == {}
     assert events.documents == {}
+
+
+@pytest.mark.asyncio
+async def test_task_events_use_ordered_reconnectable_version_cursor():
+    store, _, _ = make_store()
+    await store.create_planned(make_task(), plan="Plan")
+    rows, has_more = await store.list_events(
+        organization_id="org-1", task_id="task-1", after_version=-1, limit=2
+    )
+    assert [row["version"] for row in rows] == [0, 1]
+    assert has_more is True
+    next_rows, next_has_more = await store.list_events(
+        organization_id="org-1", task_id="task-1", after_version=1, limit=2
+    )
+    assert [row["version"] for row in next_rows] == [2, 3]
+    assert next_has_more is False
+
+
+@pytest.mark.asyncio
+async def test_task_events_reject_invalid_cursor_and_limit():
+    store, _, _ = make_store()
+    with pytest.raises(ValueError, match="cursor or page size"):
+        await store.list_events(
+            organization_id="org-1", task_id="task-1", after_version=-2
+        )
+    with pytest.raises(ValueError, match="cursor or page size"):
+        await store.list_events(
+            organization_id="org-1", task_id="task-1", limit=101
+        )
