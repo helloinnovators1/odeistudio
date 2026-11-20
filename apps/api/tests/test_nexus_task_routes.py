@@ -191,7 +191,7 @@ def test_stale_approval_version_returns_conflict(route_state):
 
   
 def test_project_member_cannot_approve_another_users_task(route_state):
-    database, _, tasks = route_state
+    database, audit, tasks = route_state
     database.collections["projects"].document = {
         "organization_id": "org-1", "project_id": "project-1",
         "status": "active", "owner_issuer": "https://identity.example/",
