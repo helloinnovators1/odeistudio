@@ -95,7 +95,7 @@ The API now exposes the following project-scoped task routes. Every operation re
 | POST | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/approve` | Uses expected-version concurrency and records `approved`; it does not execute code. |
 | POST | `/organizations/{organization_id}/projects/{project_id}/tasks/{task_id}/cancel` | Uses expected-version concurrency to cancel a task. |
 
-Approval is now an explicit domain state between `awaiting_approval` and `executing`. The execution transition remains unavailable through HTTP until the controlled execution fabric exists. Task create/approve/cancel operations append audit records in the same MongoDB transaction as task state and lifecycle events; audit failure aborts the transaction. Task and task-event reads and authorization denials are audited before returning. Live MongoDB replica-set integration remains a release gate. Project creation and membership administration are still not exposed; project records must be provisioned by a trusted administrative process.
+Approval is now an explicit domain state between `awaiting_approval` and `executing`. The execution transition remains unavailable through HTTP until the controlled execution fabric exists. Task create/approve/cancel operations append audit records in the same MongoDB transaction as task state and lifecycle events; audit failure aborts the transaction. Task and task-event reads and authorization denials are audited before returning. Live MongoDB replica-set integration remains a release gate. Project creation, listing and owner-managed membership add/remove/list routes are now exposed. Organization membership provisioning/invitations, ownership transfer and arbitrary project roles remain unavailable.
 
 
 
