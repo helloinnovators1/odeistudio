@@ -38,11 +38,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mongo_client = client
     application.state.mongo_database = client[database_name] if client and database_name else None
     application.state.audit_event_store = None
-    if application.state.mongo_database is not None:
-        audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
-        await audit_store.initialize()
-        application.state.audit_event_store = audit_store
     try:
+        if application.state.mongo_database is not None:
+            audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
+            await audit_store.initialize()
+            application.state.audit_event_store = audit_store
         yield
     finally:
         if client is not None:
