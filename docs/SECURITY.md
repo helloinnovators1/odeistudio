@@ -41,3 +41,9 @@ Prepare procedures for credential compromise, tenant isolation breach, malicious
 
 ## Release gate
 No production release with known critical/high exploitable vulnerabilities, plaintext secret persistence, missing tenant authorization, unbounded agent execution or unverified destructive operations.
+
+
+### Workspace filesystem access
+- The read-only project scanner opens path components relative to a workspace directory descriptor with no-follow flags on supported POSIX systems, verifies regular-file handles and reads at most the configured byte limit. Listing excludes symbolic links and Windows reparse points/junctions where detectable.
+- Windows currently uses a path-based fallback with file-identity and post-open containment checks. Native Windows handle-relative traversal and reparse-point verification remain a prerequisite before treating concurrently mutable or hostile local workspaces as a production security boundary.
+- The scanner is not exposed over HTTP. Do not connect it to a remote client until authentication, organization/project ownership, consent, resource quotas and platform-specific handle tests are complete.
