@@ -94,5 +94,7 @@ No phase is complete because its screens exist. Each capability needs working be
 
 - Added Mongo-backed audit index initialization to API startup when a database is configured. Startup fails rather than serving an API without the configured audit collection/indexes; startup cleanup closes the HTTP and Mongo clients if initialization fails.
 - Wired the organization-membership route to append success, denial and malformed-record outcomes before returning a result. Audit storage absence or append failure returns 503 (`AUDIT_STORE_UNAVAILABLE`); authorization results are not returned unaudited.
-- Added route tests for successful, denied and malformed-record audit events, plus missing/failing audit persistence. These tests are committed but awaiting CI on the latest branch head; do not count them as verified until the run completes.
+- Added route tests for successful, denied and malformed-record audit events, plus missing/failing audit persistence. These tests passed in API/web CI [44778664819](https://github.com/helloinnovators1/odeistudio/actions/runs/44778664819) on commit `6405e81acbb0c0cec82a7a875ab0ccbf004b544a`.
 - This is only a narrow membership authorization audit integration. Authentication failures, companion pairing/revocation, task and tool actions, audit querying/export, database role-level immutability, retention and replica-set integration tests remain open.
+
+- Corrected-head security workflow [44778654256](https://github.com/helloinnovators1/odeistudio/actions/runs/44778654256) passed all four jobs: Gitleaks, pip-audit, npm audit and CodeQL Python/TypeScript.
