@@ -122,3 +122,10 @@ The project-scoped task API records successful task reads and task-event reads b
 
 
 Task lifecycle transitions emit semantic event types for approval and terminal outcomes (`task.approved`, `task.cancelled`, `task.completed`, `task.failed`, `task.expired`) instead of collapsing these into a generic status-changed event. Intermediate transitions continue to use `task.status_changed` with from/to status fields.
+
+
+## Project lifecycle API
+
+The API now provides tenant-scoped project creation and listing, plus project-owner membership administration. Any active organization member may create a project and becomes its owner. Project listing is limited to active projects owned by or actively shared with the caller. Only the project owner can add/remove project members, and a target must already be an active member of the same organization. The owner is implicit (not duplicated in the membership collection); removals are soft deactivations.
+
+Project and membership mutations append their audit record in the same MongoDB transaction as the data change. Unique compound indexes enforce organization/project and organization/project/identity uniqueness. This is an initial project lifecycle contract, not a complete organization/role system: provisioning, invitations, ownership transfer, custom roles and admin workflows remain open. The routes do not grant file-write or command-execution capabilities.
