@@ -18,7 +18,7 @@ The Master Admin Console is the overall management and configuration authority f
 Provider operations must use supported APIs and permission scopes. The MAC must never imply unsupported capabilities or expose secret values after saving them.
 
 ## Current status
-The repository now contains the product/architecture documentation and an initial FastAPI API foundation with liveness/readiness endpoints and automated health tests. The application is not yet a complete coding agent or production-ready platform; each capability must be built and verified incrementally. UI prototypes are not evidence that backend services are operational.
+The repository now contains the product/architecture documentation, a FastAPI foundation, bounded project-file utilities, a Responses API planning service, guarded task lifecycle, transactional MongoDB task/event persistence, MongoDB readiness checks and an OIDC/JWKS verification foundation. The latest verified API CI run passed Ruff and 44 tests. Authentication is not yet connected to a confirmed ODID issuer or protected workspace/task routes. The application is not yet a complete coding agent or production-ready platform; each capability must be built and verified incrementally. UI prototypes are not evidence that backend services are operational.
 
 ## Security
 A database credential was exposed in project setup material. Assume it is compromised and rotate it immediately in MongoDB Atlas. Never commit secrets. Store secret values in a managed secret store and use server-only environment variables for runtime injection.
@@ -35,7 +35,7 @@ A database credential was exposed in project setup material. Assume it is compro
 
 ## Documentation
 
-Start with [`docs/INDEX.md`](docs/INDEX.md) for the complete documentation map and [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) for the full product ecosystem. The docs cover NEXUS, workspace architecture, MAC, MAD, data model, API/events, security, integrations, deployment, testing, roadmap and safe desktop project ingestion.
+Start with [`docs/INDEX.md`](docs/INDEX.md) for the complete documentation map and [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) for the full product ecosystem. The audited upstream ecosystem specifications and historical remediation documents are preserved in [`docs/upstream/INDEX.md`](docs/upstream/INDEX.md), with current migration decisions in [`docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`](docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for implementation status. Documentation describes intended behavior; it does not imply that a feature is already implemented or operational.
 
@@ -53,4 +53,4 @@ python -m pytest
 uvicorn odei_api.main:app --reload
 ```
 
-The health endpoints are `/api/v1/health/live` and `/api/v1/health/ready`. Readiness intentionally reports `unknown` until real dependency checks are implemented.
+The health endpoints are `/api/v1/health/live` and `/api/v1/health/ready`. Readiness performs a bounded MongoDB ping and returns HTTP 503 when MongoDB is not configured or unavailable.
