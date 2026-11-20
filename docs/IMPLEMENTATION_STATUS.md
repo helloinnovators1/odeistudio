@@ -118,5 +118,7 @@
 
 - Added API-lifecycle initialization for the Mongo audit event store and its indexes whenever MongoDB is configured. Initialization occurs inside the lifecycle cleanup guard so failures close initialized clients.
 - Added fail-closed audit appends for organization-membership success, missing-membership denial and malformed membership records. Audit absence or append failure returns 503 instead of returning an unaudited authorization decision.
-- Added tests for all three decision outcomes and audit-store missing/failure cases. These are committed; the latest-head CI run is the verification gate.
+- Added tests for all three decision outcomes and audit-store missing/failure cases. These passed in API/web CI [44778664819](https://github.com/helloinnovators1/odeistudio/actions/runs/44778664819) on commit `6405e81acbb0c0cec82a7a875ab0ccbf004b544a`.
 - Updated API, security and NEXUS documentation to state the exact scope and limitations. This does not complete audit integration for authentication, companion pairing/revocation, task/tool actions or MAC/MAD. MongoDB role-level immutability, replica-set integration tests, retention and audit query/export remain unimplemented.
+
+- Security CI [44778654256](https://github.com/helloinnovators1/odeistudio/actions/runs/44778654256) passed Gitleaks, Python dependency audit, web dependency audit and CodeQL Python/TypeScript on the same code commit.
