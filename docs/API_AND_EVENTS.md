@@ -35,7 +35,7 @@ Task events should be durable and ordered per task. Suggested event types:
 - `task.started`, `tool.started`, `tool.completed`, `tool.failed`
 - `task.validation.started`, `task.validation.completed`
 - `task.repair.started`, `task.review.ready`
-- `task.completed`, `task.failed`, `task.cancelled`
+- `task.approved`, `task.completed`, `task.failed`, `task.cancelled`
 
 Every event includes event ID, task ID, tenant ID, sequence/version, timestamp, schema version, trace ID and redacted payload. The initial Mongo implementation stores task state in `tasks` and append-only state changes in `task_events`, with a unique `(organization_id, task_id, version)` index. Task state mutation and event insertion must commit in the same MongoDB transaction; this requires a replica set or sharded cluster with transaction support. Clients reconnect using a durable cursor; do not rely on an ephemeral websocket as the only record. Define event retention, export and archival policies before production.
 
