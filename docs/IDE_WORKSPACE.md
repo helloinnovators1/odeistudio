@@ -65,4 +65,4 @@ The UI must not imply that a disabled capability is operational. The NEXUS compo
 
 ## Verification
 
-The preference and shortcut helpers have Vitest coverage. The web CI workflow runs tests and a production TypeScript/Vite build. Current-head verification must be read from the linked GitHub Actions run, not inferred from the presence of this document.
+The preference and shortcut helpers have Vitest coverage. API/web CI [44803547712](https://github.com/helloinnovators1/odeistudio/actions/runs/44803547712) passed all six jobs on UI code commit `d6aa775abd516ea4aa308b43b224fac995c30b30`; the web job reported 9 Vitest tests passed and a successful TypeScript/Vite production build. Security CI on the later documentation head is still running CodeQL; dependency audits and secret scanning have passed.
