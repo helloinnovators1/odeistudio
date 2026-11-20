@@ -78,7 +78,6 @@ class MongoTaskStore:
         async with self._client.start_session() as session, await session.start_transaction():
             await self._collection.insert_one(document, session=session)
             await self._events.insert_one(event, session=session)
-            await self._append_audit_in_transaction(audit_event, session)
         return self._to_record(document)
 
     async def create_planned(
@@ -192,6 +191,7 @@ class MongoTaskStore:
                     "Task changed concurrently; reload before retrying"
                 )
             await self._events.insert_one(event, session=session)
+            await self._append_audit_in_transaction(audit_event, session)
         return self._to_record(document)
 
     @staticmethod
