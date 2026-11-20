@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-import json
 from enum import Enum
+import json
 
 
 class TaskStatus(str, Enum):

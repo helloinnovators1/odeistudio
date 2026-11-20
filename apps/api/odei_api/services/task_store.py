@@ -50,7 +50,9 @@ class MongoTaskStore:
             [("organization_id", 1), ("project_id", 1), ("occurred_at", -1)]
         )
 
-    async def create(self, task: TaskRecord) -> TaskRecord:
+    async def create(
+        self, task: TaskRecord, *, audit_event: Mapping[str, Any] | None = None
+    ) -> TaskRecord:
         now = datetime.now(timezone.utc)
         document = {
             "_id": task.id,
@@ -78,6 +80,7 @@ class MongoTaskStore:
         async with self._client.start_session() as session, await session.start_transaction():
             await self._collection.insert_one(document, session=session)
             await self._events.insert_one(event, session=session)
+            await self._append_audit_in_transaction(audit_event, session)
         return self._to_record(document)
 
     async def create_planned(

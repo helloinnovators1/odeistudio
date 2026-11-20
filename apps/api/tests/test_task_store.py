@@ -257,3 +257,23 @@ async def test_task_transition_commits_audit_and_state_together():
     assert tasks.documents["task-1"]["status"] == "context_gathering"
     assert len(events.documents) == 2
     assert len(audit_rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_basic_task_create_commits_audit_with_task_and_event():
+    store, tasks, events = make_store()
+    await store.create(make_task(), audit_event=audit_event())
+    assert tasks.documents["task-1"]["status"] == "created"
+    assert len(events.documents) == 1
+    audit_rows = list(store._audit_store._collection.documents.values())
+    assert len(audit_rows) == 1
+    assert audit_rows[0]["action"] == "nexus.task.create"
+
+
+@pytest.mark.asyncio
+async def test_basic_task_create_rolls_back_when_audit_insert_fails():
+    store, tasks, events = make_store(audit_collection=FailingAuditCollection())
+    with pytest.raises(RuntimeError, match="audit store unavailable"):
+        await store.create(make_task(), audit_event=audit_event())
+    assert tasks.documents == {}
+    assert events.documents == {}
