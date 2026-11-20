@@ -34,12 +34,11 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 _SECRET_NAME = r"""["']?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?access[_-]?key|aws[_-]?secret[_-]?access[_-]?key|db[_-]?password|password|passwd|secret)\b["']?\s*[:=]\s*"""
 _QUOTED_SECRET_ASSIGNMENT = re.compile(
-    r"(?im)(" + _SECRET_NAME + r")([\"'])(.{8,}?)\\2"
+    r"(?im)(" + _SECRET_NAME + r")(["'])(.{8,}?)\2"
 )
 _UNQUOTED_SECRET_ASSIGNMENT = re.compile(
-    r"(?im)(" + _SECRET_NAME + r")([A-Za-z0-9_./+=:-]{12,})(?=\\s|[,;}#]|$)"
+    r"(?im)(" + _SECRET_NAME + r")([A-Za-z0-9_./+=:-]{12,})(?=\s|[,;}#]|$)"
 )
-
 
 def redact_secrets(text: str) -> str:
     """Redact common credential formats; this is defense-in-depth, not DLP."""
