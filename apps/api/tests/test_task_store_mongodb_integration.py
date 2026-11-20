@@ -178,7 +178,7 @@ async def test_project_membership_and_audit_share_real_mongodb_transaction():
              ("identity_issuer", 1), ("identity_subject", 1)], unique=True
         )
 
-        async with client.start_session() as session, session.start_transaction():
+        async with client.start_session() as session, await session.start_transaction():
             await database["projects"].insert_one(project, session=session)
             await audit_store.append(**audit_event, session=session)
         assert await database["projects"].count_documents({"project_id": project_id}) == 1
