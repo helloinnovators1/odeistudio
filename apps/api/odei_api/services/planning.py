@@ -8,7 +8,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-
 MAX_TASK_CHARS = 8_000
 MAX_CONTEXT_CHARS = 24_000
 
