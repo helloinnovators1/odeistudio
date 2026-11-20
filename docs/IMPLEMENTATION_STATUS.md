@@ -1,5 +1,12 @@
 # Implementation Status
 
+## Latest continuation — 2026-11-20 (hierarchical Explorer)
+
+- Added `workspace-tree.ts`, a deterministic tree builder over the already-authorized companion listing. It groups nested relative paths, sorts folders before files, preserves file metadata and rejects absolute, malformed, dot-segment and backslash paths.
+- Replaced the flat Explorer listing with nested folder/file rows in the Monaco workspace. Folders can be collapsed; active file highlighting and file sizes are retained; a non-empty path filter reveals matching files and expands their ancestors. The implementation performs no additional filesystem reads and does not change companion permissions.
+- Added Vitest coverage for nested grouping, deterministic ordering, filtered subsets, metadata preservation and malformed path rejection.
+- Updated `docs/IDE_WORKSPACE.md` and this status record. The increment is committed on the feature branch; CI must pass before it is called verified. No local test execution was available in this hosted repository-editing session.
+
 ## Latest continuation — 2026-11-20
 
 - Branch HEAD before this continuation: `67e0cd28f1f1de42aa9c8e57130f7cc725e5f965`. API/web CI [44831115598](https://github.com/helloinnovators1/odeistudio/actions/runs/44831115598) and Security Scanning [44831115568](https://github.com/helloinnovators1/odeistudio/actions/runs/44831115568) both completed successfully on that exact commit.
