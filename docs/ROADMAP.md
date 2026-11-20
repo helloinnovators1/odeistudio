@@ -150,3 +150,5 @@ No phase is complete because its screens exist. Each capability needs working be
 - Full API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821) passed all six jobs on `8fe8fd1f6f924919cb922e96a5c255017abb5976`: four OS/Python matrix jobs, web tests/build, and real MongoDB 7.0 replica-set integration. The integration test reported `1 passed in 0.24s`.
 
 - Readiness tests passed in API CI [44795590882](https://github.com/helloinnovators1/odeistudio/actions/runs/44795590882) on commit `18b6f31c3c31695d092a0ef5e6a7936f5337f0c1`; the full six-job run passed the four-way Python matrix, web tests/build and MongoDB replica-set integration.
+
+- [x] Emit semantic task lifecycle events for approval, cancellation, completion, failure and expiry; intermediate transitions use `task.status_changed`. Parameterized tests passed in API CI [44796392625](https://github.com/helloinnovators1/odeistudio/actions/runs/44796392625); security CI [44796427460](https://github.com/helloinnovators1/odeistudio/actions/runs/44796427460) passed all four checks.
