@@ -14,7 +14,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 
 ## Product and platform
 - [NEXUS agent specification](NEXUS.md) — AI software engineering agent, tools, loop and runtime.
-- [IDE workspace implementation](IDE_WORKSPACE.md) — Monaco shell, NEXUS chat-panel side preference, shortcuts and explicit capability boundaries.
+- [IDE workspace implementation](IDE_WORKSPACE.md) — Monaco shell, NEXUS chat-panel side preference, shortcuts and explicit capability boundaries.\n- [NEXUS chat API](NEXUS_CHAT_API.md) — authenticated project-scoped chat contract, consent, redaction, audit and read-only limits.
 - [Master Admin Console requirements](MAC_REQUIREMENTS.md) — central configuration and governance plane.
 - [Master Admin Dashboard](MAD.md) — operational and executive visibility.
 - [Data model](DATA_MODEL.md) — canonical entities, tenancy and persistence rules.
