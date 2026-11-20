@@ -141,3 +141,40 @@ def test_organization_membership_rejects_whitespace_padded_tenant_id() -> None:
         app.dependency_overrides.pop(get_current_principal, None)
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "INVALID_ORGANIZATION_ID"
+
+
+
+def test_organization_membership_fails_closed_on_malformed_record() -> None:
+    previous_database = getattr(app.state, "mongo_database", None)
+    app.state.mongo_database = FakeDatabase(FakeMembershipCollection({"status": "active"}))
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="user-123", issuer="https://identity.example.test/"
+    )
+    try:
+        response = client.get("/api/v1/organizations/org-1/membership")
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        app.state.mongo_database = previous_database
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "MEMBERSHIP_RECORD_INVALID"
+
+
+def test_organization_membership_fails_closed_on_database_error() -> None:
+    from pymongo.errors import ServerSelectionTimeoutError
+
+    class UnavailableCollection:
+        async def find_one(self, query):
+            raise ServerSelectionTimeoutError("database unavailable")
+
+    previous_database = getattr(app.state, "mongo_database", None)
+    app.state.mongo_database = FakeDatabase(UnavailableCollection())
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="user-123", issuer="https://identity.example.test/"
+    )
+    try:
+        response = client.get("/api/v1/organizations/org-1/membership")
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        app.state.mongo_database = previous_database
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "MEMBERSHIP_STORE_UNAVAILABLE"
