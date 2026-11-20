@@ -108,28 +108,28 @@ class MongoTaskStore:
         }
         async with self._client.start_session() as session, await session.start_transaction():
             document = await self._collection.find_one_and_update(
-                    {
-                        "_id": task_id,
-                        "organization_id": organization_id,
-                        "version": expected_version,
-                        "status": current.status.value,
+                {
+                    "_id": task_id,
+                    "organization_id": organization_id,
+                    "version": expected_version,
+                    "status": current.status.value,
+                },
+                {
+                    "$set": {
+                        "status": updated.status.value,
+                        "plan": updated.plan,
+                        "updated_at": occurred_at,
                     },
-                    {
-                        "$set": {
-                            "status": updated.status.value,
-                            "plan": updated.plan,
-                            "updated_at": occurred_at,
-                        },
-                        "$inc": {"version": 1},
-                    },
-                    return_document=ReturnDocument.AFTER,
-                    session=session,
+                    "$inc": {"version": 1},
+                },
+                return_document=ReturnDocument.AFTER,
+                session=session,
+            )
+            if document is None:
+                raise InvalidTaskTransition(
+                    "Task changed concurrently; reload before retrying"
                 )
-                if document is None:
-                    raise InvalidTaskTransition(
-                        "Task changed concurrently; reload before retrying"
-                    )
-                await self._events.insert_one(event, session=session)
+            await self._events.insert_one(event, session=session)
         return self._to_record(document)
 
     @staticmethod
