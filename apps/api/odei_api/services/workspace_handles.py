@@ -41,6 +41,7 @@ class _WorkspaceGrant:
     platform: str
     handle: object
     kernel32: object | None = None
+    label: str = "Selected folder"
     lock: threading.RLock = field(default_factory=threading.RLock)
 
 
@@ -61,7 +62,10 @@ class WorkspaceHandleRegistry:
             from odei_api.services.windows_file_handles import open_directory_handle
 
             kernel32, handle = open_directory_handle(selected_path)
-            grant = _WorkspaceGrant(platform="nt", handle=handle, kernel32=kernel32)
+            label = Path(selected_path).name or "Selected folder"
+            grant = _WorkspaceGrant(
+                platform="nt", handle=handle, kernel32=kernel32, label=label
+            )
         elif os.name == "posix":
             flags = (
                 os.O_RDONLY
@@ -76,7 +80,8 @@ class WorkspaceHandleRegistry:
             except Exception:
                 os.close(handle)
                 raise
-            grant = _WorkspaceGrant(platform="posix", handle=handle)
+            label = Path(selected_path).name or "Selected folder"
+            grant = _WorkspaceGrant(platform="posix", handle=handle, label=label)
         else:
             raise WorkspaceHandleError("This platform has no supported workspace handle")
 
@@ -128,6 +133,11 @@ class WorkspaceHandleRegistry:
             return read_project_text_file_from_posix_fd(
                 int(grant.handle), relative_path, max_bytes=max_bytes
             )
+
+    def get_label(self, workspace_id: str) -> str:
+        """Return only the selected folder's basename, never its absolute path."""
+        with self._borrow(workspace_id) as grant:
+            return grant.label
 
     def revoke(self, workspace_id: str) -> bool:
         with self._lock:
