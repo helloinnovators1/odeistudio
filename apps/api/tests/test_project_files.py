@@ -266,7 +266,7 @@ def test_windows_retained_root_handle_survives_path_replacement(tmp_path: Path) 
         selected.rename(moved)
         selected.mkdir()
         (selected / "attacker.py").write_text("replacement", encoding="utf-8")
-        assert {item.path for item in list_project_files_from_windows_handle(root_handle)} == {
+        assert {item.path for item in list_project_files_from_windows_handle(root_handle, kernel32=kernel32)} == {
             "main.py"
         }
         assert read_project_text_file_from_windows_handle(root_handle, "main.py") == "original"
