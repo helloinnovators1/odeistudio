@@ -58,3 +58,9 @@
 6. Integrate the upstream React/TypeScript/Monaco Agents and Editor experience after service boundaries are settled.
 7. Implement Studio MAC/MAD APIs and surfaces with live data and role-gated operations.
 8. Integrate ODEI AI gateway, GitHub App and hosting/DNS adapters using verified capability contracts.
+
+
+## Security automation added in the current continuation
+- Added `.github/workflows/security.yml` on the Windows-safe-scanner feature branch. It schedules Gitleaks secret scanning, a strict `pip-audit` dependency audit and GitHub CodeQL Python analysis on pushes, pull requests, weekly schedule and manual dispatch.
+- Added `.github/dependabot.yml` for weekly GitHub Actions and Python dependency update proposals.
+- These workflows are committed but their first run has not yet been observed in this continuation. Do not mark the repository clean or vulnerability-free until the scanners complete and findings are triaged.
