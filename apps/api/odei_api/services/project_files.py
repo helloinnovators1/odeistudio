@@ -238,6 +238,7 @@ def _list_project_files_windows(
     max_files: int,
     max_total_bytes: int,
     root_handle=None,
+    kernel32=None,
 ) -> list[ProjectFile]:
     """Enumerate a Windows workspace using held directory handles only."""
     from odei_api.services.windows_file_handles import (
@@ -253,6 +254,8 @@ def _list_project_files_windows(
     owns_root_handle = root_handle is None
     if owns_root_handle:
         kernel32, root_handle = open_directory_handle(workspace)
+    elif kernel32 is None:
+        raise ProjectFileError("A retained Windows root handle requires its owning kernel32 API reference")
     found: list[ProjectFile] = []
     total_bytes = 0
 
@@ -508,6 +511,7 @@ def list_project_files(
 def list_project_files_from_windows_handle(
     root_handle,
     *,
+    kernel32,
     max_files: int = DEFAULT_MAX_FILES,
     max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
 ) -> list[ProjectFile]:
@@ -517,6 +521,7 @@ def list_project_files_from_windows_handle(
     return _list_project_files_windows(
         Path("."), max_files=max_files, max_total_bytes=max_total_bytes,
         root_handle=root_handle,
+        kernel32=kernel32,
     )
 
 

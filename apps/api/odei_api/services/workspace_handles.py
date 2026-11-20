@@ -114,7 +114,8 @@ class WorkspaceHandleRegistry:
         with self._borrow(workspace_id) as grant:
             if grant.platform == "nt":
                 return list_project_files_from_windows_handle(
-                    grant.handle, max_files=max_files, max_total_bytes=max_total_bytes
+                    grant.handle, kernel32=grant.kernel32,
+                    max_files=max_files, max_total_bytes=max_total_bytes
                 )
             return list_project_files_from_posix_fd(
                 int(grant.handle), max_files=max_files, max_total_bytes=max_total_bytes
