@@ -1,7 +1,7 @@
 """FastAPI application entry point and dependency lifecycle."""
-from contextlib import asynccontextmanager
 import logging
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
