@@ -24,7 +24,7 @@
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
 
 ## Not yet verified
-- Python tests and Ruff linting are configured in GitHub Actions. The 30-test run on `cde52ea2e9b719fdd13727358bdd6070c6a92a89` passed, but the later Ruff-enabled runs have failed at the import-order gate in `odei_api/services/planning.py`; the test step was skipped. A diagnostic CI step has been added to print Ruff's exact proposed diff. Run `44737608056` is in progress; do not mark lint or the current full CI green until a subsequent run completes successfully.
+- Python tests and Ruff linting are configured in GitHub Actions. GitHub Actions run [44737685982](https://github.com/helloinnovators1/odeistudio/actions/runs/44737685982) passed on commit `9b571533f9d38c915aa0458b5a20d3bba0960459`: Ruff reported `All checks passed!` and pytest reported `30 passed, 1 warning`. The lint issue was caused by missing blank-line separation after the `__future__` import; CI's temporary `--diff` diagnostic exposed the exact fix. The diagnostic step has been removed from the workflow; the workflow-cleanup commit is triggering a fresh confirmation run.
 - No frontend application, authentication, verified tenant membership service, live Atlas connection, secret vault, sandbox runtime, GitHub App, MAC UI or MAD UI has been implemented in this work. The task store requires an authenticated caller to enforce organization membership before use. The planner is a single Responses API planning call, not yet a full autonomous agent loop.
 - Project-file utilities and the model planner are not exposed through HTTP. Authentication, tenant/workspace authorization and a safe task persistence layer are prerequisites. The scanner currently applies common exclusions and .gitignore rules but still needs cross-platform race-resistant file-handle hardening before network exposure.
 - No Windows desktop folders have been scanned; Chrome extension access does not provide unrestricted local filesystem access.
@@ -32,7 +32,7 @@
 
 ## Next implementation sequence
 0. Resolve the exact Ruff import-format diff from CI and restore a clean lint gate. Reconcile upstream TypeScript/Next.js/path-bridge assets with the Python backend before duplicating services.
-1. Confirm the queued CI run passes and fix any remaining test failures.
+1. Confirm the clean CI workflow (without the temporary diagnostic step) passes and fix any remaining test failures.
 2. Harden project file reads against filesystem race conditions and add workspace ownership boundaries.
 3. Implement authentication, organization tenancy and authorization before exposing project tools.
 4. Add durable task records and task events.
