@@ -110,6 +110,27 @@ def build_patch_proposal(
             raise PatchProposalError("Case-insensitive duplicate paths are not allowed")
         normalized[key] = parts
 
+    base_paths: dict[str, str] = {}
+    for base_path in base_files:
+        base_parts = _validate_path(base_path)
+        base_key = base_path.casefold()
+        if base_key in base_paths:
+            raise PatchProposalError("Base snapshot contains case-insensitive duplicate paths")
+        base_paths[base_key] = base_path
+    for key, parts in normalized.items():
+        existing_path = base_paths.get(key)
+        if existing_path is not None and existing_path != next(
+            path for path in changes if path.casefold() == key
+        ):
+            raise PatchProposalError("Changed path collides with an existing case-insensitive path")
+        for index in range(1, len(parts)):
+            if "/".join(parts[:index]).casefold() in base_paths:
+                raise PatchProposalError("A changed path has an existing file as a parent")
+        if key not in base_paths and any(
+            candidate.startswith(key + "/") for candidate in base_paths
+        ):
+            raise PatchProposalError("A new file path would replace an existing directory")
+
     # A file cannot simultaneously be another changed file's parent directory.
     keys = set(normalized)
     for key, parts in normalized.items():
