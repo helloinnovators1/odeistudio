@@ -9,13 +9,14 @@ import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 from pymongo.errors import PyMongoError
 from starlette.concurrency import run_in_threadpool
 
 from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
+from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import (
@@ -36,6 +37,54 @@ class CreateProjectTaskRequest(BaseModel):
     task: str = Field(min_length=1, max_length=8_000)
     project_context: str = Field(default="", max_length=24_000)
     cloud_model_consent: StrictBool
+
+
+class NexusChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    messages: list[dict[str, StrictStr]] = Field(min_length=1, max_length=20)
+    workspace_files: list[dict[str, StrictStr]] = Field(default_factory=list, max_length=5)
+    cloud_model_consent: StrictBool
+
+
+async def _append_nexus_chat_audit(
+    request: Request,
+    principal: Principal,
+    organization_id: str,
+    project_id: str,
+    *,
+    outcome: str,
+    message_count: int,
+    file_count: int,
+    model: str | None = None,
+) -> None:
+    """Audit chat access without recording prompts, source text or model output."""
+    store = getattr(request.app.state, "audit_event_store", None)
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is not available."},
+        )
+    metadata = {"message_count": message_count, "workspace_file_count": file_count}
+    if model:
+        metadata["model"] = model
+    try:
+        await store.append(
+            organization_id=organization_id,
+            actor_issuer=principal.issuer,
+            actor_subject=principal.subject,
+            action="nexus.chat.request",
+            target_type="project",
+            target_id=project_id,
+            outcome=outcome,
+            request_id=uuid4().hex,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger.error("NEXUS chat audit append failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Chat audit storage is temporarily unavailable."},
+        ) from exc
 
 
 class TaskTransitionRequest(BaseModel):
@@ -344,3 +393,104 @@ async def cancel_project_task(
 ) -> dict:
     """Cancel an uncompleted task with optimistic concurrency control."""
     return await _transition_project_task(request, organization_id, project_id, task_id, payload, principal, TaskStatus.CANCELLED)
+
+
+@router.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/chat",
+    tags=["nexus"],
+)
+async def nexus_project_chat(
+    payload: NexusChatRequest,
+    request: Request,
+    organization_id: str = Path(min_length=1, max_length=128),
+    project_id: str = Path(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    """Authenticated, project-authorized, read-only NEXUS chat.
+
+    The browser carries bounded conversation history. Selected file excerpts are
+    sent only when the user explicitly consents to cloud-model processing. No
+    tools, filesystem writes, command execution or server-side conversation
+    persistence are enabled by this endpoint.
+    """
+    if organization_id != organization_id.strip() or project_id != project_id.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."},
+        )
+    if payload.cloud_model_consent is not True:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending chat or workspace data to the cloud model."},
+        )
+    try:
+        await _authorize_project(request, organization_id, project_id, principal)
+    except PyMongoError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "PROJECT_STORE_UNAVAILABLE", "message": "Project authorization storage is temporarily unavailable."},
+        ) from exc
+
+    if not payload.messages or payload.messages[-1].get("role") != "user":
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_CHAT_HISTORY", "message": "The final conversation message must be from the user."},
+        )
+    await _append_nexus_chat_audit(
+        request, principal, organization_id, project_id,
+        outcome="started", message_count=len(payload.messages),
+        file_count=len(payload.workspace_files),
+    )
+    try:
+        client, model = get_openai_client()
+        result = await run_in_threadpool(
+            run_nexus_chat,
+            client,
+            model=model,
+            messages=payload.messages,
+            workspace_files=payload.workspace_files,
+        )
+    except ModelConfigurationError as exc:
+        await _append_nexus_chat_audit(
+            request, principal, organization_id, project_id,
+            outcome="failure", message_count=len(payload.messages),
+            file_count=len(payload.workspace_files),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."},
+        ) from exc
+    except NexusChatError as exc:
+        await _append_nexus_chat_audit(
+            request, principal, organization_id, project_id,
+            outcome="failure", message_count=len(payload.messages),
+            file_count=len(payload.workspace_files),
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_CHAT_REQUEST", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        logger.warning("NEXUS chat provider failed: %s", type(exc).__name__)
+        await _append_nexus_chat_audit(
+            request, principal, organization_id, project_id,
+            outcome="failure", message_count=len(payload.messages),
+            file_count=len(payload.workspace_files),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "NEXUS_CHAT_UNAVAILABLE", "message": "NEXUS chat is temporarily unavailable."},
+        ) from exc
+
+    await _append_nexus_chat_audit(
+        request, principal, organization_id, project_id,
+        outcome="success", message_count=len(payload.messages),
+        file_count=len(payload.workspace_files), model=result.model,
+    )
+    return {
+        "answer": result.answer,
+        "model": result.model,
+        "read_only": True,
+        "tools_executed": 0,
+        "conversation_persisted": False,
+    }
