@@ -231,6 +231,92 @@ def _ignored_by_gitignore(root: Path, directory: Path, name: str, *, is_dir: boo
     return is_ignored
 
 
+
+def _list_project_files_windows(
+    workspace: Path,
+    *,
+    max_files: int,
+    max_total_bytes: int,
+) -> list[ProjectFile]:
+    """Enumerate a Windows workspace using held directory handles only."""
+    from odei_api.services.windows_file_handles import (
+        FILE_ATTRIBUTE_DIRECTORY,
+        FILE_ATTRIBUTE_REPARSE_POINT,
+        close_directory_handle,
+        iter_directory_entries,
+        open_child_directory_handle,
+        open_directory_handle,
+        read_child_text,
+    )
+
+    kernel32, root_handle = open_directory_handle(workspace)
+    found: list[ProjectFile] = []
+    total_bytes = 0
+
+    def walk(
+        directory_handle,
+        relative_parts: tuple[str, ...],
+        inherited_specs: list[tuple[tuple[str, ...], GitIgnoreSpec]],
+    ) -> bool:
+        nonlocal total_bytes
+        current_specs = list(inherited_specs)
+        ignore_text = read_child_text(directory_handle, ".gitignore")
+        if ignore_text is not None:
+            current_specs.append(
+                (relative_parts, GitIgnoreSpec.from_lines(ignore_text.splitlines()))
+            )
+
+        entries = sorted(
+            iter_directory_entries(directory_handle),
+            key=lambda item: item[0].casefold(),
+        )
+        for name, attributes, size in entries:
+            if name in {".", ".."}:
+                continue
+            parts = (*relative_parts, name)
+            if _is_excluded(parts):
+                continue
+            is_directory = bool(attributes & FILE_ATTRIBUTE_DIRECTORY)
+            if attributes & FILE_ATTRIBUTE_REPARSE_POINT:
+                continue
+
+            ignored = False
+            for prefix, spec in current_specs:
+                relative_to_rule = PurePosixPath(*parts[len(prefix):]).as_posix()
+                if is_directory:
+                    relative_to_rule += "/"
+                if spec.match_file(relative_to_rule):
+                    ignored = True
+            if ignored:
+                continue
+
+            if is_directory:
+                child_handle = None
+                try:
+                    child_handle = open_child_directory_handle(directory_handle, name)
+                    if not walk(child_handle, parts, current_specs):
+                        return False
+                except (OSError, UnsafeProjectPath):
+                    continue
+                finally:
+                    if child_handle is not None:
+                        close_directory_handle(kernel32, child_handle)
+                continue
+
+            if total_bytes + size > max_total_bytes:
+                return False
+            found.append(ProjectFile(path=PurePosixPath(*parts).as_posix(), size=size))
+            total_bytes += size
+            if len(found) >= max_files:
+                return False
+        return True
+
+    try:
+        walk(root_handle, (), [])
+        return found
+    finally:
+        close_directory_handle(kernel32, root_handle)
+
 def list_project_files(
     root: str | Path,
     *,
@@ -241,6 +327,10 @@ def list_project_files(
     if max_files < 1 or max_total_bytes < 1:
         raise ValueError("max_files and max_total_bytes must be positive")
     workspace = _workspace_root(root)
+    if os.name == "nt":
+        return _list_project_files_windows(
+            workspace, max_files=max_files, max_total_bytes=max_total_bytes
+        )
     found: list[ProjectFile] = []
     total_bytes = 0
 

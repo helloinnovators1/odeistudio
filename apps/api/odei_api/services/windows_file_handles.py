@@ -208,3 +208,159 @@ def open_readonly_file(root: str | Path, parts: tuple[str, ...]) -> tuple[int, o
         for handle in reversed(directories):
             kernel32.CloseHandle(handle)
         kernel32.CloseHandle(root_handle)
+
+
+# FILE_INFO_BY_HANDLE_CLASS values from winbase.h.
+_FILE_ID_BOTH_DIRECTORY_INFO = 10
+_FILE_ID_BOTH_DIRECTORY_RESTART_INFO = 11
+_ERROR_NO_MORE_FILES = 18
+_DIRECTORY_ENTRY_FIXED_SIZE = 104
+
+
+class _FileIdBothDirInfo(ctypes.Structure):
+    _fields_ = [
+        ("NextEntryOffset", wintypes.DWORD),
+        ("FileIndex", wintypes.DWORD),
+        ("CreationTime", ctypes.c_longlong),
+        ("LastAccessTime", ctypes.c_longlong),
+        ("LastWriteTime", ctypes.c_longlong),
+        ("ChangeTime", ctypes.c_longlong),
+        ("EndOfFile", ctypes.c_longlong),
+        ("AllocationSize", ctypes.c_longlong),
+        ("FileAttributes", wintypes.DWORD),
+        ("FileNameLength", wintypes.DWORD),
+        ("EaSize", wintypes.DWORD),
+        ("ShortNameLength", ctypes.c_byte),
+        ("ShortName", wintypes.WCHAR * 12),
+        ("FileId", ctypes.c_longlong),
+        ("FileName", wintypes.WCHAR * 1),
+    ]
+
+
+def open_directory_handle(path: str | Path):
+    """Open a selected directory without following its final reparse point."""
+    if os.name != "nt":
+        raise OSError("Native Windows handles are only available on Windows")
+    kernel32, _ = _apis()
+    handle = kernel32.CreateFileW(
+        str(path),
+        FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        None, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        _check_type(kernel32, handle, directory=True)
+        return kernel32, handle
+    except Exception:
+        kernel32.CloseHandle(handle)
+        raise
+
+
+def open_child_directory_handle(parent, name: str):
+    """Open one child directory relative to a held parent handle."""
+    kernel32, ntdll = _apis()
+    return _open_child(kernel32, ntdll, parent, name, directory=True)
+
+
+def close_directory_handle(kernel32, handle) -> None:
+    """Close a native directory handle."""
+    if handle and not kernel32.CloseHandle(handle):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def iter_directory_entries(handle):
+    """Yield (name, attributes, size) from a held directory handle.
+
+    The enumeration cursor belongs to this handle. No child path is resolved
+    during enumeration. Reparse points are reported as attributes so callers
+    can skip them before attempting to descend.
+    """
+    kernel32, _ = _apis()
+    kernel32.GetFileInformationByHandleEx.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+    ]
+    kernel32.GetFileInformationByHandleEx.restype = wintypes.BOOL
+    buffer = ctypes.create_string_buffer(64 * 1024)
+    first = True
+
+    while True:
+        info_class = (
+            _FILE_ID_BOTH_DIRECTORY_RESTART_INFO
+            if first else _FILE_ID_BOTH_DIRECTORY_INFO
+        )
+        success = kernel32.GetFileInformationByHandleEx(
+            handle, info_class, ctypes.byref(buffer), ctypes.sizeof(buffer)
+        )
+        if not success:
+            error = ctypes.get_last_error()
+            if error in {_ERROR_NO_MORE_FILES, 2}:
+                return
+            raise ctypes.WinError(error)
+        first = False
+
+        offset = 0
+        while True:
+            if offset + _DIRECTORY_ENTRY_FIXED_SIZE > ctypes.sizeof(buffer):
+                raise OSError("Invalid Windows directory enumeration buffer")
+            address = ctypes.addressof(buffer) + offset
+            entry = ctypes.cast(
+                address, ctypes.POINTER(_FileIdBothDirInfo)
+            ).contents
+            name_length = int(entry.FileNameLength)
+            name_offset = _DIRECTORY_ENTRY_FIXED_SIZE
+            if (
+                name_length % 2
+                or offset + name_offset + name_length > ctypes.sizeof(buffer)
+            ):
+                raise OSError("Invalid Windows directory entry name length")
+            name = ctypes.wstring_at(address + name_offset, name_length // 2)
+            yield name, int(entry.FileAttributes), max(0, int(entry.EndOfFile))
+            next_offset = int(entry.NextEntryOffset)
+            if next_offset == 0:
+                break
+            if (
+                next_offset < _DIRECTORY_ENTRY_FIXED_SIZE
+                or offset + next_offset >= ctypes.sizeof(buffer)
+            ):
+                raise OSError("Invalid Windows directory entry offset")
+            offset += next_offset
+
+
+def read_child_text(parent, name: str, *, max_bytes: int = 1_000_000) -> str | None:
+    """Read a small UTF-8 file relative to a held directory handle.
+
+    Missing, reparse-point, non-regular, oversized and non-UTF-8 files are
+    treated as unavailable metadata (for example, an unsafe .gitignore).
+    """
+    kernel32, ntdll = _apis()
+    handle = None
+    descriptor = None
+    try:
+        handle = _open_child(kernel32, ntdll, parent, name, directory=False)
+        descriptor = msvcrt.open_osfhandle(
+            int(handle.value), os.O_RDONLY | getattr(os, "O_BINARY", 0)
+        )
+        handle = None  # The descriptor owns the native handle.
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > max_bytes:
+            return None
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = None
+            data = stream.read(max_bytes + 1)
+        if len(data) > max_bytes or b"\x00" in data:
+            return None
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    except (OSError, UnsafeWindowsPath):
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if handle is not None:
+            kernel32.CloseHandle(handle)

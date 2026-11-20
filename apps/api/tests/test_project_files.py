@@ -150,3 +150,55 @@ def test_windows_native_open_rejects_junction_directory(tmp_path: Path) -> None:
             open_readonly_file(tmp_path, ("junction", "secret.txt"))
     finally:
         junction.rmdir()
+
+
+def test_windows_directory_handle_stays_bound_after_path_swap(tmp_path: Path) -> None:
+    import os
+
+    if os.name != "nt":
+        pytest.skip("Windows-only handle enumeration test")
+    from odei_api.services.windows_file_handles import (
+        close_directory_handle,
+        iter_directory_entries,
+        open_directory_handle,
+    )
+
+    original = tmp_path / "workspace"
+    original.mkdir()
+    (original / "original.txt").write_text("original", encoding="utf-8")
+    kernel32, handle = open_directory_handle(original)
+    moved = tmp_path / "workspace-moved"
+    try:
+        original.rename(moved)
+        original.mkdir()
+        (original / "attacker.txt").write_text("attacker", encoding="utf-8")
+        names = {name for name, _attributes, _size in iter_directory_entries(handle)}
+        assert "original.txt" in names
+        assert "attacker.txt" not in names
+    finally:
+        close_directory_handle(kernel32, handle)
+
+
+def test_windows_listing_skips_junctions(tmp_path: Path) -> None:
+    import os
+    import subprocess
+
+    if os.name != "nt":
+        pytest.skip("Windows-only junction test")
+    outside = tmp_path.parent / "odei-list-outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("secret", encoding="utf-8")
+    junction = tmp_path / "linked"
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip("Junction creation is unavailable")
+    try:
+        listed = list_project_files(tmp_path)
+        assert all(not item.path.startswith("linked/") for item in listed)
+    finally:
+        junction.rmdir()
