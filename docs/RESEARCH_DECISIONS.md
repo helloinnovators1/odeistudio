@@ -102,3 +102,10 @@
 
 ## 7. Research limitations
 This document records architectural research, not completed provider integrations, a legal/compliance assessment, production security certification or an exhaustive survey of every provider product tier. Before enabling a provider action, validate its current official API, account permissions, regional availability, rate limits and product plan. Update the relevant adapter capability matrix and tests with evidence.
+
+
+## JWT and OIDC verification
+
+- IETF RFC 8725 (JWT Best Current Practices): https://www.rfc-editor.org/rfc/rfc8725.html
+- Decision: the initial API verifier pins RS256, verifies the signature against a configured issuer JWKS, validates issuer and audience, requires expiry and subject, and never follows token-provided `jku`/`x5u` URLs. Organization membership is resolved from server-side storage rather than trusting client-supplied tenant IDs or role claims.
+- Remaining profile decision: confirm the actual ODID access-token type/claim contract before enforcing `typ`, `azp`, scopes or provider-specific role claims. Do not infer those claims from the browser-local auth UI or local role registry documented upstream.
