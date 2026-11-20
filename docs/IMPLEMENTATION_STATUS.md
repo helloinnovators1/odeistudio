@@ -1,3 +1,9 @@
+## NEXUS patch proposal validation — 2026-11-20
+
+- Added `apps/api/odei_api/services/patch_proposals.py`: a pure, read-only multi-file proposal validator that emits per-file unified diffs and SHA-256 base/result identities. It rejects traversal/absolute/drive/backslash/NUL paths, sensitive/excluded paths, stale hashes, case-insensitive duplicates, base/proposed file-directory collisions, missing-file deletes and binary text.
+- Enforced 20-file, 1 MB/file, 5 MB aggregate replacement-content and 8 MB aggregate diff budgets. Added focused tests in `apps/api/tests/test_patch_proposals.py` and documented the contract in `docs/PATCH_PROPOSALS.md`, indexed from `docs/INDEX.md`.
+- This is proposal validation only. It does not persist proposals, verify a fresh live workspace snapshot, expose an API, render a review UI, apply files, roll back, execute commands or run tests. The existing companion and scanner remain read-only. A fresh CI run is required; no local test run was available in this hosted repository session.
+
 # Implementation Status
 
 ## Explorer path-collision remediation — 2026-11-20
