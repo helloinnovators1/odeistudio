@@ -181,3 +181,9 @@ Earlier entries in this file describe intermediate milestones and may say task H
 - The security workflow attached to the integration-test commit was cancelled after a later push. Do not count that run as a security pass; verify the next latest-head security run.
 
 - Full API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821) passed all six jobs on code commit `8fe8fd1f6f924919cb922e96a5c255017abb5976`: four OS/Python matrix jobs, web tests/build and a real MongoDB 7.0 replica-set transaction test (`1 passed in 0.24s`).
+
+
+## Transaction-aware readiness hardening (2026-11-20)
+
+- Updated `/api/v1/health/ready` to run both a bounded MongoDB ping and a `hello` topology check. Readiness succeeds only for replica-set (`setName`) or sharded/mongos (`msg=isdbgrid`) topology; a standalone MongoDB server returns 503 with `transactions: unsupported` because NEXUS task/audit persistence requires multi-document transactions.
+- Added tests for replica-set readiness, mongos readiness, standalone rejection and MongoDB unavailability. These changes are committed; latest-head CI is required before marking the readiness increment verified.
