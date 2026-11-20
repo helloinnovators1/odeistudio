@@ -59,8 +59,11 @@ class Collection:
 
 class Session:
     @asynccontextmanager
-    async def start_transaction(self):
+    async def _transaction(self):
         yield
+
+    async def start_transaction(self):
+        return self._transaction()
 
 
 class MongoClient:
