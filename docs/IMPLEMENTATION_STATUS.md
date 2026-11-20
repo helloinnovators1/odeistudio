@@ -169,3 +169,11 @@ Still not implemented: project creation or membership administration APIs; trans
 ## Current correction to earlier status notes
 
 Earlier entries in this file describe intermediate milestones and may say task HTTP routes were not exposed or task audit hooks did not exist. Those statements are historical, not current: the initial project-scoped task API now exists; task create/approve/cancel audit writes share the task transaction; task/task-event reads and selected denials are audited. Production ODID integration, full audit coverage, membership administration, patching, isolated execution and the full Monaco workspace remain open.
+
+
+## NEXUS task access audit verification and real MongoDB integration gate
+
+- Task/task-event read success, task-not-found/owner denial and project-owner approval-denial audit hooks passed API/web CI [44794668471](https://github.com/helloinnovators1/odeistudio/actions/runs/44794668471) on commit `a907131fe2b03d66b9ff8d0f3ee821e6fda8e595`: Ubuntu Python 3.10/3.12 each 125 passed, 4 skipped; Windows Python 3.10/3.12 each 127 passed, 2 skipped. Web tests/build passed.
+- Security CI [44794668478](https://github.com/helloinnovators1/odeistudio/actions/runs/44794668478) passed Gitleaks, pip-audit, npm audit and CodeQL Python/TypeScript.
+- Added a real MongoDB 7.0 replica-set CI job and integration test covering atomic task creation, audit-failure rollback of task/lifecycle events, and successful approval commit. Latest integration job is pending; live-server verification is not yet claimed.
+- Updated API CI pull-request path filters to include `apps/web/**` so frontend changes run the web tests and build.
