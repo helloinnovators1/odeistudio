@@ -1,8 +1,10 @@
 """FastAPI application entry point and dependency lifecycle."""
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,6 +20,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own the optional MongoDB client for the lifetime of the API process."""
     client = None
     database_name = None
+    http_client = httpx.AsyncClient(timeout=5.0)
+    application.state.http_client = http_client
+    application.state.jwks_cache = None
+    application.state.jwks_lock = asyncio.Lock()
     if settings.mongodb_uri is not None and settings.mongodb_uri.get_secret_value():
         client, database_name = create_mongo_client(settings)
     application.state.mongo_client = client
@@ -27,6 +33,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     finally:
         if client is not None:
             await client.close()
+        await http_client.aclose()
 
 
 app = FastAPI(
