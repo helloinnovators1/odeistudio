@@ -162,7 +162,7 @@ No phase is complete because its screens exist. Each capability needs working be
 - Added `POST/GET /api/v1/organizations/{organization_id}/projects` for tenant-scoped project creation and caller-visible listing. Active organization membership is required; creator becomes project owner.
 - Added owner-only `PUT/DELETE /api/v1/organizations/{organization_id}/projects/{project_id}/members`. Targets must already be active organization members; removals are soft status changes; project owner is implicit and cannot be removed or duplicated as a member.
 - Added unique project and membership indexes during API startup. Project creation and membership changes append audit records in the same MongoDB transaction as the mutation; authorization denials are audited.
-- Added route tests for create/list/add/remove and rejection of a target without active organization membership. These latest tests and changes are pending CI; this item is implemented but not marked verified until current-head API and security workflows pass.
+- Added route tests for create/list/add/remove/list and rejection of a target without active organization membership. API CI [44828501275](https://github.com/helloinnovators1/odeistudio/actions/runs/44828501275) passed all six jobs, including MongoDB transaction integration; security CI [44828501029](https://github.com/helloinnovators1/odeistudio/actions/runs/44828501029) passed all four checks.
 - Remaining boundaries: no org membership provisioning, project ownership transfer, invitation/acceptance workflow, arbitrary project roles, patch/write API, shell execution, IDE integration or local desktop scan.
 
 
@@ -181,7 +181,7 @@ No phase is complete because its screens exist. Each capability needs working be
 ## Authenticated NEXUS chat API increment (2026-11-20)
 
 - [x] Implement initial authenticated project-scoped read-only chat API with strict consent, bounded messages/file excerpts, secret redaction and audit metadata.
-- [x] Add helper and route tests for authorization, consent, provider call constraints and audit privacy.
+- [x] Add helper and route tests for authorization, consent, provider call constraints and audit privacy. API CI [44828501275](https://github.com/helloinnovators1/odeistudio/actions/runs/44828501275) and security CI [44828501029](https://github.com/helloinnovators1/odeistudio/actions/runs/44828501029) passed.
 - [ ] Integrate ODID browser login/token refresh and connect the IDE NEXUS composer.
 - [ ] Add durable conversation records, streaming/reconnect/cancellation and scoped workspace tools.
 - [ ] Keep write tools and command execution disabled until safe patch/approval and isolated execution services are complete.
