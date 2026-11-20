@@ -106,14 +106,14 @@ def _load_ignore_spec(directory: Path) -> GitIgnoreSpec | None:
         lines = ignore_file.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
         return None
-    return GitIgnoreSpec.from_lines("gitwildmatch", lines)
+    return GitIgnoreSpec.from_lines(lines)
 
 
 def _ignored_by_gitignore(root: Path, directory: Path, name: str, *, is_dir: bool) -> bool:
     """Apply each ancestor .gitignore relative to its own directory."""
     candidate = directory / name
     is_ignored = False
-    for ancestor in (root, *directory.parents):
+    for ancestor in (root, *reversed(directory.parents)):
         if not ancestor.is_relative_to(root):
             continue
         spec = _load_ignore_spec(ancestor)
