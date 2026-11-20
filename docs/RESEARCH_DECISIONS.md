@@ -81,7 +81,7 @@
 ### Decisions
 - Use PyMongo Async rather than introducing a new Motor dependency for new async services.
 - Construct the client lazily from a private Atlas URI; verify connectivity through a bounded ping/health check when lifecycle management is implemented.
-- Do not claim database readiness until an actual ping succeeds.
+- Do not claim database readiness until a live ping succeeds and the server reports a transaction-capable replica-set or sharded topology.
 
 ### Primary sources
 - https://pymongo.readthedocs.io/en/stable/api/pymongo/asynchronous/index.html
@@ -182,3 +182,5 @@ Primary sources: https://developers.openai.com/api/docs/guides/conversation-stat
 - https://www.mongodb.com/docs/manual/core/transactions-production-consideration/
 
 - Verification update (2026-11-20): the real MongoDB 7.0 replica-set integration test passed in API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821), job `mongodb-integration`. It covered planned-task creation, rollback on simulated audit failure, and successful approval. This is not a substitute for production Atlas connection testing or broader failure/retention testing.
+
+- Implementation update (2026-11-20): `/api/v1/health/ready` now checks both `ping` and `hello`; standalone topology is not ready for the NEXUS task/audit transaction requirement. Tests cover replica set, mongos, standalone and unavailable MongoDB responses.
