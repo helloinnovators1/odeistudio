@@ -81,11 +81,35 @@ export async function sendNexusChat(
   if (!Array.isArray(request.messages) || request.messages.length < 1 || request.messages.length > 20) {
     throw new TypeError("Conversation must contain between 1 and 20 messages.");
   }
+  let totalCharacters = 0;
+  for (const message of request.messages) {
+    if (
+      !message || !["user", "assistant"].includes(message.role) ||
+      typeof message.content !== "string" || !message.content.trim() ||
+      message.content.length > 8_000
+    ) {
+      throw new TypeError("Each message must have a valid role and contain 1 to 8,000 characters.");
+    }
+    totalCharacters += message.content.length;
+  }
   if (request.messages.at(-1)?.role !== "user") {
     throw new TypeError("The final conversation message must be from the user.");
   }
-  if ((request.workspaceFiles?.length ?? 0) > 5) {
+  const workspaceFiles = request.workspaceFiles ?? [];
+  if (!Array.isArray(workspaceFiles) || workspaceFiles.length > 5) {
     throw new TypeError("At most five workspace excerpts may be sent.");
+  }
+  for (const file of workspaceFiles) {
+    if (
+      !file || typeof file.path !== "string" || !file.path.trim() || file.path.length > 1_024 ||
+      typeof file.content !== "string" || file.content.length > 8_000
+    ) {
+      throw new TypeError("Each workspace excerpt must have a valid path and at most 8,000 characters.");
+    }
+    totalCharacters += file.path.length + file.content.length;
+  }
+  if (totalCharacters > 40_000) {
+    throw new TypeError("Combined conversation and workspace context exceeds 40,000 characters.");
   }
 
   const response = await fetcher(
