@@ -4,6 +4,7 @@ import pytest
 
 from odei_api.services.project_files import (
     BinaryProjectFile,
+    ProjectFileError,
     ProjectFileTooLarge,
     UnsafeProjectPath,
     list_project_files,
@@ -117,5 +118,5 @@ def test_does_not_follow_symlink_directory(tmp_path: Path) -> None:
 
 def test_rejects_directory_as_text_file(tmp_path: Path) -> None:
     (tmp_path / "folder").mkdir()
-    with pytest.raises(Exception, match="regular file"):
+    with pytest.raises(ProjectFileError, match="regular file"):
         read_project_text_file(tmp_path, "folder")
