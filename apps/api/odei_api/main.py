@@ -7,12 +7,13 @@ from uuid import uuid4
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Path, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
-from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from pymongo.errors import PyMongoError
+from starlette.concurrency import run_in_threadpool
 
 from odei_api.config import get_settings
+from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.mongo_client import create_mongo_client
 from odei_api.security.auth import (
     Principal,
@@ -20,7 +21,6 @@ from odei_api.security.auth import (
     require_organization_membership,
 )
 from odei_api.services.audit_store import MongoAuditEventStore
-from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.services.planning import PlanningError, create_task_plan
 
 logger = logging.getLogger(__name__)
