@@ -214,3 +214,89 @@ def test_posix_listing_skips_fifo_without_blocking(tmp_path: Path) -> None:
     (tmp_path / "regular.txt").write_text("safe", encoding="utf-8")
     listed = {item.path for item in list_project_files(tmp_path)}
     assert listed == {"regular.txt"}
+
+
+def test_posix_retained_root_descriptor_survives_path_replacement(tmp_path: Path) -> None:
+    import os
+
+    if os.name != "posix":
+        pytest.skip("POSIX retained-root test")
+    from odei_api.services.project_files import (
+        list_project_files_from_posix_fd,
+        read_project_text_file_from_posix_fd,
+    )
+
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    (selected / "main.py").write_text("original", encoding="utf-8")
+    root_fd = os.open(selected, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    moved = tmp_path / "selected-moved"
+    try:
+        selected.rename(moved)
+        selected.mkdir()
+        (selected / "attacker.py").write_text("replacement", encoding="utf-8")
+        assert {item.path for item in list_project_files_from_posix_fd(root_fd)} == {
+            "main.py"
+        }
+        assert read_project_text_file_from_posix_fd(root_fd, "main.py") == "original"
+    finally:
+        os.close(root_fd)
+
+
+def test_windows_retained_root_handle_survives_path_replacement(tmp_path: Path) -> None:
+    import os
+
+    if os.name != "nt":
+        pytest.skip("Windows retained-root test")
+    from odei_api.services.project_files import (
+        list_project_files_from_windows_handle,
+        read_project_text_file_from_windows_handle,
+    )
+    from odei_api.services.windows_file_handles import (
+        close_directory_handle,
+        open_directory_handle,
+    )
+
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    (selected / "main.py").write_text("original", encoding="utf-8")
+    kernel32, root_handle = open_directory_handle(selected)
+    moved = tmp_path / "selected-moved"
+    try:
+        selected.rename(moved)
+        selected.mkdir()
+        (selected / "attacker.py").write_text("replacement", encoding="utf-8")
+        assert {item.path for item in list_project_files_from_windows_handle(root_handle)} == {
+            "main.py"
+        }
+        assert read_project_text_file_from_windows_handle(root_handle, "main.py") == "original"
+    finally:
+        close_directory_handle(kernel32, root_handle)
+
+
+def test_workspace_handle_registry_survives_root_replacement_and_revokes(
+    tmp_path: Path,
+) -> None:
+    from odei_api.services.workspace_handles import (
+        WorkspaceHandleRegistry,
+        WorkspaceNotFound,
+    )
+
+    selected = tmp_path / "selected-workspace"
+    selected.mkdir()
+    (selected / "main.py").write_text("trusted source", encoding="utf-8")
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    moved = tmp_path / "selected-workspace-moved"
+    try:
+        selected.rename(moved)
+        selected.mkdir()
+        (selected / "attacker.py").write_text("replacement", encoding="utf-8")
+        assert {item.path for item in registry.list_files(workspace_id)} == {"main.py"}
+        assert registry.read_text(workspace_id, "main.py") == "trusted source"
+        assert registry.revoke(workspace_id) is True
+        assert registry.revoke(workspace_id) is False
+        with pytest.raises(WorkspaceNotFound):
+            registry.list_files(workspace_id)
+    finally:
+        registry.close()
