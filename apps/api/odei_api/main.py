@@ -100,7 +100,7 @@ async def liveness() -> dict[str, str]:
 
 @app.get(f"{settings.api_prefix}/health/ready", tags=["health"])
 async def readiness(request: Request) -> dict[str, object]:
-    """Readiness includes a bounded live ping; missing Mongo is not ready."""
+    """Require live MongoDB plus replica-set/sharded transaction capability."""
     client = getattr(request.app.state, "mongo_client", None)
     if client is None:
         raise HTTPException(
@@ -109,13 +109,24 @@ async def readiness(request: Request) -> dict[str, object]:
         )
     try:
         await client.admin.command("ping")
+        topology = await client.admin.command("hello")
     except Exception as exc:
         logger.warning("MongoDB readiness check failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail={"status": "not_ready", "checks": {"mongodb": "unavailable"}},
         ) from exc
-    return {"status": "ready", "checks": {"mongodb": "ok"}}
+    if not isinstance(topology, dict) or not (
+        topology.get("setName") or topology.get("msg") == "isdbgrid"
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "not_ready",
+                "checks": {"mongodb": "ok", "transactions": "unsupported"},
+            },
+        )
+    return {"status": "ready", "checks": {"mongodb": "ok", "transactions": "supported"}}
 
 
 @app.get(f"{settings.api_prefix}/auth/me", tags=["auth"])
