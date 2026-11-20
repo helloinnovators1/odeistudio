@@ -10,7 +10,6 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Engineering standards](ENGINEERING_STANDARDS.md) — code quality, API, testing and contribution rules.
 - [Security and privacy](SECURITY.md) — threat model, secrets, isolation, identity and incident handling.
 - [Identity integration contract](IDENTITY_INTEGRATION.md) — verified upstream ODID maturity, RFC 9068 access-token profile, required issuer contract and RBAC gates.
-
 - [Global technical research and decisions](RESEARCH_DECISIONS.md) — official sources and implementation choices.
 
 ## Product and platform
@@ -28,8 +27,12 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Desktop project ingestion](DESKTOP_INGESTION.md) — safe, user-authorized local project indexing without ZIP packaging.
 - [Web workspace client](../apps/web/README.md) — initial read-only browser pairing, workspace explorer and file preview.
 
+## Upstream ecosystem source material
 - [Upstream ecosystem alignment](UPSTREAM_ECOSYSTEM_ALIGNMENT.md) — audited source-repository capabilities, migration boundaries, desktop access, AI gateway, MAC/MAD and implementation work order.
-- [Imported upstream ecosystem documentation](upstream/INDEX.md) — preserved source snapshots of Studio specifications, desktop/editor phases, MAC audits, AI gateway and ecosystem operating documents.\n\n## Documentation rules
+- [Imported upstream ecosystem documentation](upstream/INDEX.md) — preserved source snapshots of Studio specifications, desktop/editor phases, MAC audits, AI gateway and ecosystem operating documents.
+- [68-document mirror index](upstream/MIRROR_INDEX.md) — source paths, provenance and mirror mapping.
+
+## Documentation rules
 1. Treat this index as the canonical documentation entry point.
 2. Mark unimplemented capabilities as planned or experimental; never imply that a design document proves implementation.
 3. Record provider capabilities against official documentation and the exact account/product scope tested.
