@@ -92,3 +92,13 @@
 - Latest branch head at this documentation update is `3d2cbd432e2aa0ec98d935a148f12f4a0267aeb2`. Its API CI run [44775152146](https://github.com/helloinnovators1/odeistudio/actions/runs/44775152146) is pending, and security run [44775143799](https://github.com/helloinnovators1/odeistudio/actions/runs/44775143799) is in progress. Do not mark the membership endpoint fully verified until these latest-head runs complete.
 - The ecosystem documentation collection remains available under `docs/`: the canonical index links the product/engineering specifications and the full upstream source collection (47 path-preserving mirrors plus 21 curated provenance-labelled snapshots). These source snapshots are reference material, not proof of target implementation.
 - PR [#1](https://github.com/helloinnovators1/odeistudio/pull/1) remains draft and unmerged. The local companion still requires installation and explicit folder selection on the user's Windows device; no Desktop scan or Windows 10 build 18362 validation has been performed from this hosted environment.
+
+
+## Latest continuation — 2026-11-20 (audit foundation)
+
+- Confirmed API CI run [44775517410](https://github.com/helloinnovators1/odeistudio/actions/runs/44775517410) completed successfully: Ubuntu and Windows on Python 3.10 and 3.12 all passed; web unit tests and production build passed.
+- Confirmed security workflow [44775517435](https://github.com/helloinnovators1/odeistudio/actions/runs/44775517435) completed successfully: Python dependency audit, web dependency audit, Gitleaks and CodeQL Python/TypeScript all passed.
+- Added `MongoAuditEventStore` as an initial insert-only service primitive with tenant/actor/action/target validation, HTTPS issuer requirement, bounded metadata, sensitive-key redaction, common credential redaction, schema versioning and request/trace correlation.
+- Added unit tests for successful append, validation failures, metadata limits/redaction and index initialization. The new audit-store tests are awaiting CI on the new branch head; do not count them as passed until the workflow completes.
+- Updated API/event, security and data-model documentation. The audit writer is not yet wired into membership decisions, companion pairing/revocation, task operations or other authorization events. MongoDB role-level update/delete denial, replica-set integration tests, retention and audit read/export controls remain required for production.
+- The full ecosystem documentation remains indexed under `docs/INDEX.md`, including 47 path-preserving upstream mirrors and 21 provenance-labelled snapshots under `docs/upstream/`.
