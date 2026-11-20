@@ -176,13 +176,19 @@ class MongoTaskStore:
             current, next_status, expected_version=expected_version, plan=plan
         )
         occurred_at = updated.updated_at or datetime.now(timezone.utc)
+        event_type = {
+            TaskStatus.APPROVED: "task.approved",
+            TaskStatus.CANCELLED: "task.cancelled",
+            TaskStatus.COMPLETED: "task.completed",
+            TaskStatus.FAILED: "task.failed",
+        }.get(updated.status, "task.status_changed")
         event = {
             "event_id": str(uuid4()),
             "organization_id": organization_id,
             "project_id": current.project_id,
             "task_id": task_id,
             "actor_id": actor_id or current.owner_id,
-            "type": "task.status_changed",
+            "type": event_type,
             "from_status": current.status.value,
             "to_status": updated.status.value,
             "version": updated.version,
