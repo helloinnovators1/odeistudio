@@ -202,3 +202,15 @@ def test_windows_listing_skips_junctions(tmp_path: Path) -> None:
         assert all(not item.path.startswith("linked/") for item in listed)
     finally:
         junction.rmdir()
+
+
+def test_posix_listing_skips_fifo_without_blocking(tmp_path: Path) -> None:
+    import os
+
+    if os.name != "posix" or not hasattr(os, "mkfifo"):
+        pytest.skip("POSIX FIFO test")
+    fifo = tmp_path / "named-pipe"
+    os.mkfifo(fifo)
+    (tmp_path / "regular.txt").write_text("safe", encoding="utf-8")
+    listed = {item.path for item in list_project_files(tmp_path)}
+    assert listed == {"regular.txt"}
