@@ -59,3 +59,10 @@ The local companion API is separate from the cloud `/api/v1` surface. It binds t
 | POST | `/v1/session/revoke` | Revoke the current bearer token. |
 
 Pairing codes expire after five minutes and failed exchanges are throttled. Responses are non-cacheable. CORS allows only configured exact origins. Chrome's current Local Network Access model requires the ODEI frontend to be served from HTTPS and to request the loopback-network permission from an explicit user gesture; the first request must use `targetAddressSpace: "loopback"`. Do not rely on legacy `Access-Control-Allow-Private-Network` PNA headers. No write, shell, terminal, deployment or arbitrary-path registration endpoint exists. ODID user/tenant binding for the local companion is not implemented, so it remains a developer prototype rather than a production authorization boundary.
+
+
+## Audit event persistence (initial service primitive)
+
+The API package includes `MongoAuditEventStore` in `odei_api.services.audit_store`. It validates tenant/actor/target identifiers, requires an HTTPS identity issuer, constrains action and outcome values, requires timezone-aware timestamps, and writes a versioned event with request/trace correlation. Metadata is bounded by depth, field count and string length; sensitive key names are replaced and common credential patterns are redacted before insertion.
+
+The service exposes append and index initialization only; it intentionally has no update/delete methods. This is not yet wired into membership denials, companion pairing/revocation, task operations or other authorization decisions, and no audit read/export API is exposed. Production tamper resistance additionally requires a dedicated MongoDB role that can insert/read but cannot update/delete audit records, plus backup, retention, access-review and replica-set integration tests.
