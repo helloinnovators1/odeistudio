@@ -63,6 +63,12 @@ The UI must not imply that a disabled capability is operational. The NEXUS compo
 6. Build the full Agents Window, CLI, background and cloud-agent control planes.
 7. Validate the complete desktop/companion flow on the user's Windows 10 build 18362 environment before claiming support.
 
+## Hierarchical Explorer
+
+The browser workspace builds a nested tree from the already-authorized relative-path listing. Directories render before files and are alphabetically/numerically sorted; folders can be collapsed, and a non-empty path filter expands matching ancestors automatically. The tree builder rejects malformed relative paths (absolute paths, empty segments, dot segments and backslash separators), preserves the companion's file metadata, and performs no filesystem access. The UI remains read-only.
+
+Unit coverage lives in `apps/web/src/workspace-tree.test.ts`; the Explorer integration is in `apps/web/src/App.tsx`.
+
 ## Verification
 
 The preference and shortcut helpers have Vitest coverage. API/web CI [44803547712](https://github.com/helloinnovators1/odeistudio/actions/runs/44803547712) passed all six jobs on UI code commit `d6aa775abd516ea4aa308b43b224fac995c30b30`; the web job reported 9 Vitest tests passed and a successful TypeScript/Vite production build. Security CI on the later documentation head is still running CodeQL; dependency audits and secret scanning have passed.
