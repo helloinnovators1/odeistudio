@@ -136,6 +136,7 @@ async def test_current_principal_loads_jwks_and_verifies_bearer(monkeypatch):
         auth_issuer="https://identity.example.test/",
         auth_audience="odei-studio-api",
         auth_jwks_url="https://identity.example.test/.well-known/jwks.json",
+        auth_allowed_client_ids="odei-studio-web",
     )
     monkeypatch.setattr("odei_api.security.auth.get_settings", lambda: settings)
     http_client = FakeHttpClient(jwks)
@@ -280,3 +281,45 @@ async def test_load_jwks_rejects_oversized_document() -> None:
     )
     with pytest.raises(ValueError, match="size limit"):
         await load_jwks(request, "https://identity.example.test/jwks.json")
+
+
+@pytest.mark.asyncio
+async def test_current_principal_rejects_unapproved_client_id(monkeypatch):
+    _, jwks, token, _ = make_signing_material()
+    settings = Settings(
+        auth_issuer="https://identity.example.test/",
+        auth_audience="odei-studio-api",
+        auth_jwks_url="https://identity.example.test/.well-known/jwks.json",
+        auth_allowed_client_ids="another-registered-client",
+    )
+    monkeypatch.setattr("odei_api.security.auth.get_settings", lambda: settings)
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                http_client=FakeHttpClient(jwks),
+                jwks_cache=None,
+                jwks_lock=asyncio.Lock(),
+            )
+        )
+    )
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    with pytest.raises(HTTPException) as error:
+        await get_current_principal(request, credentials)
+    assert error.value.status_code == 403
+    assert error.value.detail["code"] == "CLIENT_NOT_ALLOWED"
+
+
+@pytest.mark.asyncio
+async def test_current_principal_fails_closed_without_allowed_client_ids(monkeypatch):
+    monkeypatch.setattr(
+        "odei_api.security.auth.get_settings",
+        lambda: Settings(
+            auth_issuer="https://identity.example.test/",
+            auth_audience="odei-studio-api",
+            auth_jwks_url="https://identity.example.test/.well-known/jwks.json",
+        ),
+    )
+    with pytest.raises(HTTPException) as error:
+        await get_current_principal(SimpleNamespace(), None)
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == "AUTH_NOT_CONFIGURED"

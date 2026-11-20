@@ -152,7 +152,17 @@ async def get_current_principal(
 ) -> Principal:
     """FastAPI dependency for routes that require a trusted ODEI Identity token."""
     settings = get_settings()
-    if not settings.auth_issuer or not settings.auth_audience or not settings.auth_jwks_url:
+    allowed_client_ids = {
+        item.strip()
+        for item in (settings.auth_allowed_client_ids or "").split(",")
+        if item.strip()
+    }
+    if (
+        not settings.auth_issuer
+        or not settings.auth_audience
+        or not settings.auth_jwks_url
+        or not allowed_client_ids
+    ):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "AUTH_NOT_CONFIGURED", "message": "Trusted identity is not configured."},
@@ -166,12 +176,21 @@ async def get_current_principal(
 
     try:
         jwks = await load_jwks(request, settings.auth_jwks_url)
-        return verify_access_token(
+        principal = verify_access_token(
             credentials.credentials,
             jwks=jwks,
             issuer=settings.auth_issuer,
             audience=settings.auth_audience,
         )
+        if principal.client_id not in allowed_client_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "CLIENT_NOT_ALLOWED",
+                    "message": "The access token was issued to an unapproved client.",
+                },
+            )
+        return principal
     except jwt.PyJWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
