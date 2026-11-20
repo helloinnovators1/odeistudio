@@ -53,7 +53,7 @@ python -m pytest
 uvicorn odei_api.main:app --reload
 ```
 
-The health endpoints are `/api/v1/health/live` and `/api/v1/health/ready`. Readiness performs a bounded MongoDB ping and returns HTTP 503 when MongoDB is not configured or unavailable.
+The health endpoints are `/api/v1/health/live` and `/api/v1/health/ready`. Readiness performs a bounded MongoDB ping and `hello` topology check. It returns HTTP 503 when MongoDB is not configured/unavailable or when the server is standalone and cannot support the multi-document transactions required by NEXUS task/audit persistence. A replica set or sharded cluster is required.
 
 ## Web workspace preview
 
