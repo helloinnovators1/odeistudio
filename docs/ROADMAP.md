@@ -173,3 +173,5 @@ No phase is complete because its screens exist. Each capability needs working be
 - Added `docs/IDE_WORKSPACE.md` and linked it from the documentation index.
 - API/web CI [44803547712](https://github.com/helloinnovators1/odeistudio/actions/runs/44803547712) passed all six jobs on `d6aa775abd516ea4aa308b43b224fac995c30b30`: four OS/Python matrix jobs, 9 Vitest tests, Vite production build and MongoDB replica-set integration.
 - The panel is not an authenticated chat yet; no streaming, patch editing, shell execution, LSP, Git, cloud agents or native desktop package is implied. The editor and companion remain read-only.
+
+- Added owner-only bounded active-member listing to complete the first project membership management surface; route test covers list and audit outcome. Current-head CI pending.
