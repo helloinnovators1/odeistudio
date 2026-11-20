@@ -10,6 +10,8 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Engineering standards](ENGINEERING_STANDARDS.md) — code quality, API, testing and contribution rules.
 - [Security and privacy](SECURITY.md) — threat model, secrets, isolation, identity and incident handling.
 
+- [Global technical research and decisions](RESEARCH_DECISIONS.md) — official sources and implementation choices.
+
 ## Product and platform
 - [NEXUS agent specification](NEXUS.md) — AI software engineering agent, tools, loop and runtime.
 - [Master Admin Console requirements](MAC_REQUIREMENTS.md) — central configuration and governance plane.
