@@ -1,7 +1,7 @@
 # ODEI NEXUS — AI Software Engineering Agent
 
 **Priority:** First major product implementation.  
-**Status:** Specification; implementation must be verified independently.
+**Status:** Initial planning service and read-only project indexing utilities are committed. No authenticated agent API, tool execution loop or sandbox is implemented yet.
 
 ## Mission
 NEXUS is the repository-aware coding agent at the heart of ODEI Studio. It turns a developer's goal into a reviewable, tested set of code changes while respecting workspace permissions and execution policy.
@@ -24,6 +24,11 @@ NEXUS is the repository-aware coding agent at the heart of ODEI Studio. It turns
 `created → context_gathering → planning → awaiting_approval → executing → validating → repairing → review_ready → completed`
 
 Additional terminal states: `failed`, `cancelled`, `expired`. Every transition is persisted and authorized server-side.
+
+## Current implementation
+- `services/planning.py` calls the OpenAI Responses API through an injected client, with bounded task/context inputs and no tools enabled. Its output is an untrusted proposal only.
+- `model_client.py` creates a server-side OpenAI client from `OPENAI_API_KEY` and requires a configured `ODEI_MODEL`.
+- `services/project_files.py` lists, reads and searches bounded text files with common secret exclusions, GitIgnoreSpec rules and scan budgets. It is not exposed to HTTP callers.
 
 ## Initial tool contract
 - `project.list_files`: list permitted paths, honoring ignore rules and symlink policy.
