@@ -1,5 +1,5 @@
-from pydantic import SecretStr
 import pytest
+from pydantic import SecretStr
 
 from odei_api.config import Settings
 from odei_api.mongo_client import MongoConfigurationError, create_mongo_client
