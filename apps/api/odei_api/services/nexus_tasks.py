@@ -166,7 +166,7 @@ async def _transition_project_task(
     payload: TaskTransitionRequest, principal: Principal, next_status: TaskStatus,
 ) -> dict:
     try:
-        _, store, task = await _load_authorized_task(request, organization_id, project_id, task_id, principal)
+        _, store, _task = await _load_authorized_task(request, organization_id, project_id, task_id, principal)
         updated = await store.transition(
             organization_id=organization_id, task_id=task_id,
             next_status=next_status, expected_version=payload.expected_version,
