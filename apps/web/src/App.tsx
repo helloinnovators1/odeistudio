@@ -11,6 +11,7 @@ import {
   type CompanionWorkspace,
 } from "./companion";
 import { formatBytes } from "./file-utils";
+import { filterWorkspaceFiles } from "./workspace-filter";
 import {
   isToggleNexusChatShortcut,
   languageForPath,
@@ -32,6 +33,7 @@ export default function App() {
   const [workspaces, setWorkspaces] = useState<CompanionWorkspace[]>([]);
   const [workspace, setWorkspace] = useState("");
   const [files, setFiles] = useState<CompanionFile[]>([]);
+  const [fileQuery, setFileQuery] = useState("");
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,7 @@ export default function App() {
     [tabs, activePath],
   );
   const workspaceName = workspaces.find((item) => item.workspace_id === workspace)?.name ?? "No folder open";
+  const visibleFiles = useMemo(() => filterWorkspaceFiles(files, fileQuery), [files, fileQuery]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -163,6 +166,7 @@ export default function App() {
     setWorkspaces([]);
     setWorkspace("");
     setFiles([]);
+    setFileQuery("");
     setTabs([]);
     setActivePath("");
     setMessage("Disconnected. The in-memory local session was cleared.");
@@ -237,7 +241,7 @@ export default function App() {
         </nav>
 
         <aside className="explorer-pane">
-          <div className="pane-heading"><strong>EXPLORER</strong><span>{files.length}</span></div>
+          <div className="pane-heading"><strong>EXPLORER</strong><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span></div>
           {!token && <div className="pane-empty">Connect the companion to see your selected folders.</div>}
           {token && <>
             <label className="field-label" htmlFor="workspace-select">WORKSPACE</label>
@@ -245,10 +249,13 @@ export default function App() {
               <option value="">Choose a folder…</option>
               {workspaces.map((item) => <option key={item.workspace_id} value={item.workspace_id}>{item.name}</option>)}
             </select>
+            <label className="field-label" htmlFor="file-filter">FILTER FILES</label>
+            <input id="file-filter" className="file-filter" type="search" value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} placeholder="Search selected file paths…" autoComplete="off" />
             <div className="file-list">
-              {files.map((file) => <button key={file.path} className={activePath === file.path ? "file-row active" : "file-row"} onClick={() => void chooseFile(file)}>
+              {visibleFiles.map((file) => <button key={file.path} className={activePath === file.path ? "file-row active" : "file-row"} onClick={() => void chooseFile(file)}>
                 <span className="file-glyph">▧</span><span className="file-name">{file.path}</span><small>{formatBytes(file.size)}</small>
               </button>)}
+              {visibleFiles.length === 0 && <div className="pane-empty">{files.length === 0 ? "No files in this selected workspace." : "No file paths match this filter."}</div>}
             </div>
           </>}
         </aside>
