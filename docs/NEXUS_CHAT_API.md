@@ -74,3 +74,10 @@ This is a project-authorized chat endpoint, not the complete coding agent:
 - Input bounds, role validation, missing answers and secret redaction are unit-tested.
 
 See [NEXUS](NEXUS.md), [API and events](API_AND_EVENTS.md), and [IDE workspace](IDE_WORKSPACE.md).
+
+
+## Browser transport increment
+
+The web application now has a typed transport in `apps/web/src/nexus-chat.ts` with Vitest coverage. It sends the project-scoped request using an in-memory bearer token supplied by its future trusted identity integration; it does not persist tokens, include cookies, follow redirects or cache responses. It requires HTTPS except for loopback development, enforces message/file/combined context limits before network access, requires explicit consent, supports abort signals, and validates the read-only response contract.
+
+This transport is not an ODID login implementation. No issuer, discovery metadata, authorization endpoint, token endpoint, registered browser client ID, redirect URI or refresh/revocation contract has been supplied. Therefore the composer remains disabled. Do not ask users to paste access tokens into the application or enable the composer until the production identity contract is approved and the browser authorization-code-with-PKCE integration is implemented and tested.
