@@ -8,14 +8,15 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [x] Add canonical documentation index and ecosystem specifications.
 - [ ] Inspect complete source tree and CI configuration.
 - [ ] Rotate any credential previously exposed in project setup material.
-- [ ] Add secret scanning, linting and baseline CI.
+- [x] Add linting and baseline GitHub Actions CI (Ruff + pytest).
+- [ ] Add secret scanning and dependency vulnerability scanning.
 
 ## Phase 1 — NEXUS foundation
 - [ ] Select and scaffold backend/frontend workspace.
-- [ ] Add configuration validation and safe environment handling.
-- [ ] Implement authentication and tenant-aware project ownership.
-- [ ] Implement project file listing, bounded reads and search.
-- [ ] Implement durable task records and task event stream.
+- [x] Add configuration validation and safe environment handling.
+- [ ] Complete OIDC/ODID issuer integration, active membership provisioning and tenant-aware project ownership (JWT verification foundation exists but is not wired to routes).
+- [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, binary and size controls.
+- [x] Implement durable tenant-scoped task records and a separate append-only task event stream with transactional state/event writes.
 - [ ] Add policy-controlled tool registry.
 - [ ] Add patch application with hash/concurrency checks.
 - [ ] Add isolated command runner with timeout/resource limits.
