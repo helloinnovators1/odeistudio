@@ -113,9 +113,15 @@ def _ignored_by_gitignore(root: Path, directory: Path, name: str, *, is_dir: boo
     """Apply each ancestor .gitignore relative to its own directory."""
     candidate = directory / name
     is_ignored = False
-    for ancestor in (root, *reversed(directory.parents)):
-        if not ancestor.is_relative_to(root):
-            continue
+    ancestors = [root]
+    ancestors.extend(
+        ancestor for ancestor in reversed(directory.parents)
+        if ancestor.is_relative_to(root) and ancestor != root
+    )
+    if directory != root:
+        ancestors.append(directory)
+
+    for ancestor in ancestors:
         spec = _load_ignore_spec(ancestor)
         if spec is None:
             continue
