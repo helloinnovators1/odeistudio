@@ -12,12 +12,14 @@ class FakeAuditCollection:
     def __init__(self):
         self.documents = []
         self.indexes = []
+        self.sessions = []
 
     async def create_index(self, fields, **kwargs):
         self.indexes.append((fields, kwargs))
 
-    async def insert_one(self, document):
+    async def insert_one(self, document, session=None):
         self.documents.append(document)
+        self.sessions.append(session)
 
 
 @pytest.mark.asyncio
@@ -108,3 +110,23 @@ async def test_audit_store_initializes_tenant_and_time_indexes():
     await MongoAuditEventStore(collection).initialize()
     assert len(collection.indexes) == 3
     assert any(("organization_id", 1) in fields for fields, _ in collection.indexes)
+
+
+
+@pytest.mark.asyncio
+async def test_audit_store_forwards_existing_transaction_session():
+    collection = FakeAuditCollection()
+    store = MongoAuditEventStore(collection)
+    session = object()
+    await store.append(
+        organization_id="org-1",
+        actor_issuer="https://identity.example.test/",
+        actor_subject="user-1",
+        action="nexus.task.approve",
+        target_type="nexus_task",
+        target_id="task-1",
+        outcome="success",
+        request_id="req-transaction-1",
+        session=session,
+    )
+    assert collection.sessions == [session]
