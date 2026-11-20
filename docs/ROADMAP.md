@@ -19,7 +19,8 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls.
 - [x] Use native Windows handle-relative opens for file reads and `FileIdBothDirectoryInfo` enumeration; add Windows junction-exclusion and directory-handle path-swap regression tests.
 - [x] Replace POSIX path-based directory enumeration with `os.fwalk`, descriptor-relative metadata/open operations, `O_NOFOLLOW` and `O_NONBLOCK`.
-- [ ] Bind the selected Windows/POSIX root to a trusted native folder-picker handle/identity and add adversarial root-replacement tests.
+- [x] Add an in-memory `WorkspaceHandleRegistry` that retains Windows root handles/POSIX descriptors, performs list/read through retained handles, serializes operations and supports revocation; test root path replacement after registration.
+- [ ] Implement the native folder picker/companion flow and bind opaque workspace IDs to authenticated users/tenants; protect the initial path-to-handle selection boundary.
 - [x] Implement durable tenant-scoped task records and a separate append-only task event stream with transactional state/event writes.
 - [ ] Add policy-controlled tool registry.
 - [ ] Add patch application with hash/concurrency checks.
