@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
+import json
 
 
 class TaskStatus(str, Enum):
@@ -49,6 +50,13 @@ ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.CANCELLED: set(),
     TaskStatus.EXPIRED: set(),
 }
+
+
+def identity_owner_key(issuer: str, subject: str) -> str:
+    """Return a stable, unambiguous owner key for a verified external identity."""
+    if not issuer.strip() or not subject.strip():
+        raise ValueError("issuer and subject must not be empty")
+    return json.dumps([issuer, subject], ensure_ascii=False, separators=(",", ":"))
 
 
 class InvalidTaskTransition(ValueError):
