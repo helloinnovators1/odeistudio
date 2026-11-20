@@ -48,12 +48,12 @@ Prepare procedures for credential compromise, tenant isolation breach, malicious
 ## Automated security checks
 .github/workflows/security.yml runs:
 - Gitleaks secret scanning over repository history and working tree.
-- Python dependency auditing of the installed API/development environment using pip-audit --local --skip-editable --strict --desc. The local ODEI package is installed editable and intentionally excluded from third-party vulnerability lookup; its dependencies remain in the audit.
+- Python dependency auditing from the API project metadata using `python -m pip_audit --strict --desc=on .` (run from `apps/api`). This audits the declared API dependency graph without asking PyPI to resolve the unpublished local application package as if it were a third-party release.
 - npm audit against the web dependency tree.
 - CodeQL analysis for Python and JavaScript/TypeScript.
 - Scheduled, push, pull-request and manual workflow triggers.
 
-The latest pre-fix run on commit 02da0ca4fb1e915c307789584f51d7e18bd3de73 passed Gitleaks but failed Python auditing because pip-audit attempted to query the unpublished local odei-studio-api package on PyPI; CodeQL was cancelled. The workflow was corrected in commit ea4458fdf229b60c7d37ab6f2db03c032f419931. Verification of that correction is pending. A configured scanner is not evidence of a clean scan; review every run and triage findings before release.
+An earlier run on commit `02da0ca4fb1e915c307789584f51d7e18bd3de73` failed because the audit attempted to resolve the unpublished local application distribution on PyPI, and CodeQL was cancelled. The workflow was subsequently corrected to audit the API project dependency graph. Security run [44762159926](https://github.com/helloinnovators1/odeistudio/actions/runs/44762159926) completed successfully: Gitleaks, Python `pip-audit`, web `npm audit`, and CodeQL Python plus JavaScript/TypeScript all passed. This is evidence for that exact commit/run, not a permanent guarantee or blanket vulnerability-free certification; review alerts and rerun scans on subsequent changes.
 
 ## Cloud model data transfer
 - Sending repository text to a hosted model is a separate data-transfer decision from selecting a local folder. Require explicit consent tied to the authenticated user/session before any planner or agent call includes workspace context.
