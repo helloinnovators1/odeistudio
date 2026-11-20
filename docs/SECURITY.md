@@ -67,3 +67,9 @@ An earlier run on commit `02da0ca4fb1e915c307789584f51d7e18bd3de73` failed becau
 The API now has an initial insert-only `MongoAuditEventStore` implementation. It requires verified-identity fields from its caller, tenant-scopes each event, bounds metadata, redacts sensitive key names and common credential patterns, and records request/trace correlation. It is connected to organization-membership outcomes; transactional NEXUS task create/approve/cancel actions; task/task-event reads; and selected task authorization denials. It is not connected to all authentication/authorization outcomes, tool executions or companion session actions. Do not describe the product as having a complete audit trail.
 
 Application-level insert-only methods are insufficient to guarantee immutability. Production MongoDB credentials for the audit writer must be least-privilege and must not permit update or delete; audit readers should use a separate role. A focused real MongoDB 7.0 replica-set CI test now verifies task creation, audit-failure rollback and approval commit. Production MongoDB credentials must still deny audit update/delete; broader Atlas/replica-set failure testing, retention/archival controls, monitoring for gaps and periodic access review remain required before production.
+
+
+## Latest verified security scan boundary
+
+- Security CI [44794668478](https://github.com/helloinnovators1/odeistudio/actions/runs/44794668478) passed Gitleaks, pip-audit, npm audit and CodeQL Python/TypeScript on commit `a907131fe2b03d66b9ff8d0f3ee821e6fda8e595`.
+- The real MongoDB integration test and CI workflow were added afterward in commit `8fe8fd1f6f924919cb922e96a5c255017abb5976`; the security scan for that commit was cancelled by subsequent documentation pushes before jobs started. A new latest-head security scan is required before this newer test/workflow is considered scanned.
