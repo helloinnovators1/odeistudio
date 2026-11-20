@@ -51,6 +51,65 @@ def test_readiness_reports_missing_mongodb_as_not_ready() -> None:
     }
 
 
+class FakeMongoAdmin:
+    def __init__(self, topology=None, *, fail_ping=False):
+        self.topology = topology or {}
+        self.fail_ping = fail_ping
+
+    async def command(self, name):
+        if name == "ping":
+            if self.fail_ping:
+                raise RuntimeError("MongoDB unavailable")
+            return {"ok": 1}
+        if name == "hello":
+            return self.topology
+        raise AssertionError(f"Unexpected admin command: {name}")
+
+
+class FakeMongoClient:
+    def __init__(self, topology=None, *, fail_ping=False):
+        self.admin = FakeMongoAdmin(topology, fail_ping=fail_ping)
+
+
+def _readiness_with_client(fake_client):
+    previous = getattr(app.state, "mongo_client", None)
+    app.state.mongo_client = fake_client
+    try:
+        return client.get("/api/v1/health/ready")
+    finally:
+        app.state.mongo_client = previous
+
+
+def test_readiness_accepts_replica_set_topology():
+    response = _readiness_with_client(FakeMongoClient({"setName": "rs0"}))
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "checks": {"mongodb": "ok", "transactions": "supported"},
+    }
+
+
+def test_readiness_accepts_sharded_mongos_topology():
+    response = _readiness_with_client(FakeMongoClient({"msg": "isdbgrid"}))
+    assert response.status_code == 200
+    assert response.json()["checks"]["transactions"] == "supported"
+
+
+def test_readiness_rejects_standalone_mongodb_without_transactions():
+    response = _readiness_with_client(FakeMongoClient({"isWritablePrimary": True}))
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "status": "not_ready",
+        "checks": {"mongodb": "ok", "transactions": "unsupported"},
+    }
+
+
+def test_readiness_reports_mongodb_unavailable_when_ping_fails():
+    response = _readiness_with_client(FakeMongoClient(fail_ping=True))
+    assert response.status_code == 503
+    assert response.json()["detail"]["checks"]["mongodb"] == "unavailable"
+
+
 def test_current_identity_fails_closed_without_oidc_configuration() -> None:
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 503
