@@ -116,3 +116,16 @@ This document records architectural research, not completed provider integration
 - Python `os` documentation: https://docs.python.org/3/library/os.html (directory descriptors, `dir_fd`, no-follow behavior, and platform support).
 - Decision: on supported POSIX systems, project reads traverse each path component relative to an opened workspace directory descriptor and use no-follow flags; the final handle must be a regular file and reads are byte-bounded. Directory/file listing rejects symlinks and detectable reparse points.
 - Python documents that `dir_fd` support is platform-dependent and currently unavailable on Windows. The Windows implementation therefore uses a separate identity/containment fallback and is explicitly not considered race-proof. A native Windows handle-relative implementation and Windows CI coverage are required before enabling remote workspace access.
+
+
+## Chrome Local Network Access for the local companion
+
+**Decision:** Use Chrome's current Local Network Access (LNA) permission model for requests from the ODEI Studio web app to the loopback companion. Do not rely on the deprecated Private Network Access preflight mechanism or add `Access-Control-Allow-Private-Network` as a security requirement.
+
+- Serve the ODEI Studio web app from a secure HTTPS origin.
+- For a public web origin calling `http://127.0.0.1:<port>`, query the granular `loopback-network` permission where supported; if the state is `prompt`, explain the reason and initiate the first request only from an explicit user gesture.
+- Use `Request`/`fetch` with `targetAddressSpace: "loopback"` so Chrome can apply the correct address-space and mixed-content checks.
+- Handle permission denial and connection errors with clear browser-site-settings guidance. Do not attempt to bypass the prompt.
+- Continue server-side exact Origin/Host validation and standard CORS; LNA is an additional browser control, not a replacement for server authorization.
+
+Official references: [Chrome Local Network Access guidance](https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access), [Chrome LNA launch and security rationale](https://developer.chrome.com/blog/local-network-access), [WICG Local Network Access specification](https://wicg.github.io/local-network-access/). Chrome 142 introduced the LNA permission prompt; Chrome 145 split granular `local-network` and `loopback-network` permissions. The older PNA preflight approach is superseded.
