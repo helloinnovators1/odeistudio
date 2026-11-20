@@ -44,6 +44,7 @@ def test_companion_pairs_and_reads_selected_workspace(tmp_path) -> None:
             headers={"Origin": ORIGIN, "Authorization": f"Bearer {token}"},
         )
         assert files.status_code == 200
+        assert files.headers["Cache-Control"] == "no-store"
         assert files.json()["files"] == [{"path": "main.py", "size": 13}]
 
         content = client.get(
@@ -120,6 +121,7 @@ def test_companion_standard_cors_preflight_is_scoped_to_allowed_origin(tmp_path)
             },
         )
         assert response.status_code == 204
+        assert response.headers["Cache-Control"] == "no-store"
         assert response.headers["Access-Control-Allow-Origin"] == ORIGIN
         assert "authorization" in response.headers["Access-Control-Allow-Headers"].casefold()
         assert "Access-Control-Allow-Private-Network" not in response.headers

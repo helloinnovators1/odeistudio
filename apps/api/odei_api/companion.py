@@ -153,22 +153,28 @@ def create_companion_app(
 
         origin = request.headers.get("origin")
         if request.url.path == "/health" and origin is None:
-            return await call_next(request)
-        if origin not in origins:
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Browser origin is not authorized"},
-            )
-
-        if request.method == "OPTIONS":
-            response = Response(status_code=204)
-        else:
             response = await call_next(request)
+        else:
+            if origin not in origins:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Browser origin is not authorized"},
+                )
 
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
-        response.headers["Vary"] = "Origin"
+            if request.method == "OPTIONS":
+                response = Response(status_code=204)
+            else:
+                response = await call_next(request)
+
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+            response.headers["Vary"] = "Origin"
+
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
     def require_bearer(request: Request) -> str:
