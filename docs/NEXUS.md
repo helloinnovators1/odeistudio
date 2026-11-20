@@ -135,7 +135,7 @@ Project and membership mutations append their audit record in the same MongoDB t
 
 The web client now has an initial Monaco-based IDE shell with a read-only explorer/editor, multiple tabs and bottom status surfaces. `Command+I` on macOS and `Ctrl+I` on Windows/Linux toggle the NEXUS chat panel. Workspace Settings lets the user choose the panel side (Left or Right); Right is the default and the choice is persisted locally in the browser. See [IDE workspace implementation](IDE_WORKSPACE.md).
 
-The panel is currently a non-operational shell: no authenticated chat transport, streaming, agent tool calls or repository-aware conversation is connected. Monaco is read-only; the terminal is disabled and is not a browser shell. The current React/Vite workspace is not the full upstream Next.js/Code-OSS desktop editor.
+The browser panel remains a non-operational shell because ODID token acquisition and frontend API integration are not connected. The backend now exposes the authenticated, project-scoped, read-only chat endpoint described in [NEXUS chat API](NEXUS_CHAT_API.md); it has no tools, streaming or persistent conversation history. Monaco is read-only; the terminal is disabled and is not a browser shell. The current React/Vite workspace is not the full upstream Next.js/Code-OSS desktop editor.
 
 ## Authenticated read-only project chat
 
