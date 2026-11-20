@@ -9,7 +9,7 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [x] Audit the upstream Studio/ecosystem source tree and mirror its 68 core documentation files; complete target-repository inventory remains ongoing.
 - [ ] Rotate any credential previously exposed in project setup material.
 - [x] Add linting and GitHub Actions CI (Ruff + pytest) on Ubuntu/Windows and Python 3.10/3.12.
-- [ ] Add secret scanning and dependency vulnerability scanning.
+- [x] Add automated secret scanning (Gitleaks), Python dependency auditing (pip-audit) and CodeQL workflow; [ ] complete first scans and triage findings.
 
 ## Phase 1 — NEXUS foundation
 - [x] Scaffold Python/FastAPI backend foundation; [ ] select and scaffold the frontend framework after reconciling the upstream Next.js/Monaco app.
@@ -59,6 +59,11 @@ This roadmap is ordered by dependencies. Status must be updated only with reposi
 - [ ] Mobile development workflows.
 - [ ] Templates, extension SDK and marketplace.
 - [ ] Enterprise deployment, compliance and support operations.
+
+## Security automation
+- [x] Add scheduled/manual/push/PR security workflow for Gitleaks, pip-audit and CodeQL.
+- [x] Add weekly Dependabot update proposals for GitHub Actions and Python dependencies.
+- [ ] Verify initial workflow results and remediate/triage all findings.
 
 ## Release gates
 No phase is complete because its screens exist. Each capability needs working behavior, server-side authorization, tests, observability, documentation and failure handling. Production deployment additionally requires backup/restore, incident response, security review and operational ownership.
