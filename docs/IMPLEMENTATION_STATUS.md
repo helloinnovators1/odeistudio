@@ -6,7 +6,7 @@
 
 ## Verified repository work
 - Audited the linked `infoedutechos/ODEI-Multi-Ecosystem` repository (recursive tree: 2,163 entries / 1,866 files) and documented the ODEI Studio source inventory, desktop path-bridge design, upstream orchestration, ODEI AI gateway boundary, Studio MAC/MAD separation, security caveats and migration work order in `docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`.
-- Imported 23 dated upstream Studio/ecosystem specification, audit, desktop bridge, MAC, identity, AI gateway and hosting reference documents under `docs/upstream/`, with provenance headers and a separate index. They are historical source snapshots, not target implementation evidence.
+- Imported 23 curated upstream Studio/ecosystem reference documents and mirrored all 68 Markdown/text files from the upstream Studio, AI, ecosystem and audit documentation directories under `docs/upstream/mirror/`. Added `docs/upstream/MIRROR_INDEX.md`; imported snapshots have provenance headers and credential redaction. They are historical source snapshots, not target implementation evidence.
 - Added the upstream alignment document to the canonical `docs/INDEX.md`. This is a requirements/evidence synthesis; upstream code has not been copied or independently tested in this repository.
 
 - Product architecture, MAC, hosting adapter scope and initial provider research were already present and re-checked.
@@ -24,6 +24,7 @@
 - GitHub Actions run [44738649409](https://github.com/helloinnovators1/odeistudio/actions/runs/44738649409) passed on commit `8580f228405a19c327d318ca70d8de2bd0fb989c`: Ruff `All checks passed!`; pytest `44 passed, 2 warnings`. This includes the OIDC/JWKS verifier and organization-membership tests.
 - GitHub Actions run [44738839514](https://github.com/helloinnovators1/odeistudio/actions/runs/44738839514) passed on commit `faa97e292f2c5b0e24ee23614cc4a22fd0d96389`: Ruff `All checks passed!`; pytest `46 passed, 2 warnings`. This includes the protected current-identity route and fail-closed behavior when OIDC is not configured.
 - GitHub Actions run [44739135487](https://github.com/helloinnovators1/odeistudio/actions/runs/44739135487) passed on commit `04af4b0951c8c999f3d570ac514aa7d3f7e56cdc`: Ruff `All checks passed!`; pytest `48 passed, 2 warnings`. This includes POSIX descriptor-based file reads, symlink-directory rejection and Windows reparse-point detection.
+- The Windows/Linux × Python 3.10/3.12 matrix is running as [44740133426](https://github.com/helloinnovators1/odeistudio/actions/runs/44740133426). Earlier matrix attempts exposed Windows directory-open behavior and a Ruff redundant-exception finding; both were corrected. Do not claim the matrix is green until all four jobs complete.
 - GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
 - Added a fail-closed OIDC/JWKS access-token verifier: RS256-only signature verification, required expiry/subject, issuer/audience checks, 5-minute JWKS cache and server-side active-membership lookup. Added a minimal protected `/api/v1/auth/me` route that returns only the verified subject and issuer; project/task routes remain unexposed and no production ODID issuer is configured.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
@@ -36,6 +37,7 @@
 - The task store requires authenticated callers to enforce organization membership, project access and owner permissions before use. The planner is one Responses API planning call, not a full autonomous agent loop.
 - Project-file utilities are not exposed through HTTP. The scanner still needs native Windows handle-relative/reparse-point hardening, workspace ownership checks and explicit user consent integration before exposure.
 - No Windows desktop folders have been scanned. The user's Chrome extension does not grant unrestricted filesystem access; the upstream path-bridge is a design/code reference and has not been ported or installed on the user's machine.
+- The upstream `STUDIO_API_KEY_GATE.md` contained hard-coded local development API/gateway credentials. The target mirror redacts those values. Rotate them in the source environment if they are still active; do not reuse historical local keys.
 - Provider integrations are documented/researched, not connected or end-to-end tested.
 - No live MongoDB/Atlas connection has been attempted because no valid credential is configured in this repository. The task-event transaction code has unit-test coverage but still needs integration tests against a replica-set deployment.
 
