@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
-from odei_api.services.tasks import TaskRecord, TaskStatus, transition_task
+from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key, transition_task
 
 
 class Collection:
@@ -141,7 +141,7 @@ def test_approval_records_approval_without_starting_execution(route_state, monke
     _, audit, tasks = route_state
     task = TaskRecord(
         id="task-1", organization_id="org-1", project_id="project-1",
-        owner_id="user-1", goal="Add tests", plan="Inspect and test",
+        owner_id=identity_owner_key("https://identity.example/", "user-1"), goal="Add tests", plan="Inspect and test",
         status=TaskStatus.AWAITING_APPROVAL, version=3,
         created_at=datetime.now(timezone.utc),
     )
@@ -160,7 +160,7 @@ def test_stale_approval_version_returns_conflict(route_state):
     _, _, tasks = route_state
     task = TaskRecord(
         id="task-1", organization_id="org-1", project_id="project-1",
-        owner_id="user-1", goal="Add tests", plan="Inspect and test",
+        owner_id=identity_owner_key("https://identity.example/", "user-1"), goal="Add tests", plan="Inspect and test",
         status=TaskStatus.AWAITING_APPROVAL, version=3,
     )
     tasks.tasks[task.id] = task
@@ -182,7 +182,7 @@ def test_project_member_cannot_approve_another_users_task(route_state):
     database.collections["project_memberships"].document = {"status": "active"}
     task = TaskRecord(
         id="task-2", organization_id="org-1", project_id="project-1",
-        owner_id="user-1", goal="Add tests", plan="Inspect and test",
+        owner_id=identity_owner_key("https://identity.example/", "user-1"), goal="Add tests", plan="Inspect and test",
         status=TaskStatus.AWAITING_APPROVAL, version=3,
     )
     tasks.tasks[task.id] = task
