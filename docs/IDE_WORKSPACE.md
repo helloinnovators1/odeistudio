@@ -7,7 +7,7 @@
 - Application: React 19 + TypeScript + Vite under `apps/web`.
 - Editor: Monaco via `@monaco-editor/react`, opened with `readOnly: true`.
 - Workspace source: the loopback-only `odei-companion` API. The user explicitly selects roots in the local companion and pairs with a one-time code.
-- Explorer: lists files in the selected workspace. The current companion response is rendered as a flat list; recursive tree navigation and filesystem watching are not implemented in this shell.
+- Explorer: builds a nested, collapsible directory/file tree from the already-authorized companion relative-path listing. Folders sort before files; filtering reveals matching paths and their ancestors; keyboard navigation supports Arrow Up/Down, Arrow Left/Right, Home and End. Tree construction rejects malformed relative paths and performs no additional filesystem access. Filesystem watching is not implemented.
 - Tabs: multiple read-only files can be opened, activated and closed.
 - Bottom panel: output/status messages, an honest no-LSP Problems surface and a disabled terminal explanation.
 - NEXUS panel: UI shell only. It does not send prompts, invoke the cloud planning API, stream responses or run tools.
