@@ -73,7 +73,21 @@
 - https://www.mongodb.com/docs/atlas/reference/faq/connection-changes/
 - https://www.mongodb.com/resources/products/fundamentals/atlas-connection-strings
 
-## 5. FastAPI authorization
+## 5. MongoDB asynchronous Python driver
+
+### Findings
+- MongoDB's supported PyMongo Async API uses `AsyncMongoClient`; network operations are awaited and the client must not be shared across event loops.
+
+### Decisions
+- Use PyMongo Async rather than introducing a new Motor dependency for new async services.
+- Construct the client lazily from a private Atlas URI; verify connectivity through a bounded ping/health check when lifecycle management is implemented.
+- Do not claim database readiness until an actual ping succeeds.
+
+### Primary sources
+- https://pymongo.readthedocs.io/en/stable/api/pymongo/asynchronous/index.html
+- https://www.mongodb.com/docs/languages/python/pymongo-driver/current/reference/migration/
+
+## 6. FastAPI authorization
 
 ### Findings
 - FastAPI supports OAuth2 scopes and dependency-based authorization checks; scope requirements can be enforced centrally per route.
@@ -86,5 +100,5 @@
 ### Primary source
 - https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/
 
-## 6. Research limitations
+## 7. Research limitations
 This document records architectural research, not completed provider integrations, a legal/compliance assessment, production security certification or an exhaustive survey of every provider product tier. Before enabling a provider action, validate its current official API, account permissions, regional availability, rate limits and product plan. Update the relevant adapter capability matrix and tests with evidence.
