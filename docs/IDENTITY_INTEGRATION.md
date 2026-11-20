@@ -59,8 +59,8 @@ The Identity service owner must publish and verify the following versioned contr
 ## Current limitations
 
 - No real ODID issuer, audience, JWKS endpoint or allowed client IDs are configured in this repository.
-- The protected API route currently exposes only verified identity metadata; workspace/task routes are not exposed.
-- The membership helper checks active organization membership but does not yet enforce a production role vocabulary or project-level permissions.
+- The protected API exposes verified identity metadata and a read-only organization-membership lookup. Workspace/task routes remain unexposed.
+- The membership endpoint resolves active membership by organization ID + verified issuer + subject from MongoDB and returns only organization ID and role. It does not yet enforce a production role vocabulary or project-level permissions. Missing membership storage fails closed with 503; missing/inactive membership returns 403.
 - There is no membership provisioning/invitation lifecycle, refresh/revocation integration, MFA step-up enforcement or production audit pipeline.
 - The RFC 9068 profile is the target contract for this API. The actual ODID issuer must be tested against it before enabling protected routes.
 
@@ -69,10 +69,10 @@ The Identity service owner must publish and verify the following versioned contr
 - Valid access token with correct typ, issuer, audience, key, subject and required claims succeeds.
 - ID token, missing/wrong typ, wrong issuer/audience, expired token, future iat, missing jti/client_id, unknown/ambiguous kid, wrong key use and non-RS256 algorithm fail.
 - Oversized/invalid JWKS and non-HTTPS issuer/JWKS fail closed.
-- Active organization membership succeeds; missing, suspended, revoked and cross-tenant membership returns 403.
+- Active organization membership succeeds; missing, suspended, revoked and cross-tenant membership returns 403. Missing membership storage returns 503; malformed membership records fail closed.
 - Project owner/member/operator/admin policy is verified against the approved role contract, not inferred from localStorage.
 - Key rotation works with old/new key overlap and unknown old keys fail after retirement.
-- Every sensitive route returns correct 401/403/503 and emits a redacted audit event.
+- Every sensitive route returns correct 401/403/503 and emits a redacted audit event. The current membership lookup is read-only and is not yet connected to a durable audit pipeline.
 
 ## References
 
