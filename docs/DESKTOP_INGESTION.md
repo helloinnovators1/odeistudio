@@ -26,7 +26,7 @@ A normal browser extension or web page cannot silently enumerate arbitrary Windo
 
 ## Current implementation status
 
-A read-only Python project-file utility has been added under `apps/api/odei_api/services/project_files.py`. It lists, reads and searches bounded UTF-8 files under an explicitly selected root, rejects traversal and symlinks, and excludes common secret/dependency paths. It is not exposed through HTTP because authentication, tenant ownership and explicit workspace authorization are not implemented yet. It does not yet parse `.gitignore`, provide a Windows companion service, or stream files to the server.
+A read-only Python project-file utility has been added under `apps/api/odei_api/services/project_files.py`. It lists, reads and searches bounded UTF-8 files under an explicitly selected root, rejects traversal and symlinks, and excludes common secret/dependency paths. It is not exposed through HTTP because authentication, tenant ownership and explicit workspace authorization are not implemented yet. It respects root and nested `.gitignore` files and enforces file-count/aggregate-byte budgets. Reads use descriptor-based `O_NOFOLLOW` traversal on POSIX; the Windows fallback compares file identity before/after open and checks resolved containment, but still needs native Windows handle/reparse-point hardening before hostile, concurrently mutable workspaces are trusted. It does not provide a Windows companion service or stream files to the server.
 
 ## Initial implementation stages
 1. Local CLI lists files under an explicitly supplied root and applies safe excludes.
