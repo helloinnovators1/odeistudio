@@ -36,6 +36,15 @@ describe("buildWorkspaceTree", () => {
     const expected = [{ name: "a", path: "a", kind: "file", file: { path: "a", size: 2 }, children: [] }];
     expect(buildWorkspaceTree(conflicting)).toEqual(expected);
     expect(buildWorkspaceTree([...conflicting].reverse())).toEqual(expected);
+    expect(buildWorkspaceTree([
+      { path: "a/b/c.txt", size: 3 },
+      { path: "a/b", size: 4 },
+    ])).toEqual([{
+      name: "a",
+      path: "a",
+      kind: "directory",
+      children: [{ name: "b", path: "a/b", kind: "file", file: { path: "a/b", size: 4 }, children: [] }],
+    }]);
   });
 
   it("ignores unsafe or malformed relative paths", () => {
