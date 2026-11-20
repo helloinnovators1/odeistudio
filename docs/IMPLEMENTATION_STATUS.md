@@ -213,3 +213,5 @@ Earlier entries in this file describe intermediate milestones and may say task H
 - Added `docs/IDE_WORKSPACE.md` and indexed it in `docs/INDEX.md`. Full Next.js/Code-OSS desktop parity, recursive explorer, authenticated NEXUS chat, safe patches, isolated terminal, LSP, Git/SCM, preview, Agents Window, CLI, cloud/background agents and Windows 10 build 18362 validation remain open.
 
 - Completed project membership management with an owner-only, bounded GET members endpoint; route test verifies membership listing and audit outcome. Latest change awaits current-head CI.
+
+- The completed project membership list route is now included in API CI [44804291266](https://github.com/helloinnovators1/odeistudio/actions/runs/44804291266) on commit `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`: all six jobs passed (Ubuntu/Windows × Python 3.10/3.12, web tests/build, MongoDB 7.0 replica-set integration). The run includes the owner-only membership-list test and real transaction rollback coverage. Current security run [44804305322](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305322) has dependency audits and secret scanning passed; CodeQL is still running.
