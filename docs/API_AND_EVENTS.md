@@ -97,3 +97,11 @@ The API now exposes the following project-scoped task routes. Every operation re
 
 Approval is now an explicit domain state between `awaiting_approval` and `executing`. The execution transition remains unavailable through HTTP until the controlled execution fabric exists. Task create/approve/cancel operations append audit records in the same MongoDB transaction as task state and lifecycle events; audit failure aborts the transaction. Task and task-event reads and authorization denials are audited before returning. Live MongoDB replica-set integration remains a release gate. Project creation and membership administration are still not exposed; project records must be provisioned by a trusted administrative process.
 
+
+
+## Health routes
+
+| Method | Route | Behavior |
+|---|---|---|
+| GET | `/api/v1/health/live` | Process liveness; does not imply dependencies are ready. |
+| GET | `/api/v1/health/ready` | Performs MongoDB ping plus topology detection. Returns ready only for a replica set or mongos/sharded deployment; standalone MongoDB returns 503 because task/audit persistence requires multi-document transactions. |
