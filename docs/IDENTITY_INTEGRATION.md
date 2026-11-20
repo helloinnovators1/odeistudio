@@ -64,6 +64,10 @@ The Identity service owner must publish and verify the following versioned contr
 - There is no membership provisioning/invitation lifecycle, refresh/revocation integration or MFA step-up enforcement. Audit coverage is partial: organization-membership decisions and NEXUS task create/approve/cancel/read/event-read plus selected task denials are recorded; authentication failures, companion pairing/revocation, tool execution, full coverage review and DB-level immutability remain outstanding.
 - The RFC 9068 profile is the target contract for this API. The actual ODID issuer must be tested against it before enabling protected routes.
 
+
+- The initial project-scoped NEXUS chat route is now implemented at `POST /organizations/{organization_id}/projects/{project_id}/nexus/chat`. It uses the same verified bearer dependency and server-side organization/project membership checks, requires explicit cloud consent, redacts bounded chat/file context, records prompt-free audit metadata and calls the Responses API with `store=false` and no tools. It does not mean ODID is connected: no production issuer/client settings or browser token-acquisition flow are configured.
+- The React workspace composer remains disabled. Do not enable it or ask users to paste tokens into browser storage until ODID publishes the contract above and the browser implements Authorization Code + PKCE, in-memory access-token handling, refresh/revocation and exact registered client settings.
+
 ## Acceptance tests before production ODID enablement and cloud workspace APIs
 
 - Valid access token with correct typ, issuer, audience, key, subject and required claims succeeds.
