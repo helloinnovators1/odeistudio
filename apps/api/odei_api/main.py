@@ -23,6 +23,7 @@ from odei_api.security.auth import (
 from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.planning import PlanningError, create_task_plan
+from odei_api.services.projects import router as projects_router
 from odei_api.services.task_store import MongoTaskStore
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,20 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
             await audit_store.initialize()
             application.state.audit_event_store = audit_store
+            await application.state.mongo_database["projects"].create_index(
+                [("organization_id", 1), ("project_id", 1)], unique=True
+            )
+            await application.state.mongo_database["projects"].create_index(
+                [("organization_id", 1), ("status", 1), ("created_at", -1)]
+            )
+            await application.state.mongo_database["project_memberships"].create_index(
+                [("organization_id", 1), ("project_id", 1),
+                 ("identity_issuer", 1), ("identity_subject", 1)], unique=True
+            )
+            await application.state.mongo_database["project_memberships"].create_index(
+                [("organization_id", 1), ("identity_issuer", 1),
+                 ("identity_subject", 1), ("status", 1)]
+            )
             task_store = MongoTaskStore(
                 application.state.mongo_database["tasks"],
                 application.state.mongo_database["task_events"],
@@ -75,6 +90,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(nexus_tasks_router)
+app.include_router(projects_router)
 
 # Keep origins empty until the deployment's exact web origins are configured.
 # Wildcard CORS with credentials is deliberately not enabled.
