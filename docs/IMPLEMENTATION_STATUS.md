@@ -39,6 +39,9 @@
 
 - Added the first ODEI Studio web workspace surface in `apps/web`: explicit user-gesture loopback connection, Chrome Local Network Access permission handling, one-time companion pairing, in-memory-only bearer token, multi-workspace navigation and read-only file preview. The selected workspace list returns safe folder-basename labels, never absolute paths. Web unit tests and a Node 20 CI build/test job are included.
 
+- API CI run [44762159867](https://github.com/helloinnovators1/odeistudio/actions/runs/44762159867) passed on commit `fe1b5673a6ff6833514ac4751cd4932347813c99`: Ubuntu/Python 3.10 and 3.12 each `69 passed, 4 skipped, 2 warnings`; Windows/Python 3.10 and 3.12 each `71 passed, 2 skipped, 2 warnings`. Ruff passed in all four jobs. The web job passed all 4 Vitest tests and the Vite production build.
+- Security workflow run [44762159926](https://github.com/helloinnovators1/odeistudio/actions/runs/44762159926) passed on the same commit: Gitleaks secret scanning, Python `pip-audit`, web `npm audit`, and CodeQL analysis for Python plus JavaScript/TypeScript all completed successfully. The configured web audit threshold is high; this is not a blanket vulnerability-free certification.
+
 ## Not yet verified
 - OIDC token verification is wired to `/api/v1/auth/me`, and a server-side organization-membership lookup helper exists. No trusted ODID issuer/audience/JWKS endpoint is configured, no membership CRUD/onboarding service exists, and no task or workspace routes are exposed. End-to-end identity-provider integration and project-level authorization remain outstanding.
 - No React/TypeScript/Monaco frontend has been integrated into this target repository. The upstream UI remains reference material until service ownership and migration contracts are settled.
@@ -63,6 +66,6 @@
 
 
 ## Security automation added in the current continuation
-- Added `.github/workflows/security.yml` on the Windows-safe-scanner feature branch. It schedules Gitleaks secret scanning, strict Python `pip-audit`, web `npm audit` and GitHub CodeQL for Python plus JavaScript/TypeScript on pushes, pull requests, weekly schedule and manual dispatch. The first audit exposed a local-package lookup mistake and vulnerable Vite/Vitest versions; both were corrected. Secret scanning, Python dependency audit and web dependency audit have since passed on the toolchain-upgrade revision; CodeQL is still running.
+- Added `.github/workflows/security.yml` on the Windows-safe-scanner feature branch. It schedules Gitleaks secret scanning, strict Python `pip-audit`, web `npm audit` and GitHub CodeQL for Python plus JavaScript/TypeScript on pushes, pull requests, weekly schedule and manual dispatch. The first audit exposed a local-package lookup mistake and vulnerable Vite/Vitest versions; both were corrected. Secret scanning, Python dependency audit and web dependency audit all passed on commit `fe1b5673a6ff6833514ac4751cd4932347813c99`; CodeQL Python plus JavaScript/TypeScript analysis also completed successfully on that commit.
 - Added `.github/dependabot.yml` for weekly GitHub Actions and Python dependency update proposals.
-- Do not mark the repository clean or vulnerability-free until CodeQL completes and all subsequent scheduled findings are triaged.
+- Initial security automation completed successfully: Gitleaks, pip-audit, npm audit and CodeQL. This is not a certification or a guarantee that the repository has no security issues; review CodeQL alerts and continue triaging scheduled findings.
