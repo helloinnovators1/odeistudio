@@ -136,6 +136,13 @@ def test_project_create_list_and_membership_lifecycle():
         assert audit.events[-1]["action"] == "project.member.add"
         assert audit.events[-1]["session"] is not None
 
+        members = client.get(
+            f"/api/v1/organizations/org-1/projects/{project['project_id']}/members"
+        )
+        assert members.status_code == 200, members.text
+        assert members.json()["members"][0]["identity_subject"] == "member"
+        assert audit.events[-1]["action"] == "project.member.list"
+
         removed = client.request(
             "DELETE",
             f"/api/v1/organizations/org-1/projects/{project['project_id']}/members",
