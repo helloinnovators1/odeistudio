@@ -332,3 +332,27 @@ async def test_task_events_reject_invalid_cursor_and_limit():
         await store.list_events(
             organization_id="org-1", task_id="task-1", limit=101
         )
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("next_status", "expected_event_type"),
+    [
+        (TaskStatus.APPROVED, "task.approved"),
+        (TaskStatus.CANCELLED, "task.cancelled"),
+    ],
+)
+async def test_task_approval_and_cancellation_emit_semantic_event_types(
+    next_status, expected_event_type
+):
+    store, _, events = make_store()
+    await store.create_planned(make_task(), plan="Plan")
+    await store.transition(
+        organization_id="org-1",
+        task_id="task-1",
+        next_status=next_status,
+        expected_version=3,
+    )
+    ordered = sorted(events.documents.values(), key=lambda row: row["version"])
+    assert ordered[-1]["type"] == expected_event_type
