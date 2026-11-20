@@ -35,7 +35,8 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently.
 - [x] Add tenant-scoped project create/list and owner-managed membership add/remove routes; require active organization membership for creator and target; use unique indexes and transactional audit writes. Ownership transfer, org administration and invitations remain open.
 - [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction; integrated project-scoped create/read/events/approve/cancel routes enforce membership/project/task access. Full role policy, project administration and production ODID integration remain open.
-- [x] Add pure, bounded multi-file patch proposal validation with SHA-256 snapshot checks, unified diffs, sensitive-path/Windows-name protections and resource budgets (no persistence or writes).\n- [ ] Add proposal persistence, IDE diff/review, explicit approval, atomic handle-relative patch application, concurrency checks and rollback.
+- [x] Add pure, bounded multi-file patch proposal validation with SHA-256 snapshot checks, unified diffs, sensitive-path/Windows-name protections and resource budgets (no persistence or writes).
+- [ ] Add proposal persistence, IDE diff/review, explicit approval, atomic handle-relative patch application, concurrency checks and rollback.
 - [ ] Add isolated command runner with timeout/resource limits and network/filesystem policy.
 - [ ] Add test runner and structured diagnostics.
 - [ ] Deliver an end-to-end coding-agent vertical slice with authorized tools, patch review, execution, tests and resumable task state.
