@@ -20,4 +20,4 @@ def test_liveness_endpoint() -> None:
 def test_readiness_does_not_claim_unconfigured_dependencies() -> None:
     response = client.get("/api/v1/health/ready")
     assert response.status_code == 200
-    assert response.json()["checks"] == "not_configured"
+    assert response.json() == {"status": "unknown", "checks": "not_configured"}
