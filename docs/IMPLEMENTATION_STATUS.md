@@ -187,3 +187,5 @@ Earlier entries in this file describe intermediate milestones and may say task H
 
 - Updated `/api/v1/health/ready` to run both a bounded MongoDB ping and a `hello` topology check. Readiness succeeds only for replica-set (`setName`) or sharded/mongos (`msg=isdbgrid`) topology; a standalone MongoDB server returns 503 with `transactions: unsupported` because NEXUS task/audit persistence requires multi-document transactions.
 - Added tests for replica-set readiness, mongos readiness, standalone rejection and MongoDB unavailability. API CI [44795590882](https://github.com/helloinnovators1/odeistudio/actions/runs/44795590882) passed all six jobs on commit `18b6f31c3c31695d092a0ef5e6a7936f5337f0c1`: Ubuntu Python 3.10/3.12, Windows Python 3.10/3.12, web tests/build and MongoDB replica-set integration. The latest documentation-only head is undergoing its own security scan.
+
+- Task transitions now emit semantic `task.approved`, `task.cancelled`, `task.completed` and `task.failed` event types; intermediate transitions remain `task.status_changed`. Added parameterized approval/cancellation event tests. Latest-head CI is pending.
