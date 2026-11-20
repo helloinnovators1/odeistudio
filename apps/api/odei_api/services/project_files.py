@@ -100,8 +100,17 @@ def _safe_target(root: Path, relative_path: str) -> Path:
 
 
 def _is_link_or_junction(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return True
+    if stat.S_ISLNK(metadata.st_mode):
+        return True
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    if getattr(metadata, "st_file_attributes", 0) & reparse_flag:
+        return True
     is_junction = getattr(os.path, "isjunction", None)
-    return path.is_symlink() or bool(is_junction and is_junction(path))
+    return bool(is_junction and is_junction(path))
 
 
 def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[int, os.stat_result]:
@@ -116,7 +125,12 @@ def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[i
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     directory = getattr(os, "O_DIRECTORY", 0)
 
-    if os.name == "posix" and nofollow and directory:
+    if (
+        os.name == "posix"
+        and nofollow
+        and directory
+        and os.open in os.supports_dir_fd
+    ):
         root_fd = os.open(root, flags | directory)
         opened_directories: list[int] = []
         try:
