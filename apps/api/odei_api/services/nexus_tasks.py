@@ -18,7 +18,12 @@ from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
-from odei_api.services.tasks import InvalidTaskTransition, TaskRecord, TaskStatus, identity_owner_key
+from odei_api.services.tasks import (
+    InvalidTaskTransition,
+    TaskRecord,
+    TaskStatus,
+    identity_owner_key,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
