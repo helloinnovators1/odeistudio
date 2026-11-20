@@ -318,3 +318,15 @@ All references below are paths in the inspected source repository:
 ### Identity-specific upstream finding
 
 The upstream ODID holistic document describes ODID as a foundational identity service but also records extraction work and gaps. The upstream production-roles document explicitly labels the browser-local role/session registry as a UX simulation: role assignments and sessions stored in localStorage are not production authorization, and protected server routes did not yet validate trusted ODID claims in that audit. Therefore, the target API must not reuse localStorage role data, demo invite codes or client-side admin redirects as security controls. The new target API foundation verifies configured RS256 JWTs against a JWKS endpoint and resolves active organization membership server-side; it is not yet wired to a confirmed ODID issuer or protected routes.
+
+
+### Path-bridge code audit — do not port verbatim
+
+Inspection of the upstream `packages/path-bridge/src/security.ts` and `server.ts` found additional design risks beyond the README summary:
+
+- `POST /v1/resolve` adds a caller-supplied absolute path to the root allowlist. It is protected by the local bridge token, but it is not equivalent to a native OS folder-picker action and should not be treated as user selection.
+- CORS headers are emitted only for listed origins, but the server does not explicitly reject every request whose `Origin` is outside that list. Browser preflight often blocks custom-header requests, but CORS response headers alone are not a server-side origin authorization check.
+- The bridge performs realpath/allowlist checks and then performs path-based filesystem operations. A concurrent filesystem mutation can create a time-of-check/time-of-use race; realpath checks alone are not a race-proof file-handle boundary.
+- The upstream package inventory at the inspected commit contains no dedicated path-bridge test suite. The README's security claims therefore need independent tests.
+
+**Migration decision:** use the package as a requirements reference only. A target companion must require a native folder picker for new roots, enforce Origin policy server-side, keep read-only mode as the default, require separate approval for mutations, use handle-relative/no-follow operations where supported, and test Windows reparse points, symlink races, token leakage, browser-origin attacks and revocation. Do not expose the upstream bridge unchanged.
