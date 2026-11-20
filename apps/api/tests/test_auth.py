@@ -8,7 +8,6 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import SecretStr
 
 from odei_api.config import Settings
 from odei_api.security.auth import (
