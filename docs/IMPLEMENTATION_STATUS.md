@@ -34,7 +34,7 @@
 - The companion no-store hardening revision passed matrix [44751875452](https://github.com/helloinnovators1/odeistudio/actions/runs/44751875452) on commit `c5ea5b26cb32fc629a401f6409408bd234081b68`: Ubuntu/Python 3.10 and 3.12 each `61 passed, 4 skipped, 2 warnings`; Windows/Python 3.10 and 3.12 each `63 passed, 2 skipped, 2 warnings`. Ruff passed in all four jobs. Pairing, workspace and preflight responses now set `Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
 - The retained workspace-handle registry passed matrix [44749075407](https://github.com/helloinnovators1/odeistudio/actions/runs/44749075407) on commit `45bf008c23169102ede1cf1d597da58c5683b15d`: Ubuntu/Python 3.10 and 3.12 each `51 passed, 4 skipped, 2 warnings`; Windows/Python 3.10 and 3.12 each `53 passed, 2 skipped, 2 warnings`. Ruff passed in all four jobs. The registry retains a selected root's OS handle/descriptor, performs list/read relative to it, serializes operations and revokes/closes it. Regression tests rename the selected directory, create a replacement at the old path and verify the retained handle still addresses the original directory.
 - GitHub Actions verified 30 tests passed on commit `cde52ea2e9b719fdd13727358bdd6070c6a92a89` (Python 3.12, Ubuntu). The run completed successfully. One Starlette TestClient deprecation warning remains because the dev environment uses `httpx` rather than Starlette's newly recommended `httpx2`.
-- Added a fail-closed RFC 9068-style JWT access-token verifier: HTTPS issuer/JWKS, explicit at+jwt type, RS256, required exp/sub/iat/jti/client_id, issuer/audience checks, bounded 5-minute JWKS cache, verified scope parsing, explicit `AUTH_ALLOWED_CLIENT_IDS` client allowlist and server-side active-membership lookup. Added a minimal protected `/api/v1/auth/me` route that returns only the verified subject and issuer; project/task routes remain unexposed and no production ODID issuer is configured.
+- Added a fail-closed RFC 9068-style JWT access-token verifier: HTTPS issuer/JWKS, explicit at+jwt type, RS256, required exp/sub/iat/jti/client_id, issuer/audience checks, bounded 5-minute JWKS cache, verified scope parsing, explicit `AUTH_ALLOWED_CLIENT_IDS` client allowlist and server-side active-membership lookup. Added a minimal protected `/api/v1/auth/me` route and subsequent project-scoped NEXUS task routes; no production ODID issuer is configured.
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
 
@@ -47,7 +47,7 @@
 - OIDC token verification is wired to `/api/v1/auth/me`, and a server-side organization-membership lookup helper exists. No trusted ODID issuer/audience/JWKS endpoint is configured, no membership CRUD/onboarding service exists, and no task or workspace routes are exposed. End-to-end identity-provider integration and project-level authorization remain outstanding.
 - A first React/TypeScript/Vite browser workspace is implemented under `apps/web`, with Chrome loopback permission handling, pairing, multi-workspace explorer, read-only file preview and disconnect. The full Monaco-based IDE/editor, multi-card/multi-tab persistence and upstream Next.js Agents/Editor experience are not yet integrated.
 - No live Atlas connection, secret vault, sandbox runtime, GitHub App, Studio MAC UI or MAD UI has been implemented here.
-- The task store requires authenticated callers to enforce organization membership, project access and owner permissions before use. The planner is one Responses API planning call, not a full autonomous agent loop.
+- The task store is now called through authenticated project-scoped routes that enforce organization membership, project access and task-owner/project-owner permissions. The planner is still a bounded planning workflow, not a full autonomous coding agent loop.
 - The cloud API still has no authenticated workspace routes or authenticated execution-agent routes. The planning-only route does not expose workspace data or execute tools. The separate local companion is connected to the first browser workspace UI and exposes read-only loopback routes only. It opens explicitly selected roots into the in-memory `WorkspaceHandleRegistry`, binds to `127.0.0.1`, enforces exact configured Origin and Host values, issues one-time pairing codes and short-lived hashed read-only tokens, and supports revocation. The companion now rejects non-HTTPS public web origins while permitting loopback HTTP development origins. It still lacks ODID/user/tenant binding, companion-specific audit hooks, signed installer and validation on Windows 10 build 18362. Keep it loopback-only; never expose it to the LAN.
 - No Windows desktop folders have been scanned. The user's Chrome extension does not grant unrestricted filesystem access; the upstream path-bridge is a design/code reference and has not been ported or installed on the user's machine.
 - The upstream `STUDIO_API_KEY_GATE.md` contained hard-coded local development API/gateway credentials. The target mirror redacts those values. Rotate them in the source environment if they are still active; do not reuse historical local keys.
@@ -135,7 +135,7 @@
 
 - Added a project access primitive that grants access only to the exact project owner identity or a server-stored active project membership, always scoped by organization and active project status. Absent and unauthorized projects return the same 404 response.
 - Added atomic planned-task persistence. The task and ordered lifecycle events (created, context gathering, planning, approval requested) are committed in one MongoDB transaction; an event failure rolls back the task write.
-- Added focused service tests for project authorization and planned-task lifecycle/rollback. This increment is not a project API or full NEXUS task workflow: project/membership provisioning, task HTTP routes, user approval UI, patching and isolated execution remain unimplemented.
+- Added focused service tests for project authorization and planned-task lifecycle/rollback. The initial project-scoped task HTTP API now supports create, read, event pagination, approval and cancellation; project/membership provisioning, user approval UI, patching and isolated execution remain unimplemented.
 
 
 ## 2026-11-20 — project-authorized NEXUS task API increment
@@ -150,7 +150,7 @@ Implemented a first HTTP integration over the existing project authorization and
 - Create/approve/cancel actions append audit events.
 - Focused API route tests cover consent, project access denial, durable approval-ready creation, approval and stale-version conflict.
 
-Still not implemented: project creation or membership administration APIs; atomic task+audit transaction/outbox; task event streaming; code patch tools; file writes; isolated command execution; test runner; autonomous repair; CLI; Monaco IDE; cloud or parallel agents. The companion remains read-only. No local user folders have been scanned.
+Still not implemented: project creation or membership administration APIs; transactional outbox/event streaming; code patch tools; file writes; isolated command execution; test runner; autonomous repair; CLI; Monaco IDE; cloud or parallel agents. The companion remains read-only. No local user folders have been scanned.
 
 
 ## Latest holistic repository scan and atomic audit remediation (2026-11-20)
@@ -164,3 +164,8 @@ Still not implemented: project creation or membership administration APIs; atomi
 - The Windows companion remains a local read-only prototype. No Desktop folder scan, signed installer, or Windows 10 build 18362 device validation has occurred in this hosted session. The full upstream docs remain indexed under `docs/INDEX.md` and `docs/upstream/`.
 
 - Extended task audit hooks to successful task reads and task-event reads, task-not-found/owner denials, and project-owner approval denials. Added route tests for those outcomes. These latest changes await CI and are not yet marked verified.
+
+
+## Current correction to earlier status notes
+
+Earlier entries in this file describe intermediate milestones and may say task HTTP routes were not exposed or task audit hooks did not exist. Those statements are historical, not current: the initial project-scoped task API now exists; task create/approve/cancel audit writes share the task transaction; task/task-event reads and selected denials are audited. Production ODID integration, full audit coverage, membership administration, patching, isolated execution and the full Monaco workspace remain open.
