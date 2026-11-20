@@ -53,6 +53,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 application.state.mongo_database["tasks"],
                 application.state.mongo_database["task_events"],
                 client,
+                audit_store=audit_store,
             )
             await task_store.initialize()
             application.state.task_store = task_store
