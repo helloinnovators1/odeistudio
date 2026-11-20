@@ -138,7 +138,7 @@ def test_rejects_oversized_base_snapshot_file() -> None:
 
 def test_rejects_invalid_unicode_surrogates() -> None:
     with pytest.raises(PatchProposalError, match="valid UTF-8"):
-        build_patch_proposal({}, {"new.txt": "\\ud800"}, {"new.txt": None})
+        build_patch_proposal({}, {"new.txt": "\ud800"}, {"new.txt": None})
 
 
 @pytest.mark.parametrize(
