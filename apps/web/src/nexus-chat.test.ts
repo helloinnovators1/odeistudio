@@ -75,6 +75,24 @@ describe("NEXUS chat transport", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("enforces server-aligned per-message, per-file and combined input bounds before network access", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(sendNexusChat({
+      ...base, messages: [{ role: "user", content: "x".repeat(8_001) }],
+    }, fetcher)).rejects.toThrow("1 to 8,000");
+    await expect(sendNexusChat({
+      ...base, workspaceFiles: [{ path: "large.txt", content: "x".repeat(8_001) }],
+    }, fetcher)).rejects.toThrow("at most 8,000");
+    await expect(sendNexusChat({
+      ...base,
+      messages: [{ role: "user", content: "x".repeat(8_000) }],
+      workspaceFiles: [{ path: "large.txt", content: "y".repeat(8_000) },
+        { path: "second.txt", content: "z".repeat(8_000) },
+        { path: "third.txt", content: "w".repeat(8_000) }],
+    }, fetcher)).rejects.toThrow("40,000 characters");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("maps server errors to safe messages without echoing response bodies", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(
       JSON.stringify({ code: "MODEL_NOT_CONFIGURED", detail: "private provider diagnostics" }),
