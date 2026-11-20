@@ -5,6 +5,7 @@ The deployment must use a replica set or sharded cluster that supports transacti
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -20,10 +21,20 @@ from odei_api.services.tasks import (
 
 
 class MongoTaskStore:
-    def __init__(self, collection: Any, events_collection: Any, client: Any):
+    def __init__(self, collection: Any, events_collection: Any, client: Any, audit_store: Any | None = None):
         self._collection = collection
         self._events = events_collection
         self._client = client
+        self._audit_store = audit_store
+
+    async def _append_audit_in_transaction(
+        self, audit_event: Mapping[str, Any] | None, session: Any
+    ) -> None:
+        if audit_event is None:
+            return
+        if self._audit_store is None:
+            raise RuntimeError("Audit store is required for transactional task actions")
+        await self._audit_store.append(**dict(audit_event), session=session)
 
     async def initialize(self) -> None:
         await self._collection.create_index(
@@ -67,9 +78,13 @@ class MongoTaskStore:
         async with self._client.start_session() as session, await session.start_transaction():
             await self._collection.insert_one(document, session=session)
             await self._events.insert_one(event, session=session)
+            await self._append_audit_in_transaction(audit_event, session)
         return self._to_record(document)
 
-    async def create_planned(self, task: TaskRecord, *, plan: str) -> TaskRecord:
+    async def create_planned(
+        self, task: TaskRecord, *, plan: str,
+        audit_event: Mapping[str, Any] | None = None,
+    ) -> TaskRecord:
         """Atomically persist an approval-ready task and ordered lifecycle events."""
         if task.status is not TaskStatus.CREATED or task.version != 0:
             raise ValueError("A planned task must start in the created state at version zero")
@@ -111,6 +126,7 @@ class MongoTaskStore:
             await self._collection.insert_one(document, session=session)
             for event in event_rows:
                 await self._events.insert_one(event, session=session)
+            await self._append_audit_in_transaction(audit_event, session)
         return self._to_record(document)
 
     async def get(self, *, organization_id: str, task_id: str) -> TaskRecord | None:
@@ -131,6 +147,7 @@ class MongoTaskStore:
         expected_version: int,
         plan: str | None = None,
         actor_id: str | None = None,
+        audit_event: Mapping[str, Any] | None = None,
     ) -> TaskRecord:
         current = await self.get(organization_id=organization_id, task_id=task_id)
         if current is None:
