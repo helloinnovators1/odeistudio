@@ -122,3 +122,10 @@
 - Updated API, security and NEXUS documentation to state the exact scope and limitations. This does not complete audit integration for authentication, companion pairing/revocation, task/tool actions or MAC/MAD. MongoDB role-level immutability, replica-set integration tests, retention and audit query/export remain unimplemented.
 
 - Security CI [44778654256](https://github.com/helloinnovators1/odeistudio/actions/runs/44778654256) passed Gitleaks, Python dependency audit, web dependency audit and CodeQL Python/TypeScript on the same code commit.
+
+
+## Latest autonomous implementation increment — authenticated NEXUS planning route
+
+- Added `POST /api/v1/organizations/{organization_id}/nexus/plan` to connect the existing planner to a protected API boundary. It checks verified identity and active server-side organization membership, requires strict explicit cloud-model consent, validates bounded task/context inputs, invokes the synchronous OpenAI client in a worker thread, and records plan success/failure in the audit store without retaining task/context/plan content in audit metadata.
+- The route returns only plan ID, organization ID, model and plan text. It performs no local workspace reads, file writes, command execution or durable task persistence.
+- CI for this increment is pending; do not count it as verified until the new branch-head API/web and security workflows pass.

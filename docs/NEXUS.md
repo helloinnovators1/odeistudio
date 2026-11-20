@@ -95,3 +95,10 @@ The agent orchestrator owns durable task state and policy. Tool executors run in
 
 ## Deferred capabilities
 Parallel agents, remote cloud workspaces, browser automation, advanced semantic indexing, autonomous PR review and long-running background tasks are later milestones, not assumed features of the first slice.
+
+
+## First authenticated planning API
+
+The API now exposes `POST /api/v1/organizations/{organization_id}/nexus/plan` as the first authenticated NEXUS workflow slice. It requires a verified bearer principal, an active server-side organization membership and an explicit `cloud_model_consent: true` value. Task text and caller-supplied project context are bounded, secret-redacted by the planning service and sent through the server-side OpenAI Responses client with `store=false`. The route writes a tenant/actor-scoped audit outcome without storing task text, repository context or plan content. Audit failure blocks the response.
+
+This endpoint produces a plan only. It does not connect to the local companion, inspect local files, create durable tasks, apply patches, run commands or authorize implementation. The supplied project context is untrusted caller input, not verified repository evidence. Production use still requires configured ODID issuer/audience/JWKS/client allowlist, membership provisioning, MongoDB and OpenAI credentials, plus the remaining authorization and runtime controls.

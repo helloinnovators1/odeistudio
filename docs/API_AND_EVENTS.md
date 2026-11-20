@@ -66,3 +66,11 @@ Pairing codes expire after five minutes and failed exchanges are throttled. Resp
 The API package includes `MongoAuditEventStore` in `odei_api.services.audit_store`. It validates tenant/actor/target identifiers, requires an HTTPS identity issuer, constrains action and outcome values, requires timezone-aware timestamps, and writes a versioned event with request/trace correlation. Metadata is bounded by depth, field count and string length; sensitive key names are replaced and common credential patterns are redacted before insertion.
 
 The service exposes append and index initialization only; it intentionally has no update/delete methods. This is not yet wired into membership denials, companion pairing/revocation, task operations or other authorization decisions, and no audit read/export API is exposed. Production tamper resistance additionally requires a dedicated MongoDB role that can insert/read but cannot update/delete audit records, plus backup, retention, access-review and replica-set integration tests.
+
+
+## NEXUS planning
+
+- `POST /api/v1/organizations/{organization_id}/nexus/plan` requires a verified bearer access token, active server-side organization membership and explicit cloud-model consent.
+- Request fields: `task` (1–8,000 characters), optional `project_context` (0–24,000 characters), and strict boolean `cloud_model_consent`.
+- The route returns a plan identifier, organization identifier, model and plan text. It does not persist the plan as a durable task and does not execute tools or modify a workspace.
+- Plan success/failure is written to the append-only audit event collection. Audit metadata excludes task, context and plan content; audit failure returns 503.

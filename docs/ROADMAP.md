@@ -34,6 +34,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Add isolated command runner with timeout/resource limits and network/filesystem policy.
 - [ ] Add test runner and structured diagnostics.
 - [ ] Deliver an end-to-end coding-agent vertical slice with authorized tools, patch review, execution, tests and resumable task state.
+- [x] Add the first authenticated NEXUS planning API slice: verified principal + active organization membership + explicit cloud-model consent + bounded/redacted task/context + audit outcome. This is planning only, not an implementation agent.
 
 ## Phase 2 — Workspace experience
 
@@ -98,3 +99,9 @@ No phase is complete because its screens exist. Each capability needs working be
 - This is only a narrow membership authorization audit integration. Authentication failures, companion pairing/revocation, task and tool actions, audit querying/export, database role-level immutability, retention and replica-set integration tests remain open.
 
 - Corrected-head security workflow [44778654256](https://github.com/helloinnovators1/odeistudio/actions/runs/44778654256) passed all four jobs: Gitleaks, pip-audit, npm audit and CodeQL Python/TypeScript.
+
+
+## Latest NEXUS planning API increment
+
+- Added `POST /api/v1/organizations/{organization_id}/nexus/plan` on the implementation branch. It requires verified identity, active organization membership and explicit cloud-model consent; bounds task/context; invokes the existing server-side Responses planning service off the async event loop; and audits success/failure without persisting user task/context/plan text.
+- This increment is not considered verified until the API/web and security workflows complete on the resulting branch commit. The endpoint does not write files, run commands or persist a resumable task.

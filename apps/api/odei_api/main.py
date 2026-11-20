@@ -7,6 +7,8 @@ from uuid import uuid4
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Path, Request
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo.errors import PyMongoError
 
@@ -18,6 +20,8 @@ from odei_api.security.auth import (
     require_organization_membership,
 )
 from odei_api.services.audit_store import MongoAuditEventStore
+from odei_api.model_client import ModelConfigurationError, get_openai_client
+from odei_api.services.planning import PlanningError, create_task_plan
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -146,6 +150,160 @@ async def _append_membership_audit(
                 "message": "Authorization audit storage is temporarily unavailable.",
             },
         ) from exc
+
+
+
+class NexusPlanRequest(BaseModel):
+    """Bounded request for a plan; context is user-supplied and treated as untrusted."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    task: str = Field(min_length=1, max_length=8_000)
+    project_context: str = Field(default="", max_length=24_000)
+    cloud_model_consent: StrictBool
+
+
+async def _append_nexus_plan_audit(
+    request: Request,
+    *,
+    principal: Principal,
+    organization_id: str,
+    plan_id: str,
+    outcome: str,
+    model: str | None = None,
+) -> None:
+    """Record plan outcomes without storing task text, repository context or plan content."""
+    store = getattr(request.app.state, "audit_event_store", None)
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is not available."},
+        )
+    metadata = {"model": model} if model else {}
+    try:
+        await store.append(
+            organization_id=organization_id,
+            actor_issuer=principal.issuer,
+            actor_subject=principal.subject,
+            action="nexus.plan.create",
+            target_type="nexus_plan",
+            target_id=plan_id,
+            outcome=outcome,
+            request_id=uuid4().hex,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger.error("NEXUS plan audit append failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is temporarily unavailable."},
+        ) from exc
+
+
+@app.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/nexus/plan",
+    tags=["nexus"],
+)
+async def create_nexus_plan(
+    payload: NexusPlanRequest,
+    request: Request,
+    organization_id: str = Path(min_length=1, max_length=128),
+    principal: Principal = auth_principal_dependency,
+) -> dict[str, str]:
+    """Create a plan for an active organization member after explicit cloud-model consent.
+
+    This endpoint does not read local files, execute tools, write project files or
+    authorize implementation. Repository context is caller-supplied, bounded and
+    treated as untrusted input.
+    """
+    if organization_id != organization_id.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_ORGANIZATION_ID", "message": "Organization ID is invalid."},
+        )
+    if payload.cloud_model_consent is not True:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending task data to the cloud model."},
+        )
+    database = getattr(request.app.state, "mongo_database", None)
+    if database is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MEMBERSHIP_STORE_UNAVAILABLE", "message": "Organization membership storage is not configured."},
+        )
+    try:
+        await require_organization_membership(
+            database["organization_memberships"],
+            principal=principal,
+            organization_id=organization_id,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            await _append_membership_audit(
+                request,
+                principal=principal,
+                organization_id=organization_id,
+                outcome="denied",
+                reason="active_membership_required",
+            )
+        raise
+    except PyMongoError as exc:
+        logger.warning("NEXUS organization membership lookup failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MEMBERSHIP_STORE_UNAVAILABLE", "message": "Organization membership storage is temporarily unavailable."},
+        ) from exc
+
+    plan_id = uuid4().hex
+    try:
+        client, model = get_openai_client()
+        plan = await run_in_threadpool(
+            create_task_plan,
+            client,
+            model=model,
+            task=payload.task,
+            project_context=payload.project_context,
+            cloud_model_consent=True,
+        )
+    except ModelConfigurationError as exc:
+        await _append_nexus_plan_audit(
+            request, principal=principal, organization_id=organization_id,
+            plan_id=plan_id, outcome="failure",
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."},
+        ) from exc
+    except (PlanningError, ValueError) as exc:
+        await _append_nexus_plan_audit(
+            request, principal=principal, organization_id=organization_id,
+            plan_id=plan_id, outcome="failure",
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "NEXUS_PLANNING_FAILED", "message": "NEXUS could not produce a usable plan."},
+        ) from exc
+    except Exception as exc:
+        logger.warning("NEXUS planning provider failed: %s", type(exc).__name__)
+        await _append_nexus_plan_audit(
+            request, principal=principal, organization_id=organization_id,
+            plan_id=plan_id, outcome="failure",
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "NEXUS_PROVIDER_UNAVAILABLE", "message": "The NEXUS planning provider is temporarily unavailable."},
+        ) from exc
+
+    await _append_nexus_plan_audit(
+        request,
+        principal=principal,
+        organization_id=organization_id,
+        plan_id=plan_id,
+        outcome="success",
+        model=plan.model,
+    )
+    return {"plan_id": plan_id, "organization_id": organization_id, "model": plan.model, "plan": plan.text}
 
 
 @app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/membership", tags=["organizations"])
