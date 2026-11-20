@@ -18,7 +18,7 @@ from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
-from odei_api.services.tasks import InvalidTaskTransition, TaskRecord, TaskStatus
+from odei_api.services.tasks import InvalidTaskTransition, TaskRecord, TaskStatus, identity_owner_key
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -128,7 +128,7 @@ async def create_project_task(
         task = await task_store.create_planned(
             TaskRecord(
                 id=task_id, organization_id=organization_id, project_id=project_id,
-                owner_id=principal.subject, goal=payload.task,
+                owner_id=identity_owner_key(principal.issuer, principal.subject), goal=payload.task,
             ),
             plan=plan.text,
         )
@@ -155,7 +155,7 @@ async def _load_authorized_task(request: Request, organization_id: str, project_
     if task is None or task.project_id != project_id:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."})
     is_project_owner = project.get("owner_issuer") == principal.issuer and project.get("owner_subject") == principal.subject
-    if task.owner_id != principal.subject and not is_project_owner:
+    if task.owner_id != identity_owner_key(principal.issuer, principal.subject) and not is_project_owner:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."})
     return project, store, task
 
@@ -189,7 +189,7 @@ async def _transition_project_task(
         updated = await store.transition(
             organization_id=organization_id, task_id=task_id,
             next_status=next_status, expected_version=payload.expected_version,
-            actor_id=principal.subject,
+            actor_id=identity_owner_key(principal.issuer, principal.subject),
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."}) from exc
