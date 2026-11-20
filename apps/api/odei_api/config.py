@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     openai_api_key: SecretStr | None = None
     openai_model: str | None = None
+    mongodb_uri: SecretStr | None = None
+    mongodb_database: str = "odei_studio"
 
     model_config = SettingsConfigDict(
         env_file=".env",
