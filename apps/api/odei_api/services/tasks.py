@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from enum import StrEnum
+from enum import Enum
 
 
-class TaskStatus(StrEnum):
+class TaskStatus(str, Enum):
     CREATED = "created"
     CONTEXT_GATHERING = "context_gathering"
     PLANNING = "planning"
