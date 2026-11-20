@@ -97,6 +97,11 @@ def run_nexus_chat(
                 ),
             },
         )
+    serialized_input_chars = sum(len(item["content"]) for item in clean_messages)
+    if serialized_input_chars > MAX_CHAT_TOTAL_CHARS:
+        raise NexusChatError(
+            f"Serialized chat context exceeds {MAX_CHAT_TOTAL_CHARS} characters"
+        )
 
     response = client.responses.create(
         model=model.strip(),
