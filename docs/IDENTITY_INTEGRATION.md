@@ -59,12 +59,12 @@ The Identity service owner must publish and verify the following versioned contr
 ## Current limitations
 
 - No real ODID issuer, audience, JWKS endpoint or allowed client IDs are configured in this repository.
-- The protected API exposes verified identity metadata and a read-only organization-membership lookup. Workspace/task routes remain unexposed.
+- The protected API exposes verified identity metadata, organization membership lookup and an initial project-scoped NEXUS task API. Task routes enforce active organization membership, active tenant-matched project access, issuer+subject owner identity, active project membership, task-owner/project-owner read access and project-owner-only approval. They are not production-enabled against ODID because no production issuer contract is configured.
 - The membership endpoint resolves active membership by organization ID + verified issuer + subject from MongoDB and returns only organization ID and role. It does not yet enforce a production role vocabulary or project-level permissions. Missing membership storage fails closed with 503; missing/inactive membership returns 403.
-- There is no membership provisioning/invitation lifecycle, refresh/revocation integration, MFA step-up enforcement or production audit pipeline.
+- There is no membership provisioning/invitation lifecycle, refresh/revocation integration or MFA step-up enforcement. Audit coverage is partial: organization-membership decisions and NEXUS task create/approve/cancel/read/event-read plus selected task denials are recorded; authentication failures, companion pairing/revocation, tool execution, full coverage review and DB-level immutability remain outstanding.
 - The RFC 9068 profile is the target contract for this API. The actual ODID issuer must be tested against it before enabling protected routes.
 
-## Acceptance tests before enabling workspace/task APIs
+## Acceptance tests before production ODID enablement and cloud workspace APIs
 
 - Valid access token with correct typ, issuer, audience, key, subject and required claims succeeds.
 - ID token, missing/wrong typ, wrong issuer/audience, expired token, future iat, missing jti/client_id, unknown/ambiguous kid, wrong key use and non-RS256 algorithm fail.
@@ -72,7 +72,9 @@ The Identity service owner must publish and verify the following versioned contr
 - Active organization membership succeeds; missing, suspended, revoked and cross-tenant membership returns 403. Missing membership storage returns 503; malformed membership records fail closed.
 - Project owner/member/operator/admin policy is verified against the approved role contract, not inferred from localStorage.
 - Key rotation works with old/new key overlap and unknown old keys fail after retirement.
-- Every sensitive route returns correct 401/403/503 and emits a redacted audit event. The current membership lookup is read-only and is not yet connected to a durable audit pipeline.
+- Every sensitive route returns correct 401/403/503 and emits a redacted audit event. Current membership and NEXUS task routes have partial audit hooks; expand tests to every route and denial path before production.
+- Project/task route tests verify cross-issuer isolation, project membership, task-owner read restrictions, project-owner approval and optimistic-version conflicts.
+- NEXUS task create/approve/cancel writes task state, lifecycle events and audit events in one MongoDB transaction; verify rollback against a real replica-set CI job.
 
 ## References
 
@@ -82,3 +84,16 @@ The Identity service owner must publish and verify the following versioned contr
 - RFC 9068 — JWT Profile for OAuth 2.0 Access Tokens: https://www.rfc-editor.org/rfc/rfc9068.html
 - RFC 8725 — JSON Web Token Best Current Practices: https://www.rfc-editor.org/rfc/rfc8725.html
 - RFC 8414 — OAuth 2.0 Authorization Server Metadata: https://www.rfc-editor.org/rfc/rfc8414.html
+
+
+## Implemented protected project/task API (initial slice)
+
+The target currently exposes these authenticated routes under `/api/v1/organizations/{organization_id}/projects/{project_id}/tasks`:
+
+- `POST` collection: explicit cloud-model consent, planning and durable approval-ready task creation.
+- `GET /{task_id}`: task-owner or project-owner read.
+- `GET /{task_id}/events`: authorized cursor-paginated lifecycle events.
+- `POST /{task_id}/approve`: project-owner-only approval with expected-version concurrency; approval does not start execution.
+- `POST /{task_id}/cancel`: authorized cancellation with expected-version concurrency.
+
+These routes use the configured JWT verifier and server-side Mongo membership/project records. They do not provide membership provisioning, role administration, workspace file access, patch application or command execution. Do not treat the existence of these initial routes as production ODID integration.
