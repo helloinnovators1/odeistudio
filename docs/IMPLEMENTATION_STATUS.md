@@ -151,3 +151,14 @@ Implemented a first HTTP integration over the existing project authorization and
 - Focused API route tests cover consent, project access denial, durable approval-ready creation, approval and stale-version conflict.
 
 Still not implemented: project creation or membership administration APIs; atomic task+audit transaction/outbox; task event streaming; code patch tools; file writes; isolated command execution; test runner; autonomous repair; CLI; Monaco IDE; cloud or parallel agents. The companion remains read-only. No local user folders have been scanned.
+
+
+## Latest holistic repository scan and atomic audit remediation (2026-11-20)
+
+- Scanned the live branch tree and PR comparison against `main`: 165 tree entries, 57 changed files, 121 commits at scan head `f15df4d4f2edcbb49b24d4283d1a3456f1fc11ed`. Inspected API lifecycle, identity verification, companion pairing/session boundary, filesystem handle registry, Windows/POSIX scanner, NEXUS runtime/tool registry, project authorization, task store, web client, tests and CI configuration.
+- Confirmed current branch CI checks on the scan head included passing API matrix (Ubuntu/Windows, Python 3.10/3.12), web tests/build, Gitleaks, pip-audit, npm audit and CodeQL.
+- Found that NEXUS task create/approve/cancel mutations committed task state and task lifecycle events before a separate audit append. An audit-store failure could leave a committed mutation without its corresponding audit event.
+- Corrected this by passing the audit store into `MongoTaskStore`, allowing `MongoAuditEventStore.append` to participate in an existing Mongo session, and writing task state, lifecycle events and audit events in the same transaction. The NEXUS routes now pass the audit event into the transaction rather than appending after it. Audit failures abort the task transaction.
+- Added rollback/commit tests for planned task creation and state transitions when audit insertion succeeds or fails. Updated NEXUS route fakes to match the transactional persistence contract. Latest-head CI is the verification gate.
+- Remaining audit limitations: task reads/denials, companion pairing/revocation, authentication outcomes and tool execution are not fully instrumented. Production DB roles must deny audit update/delete; live replica-set integration, retention, export/query and monitoring remain open.
+- The Windows companion remains a local read-only prototype. No Desktop folder scan, signed installer, or Windows 10 build 18362 device validation has occurred in this hosted session. The full upstream docs remain indexed under `docs/INDEX.md` and `docs/upstream/`.
