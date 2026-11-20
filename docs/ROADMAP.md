@@ -29,6 +29,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Implement initial Chrome browser pairing UI, explicit loopback permission/request flow, multi-root navigation and read-only preview; bearer tokens remain in memory only.
 - [ ] Complete ODID user/tenant binding, explicit consent/audit lifecycle, signed Windows installer and validation on Windows 10 build 18362.
 - [x] Implement durable tenant-scoped task records and separate append-only task events with transactional state/event writes (MongoDB replica-set/sharded transaction support required).
+- [x] Atomically persist NEXUS task create/approve/cancel audit events in the same MongoDB transaction as task state and lifecycle events; audit failures roll back task mutations. Live replica-set integration testing remains open.
 - [x] Add bounded read-only NEXUS tool registry with strict schemas, injected workspace identity and unknown-tool rejection. Per-task capability enforcement and approval policy remain unchecked; this is not the complete policy/approval registry.
 - [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently. Project CRUD and membership administration remain open.
 - [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction. The HTTP route and end-to-end project/task authorization integration remain open.
@@ -53,7 +54,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Add secret references and vault integration.
 - [ ] Add environment configuration lifecycle.
 - [ ] Add provider connection registry and capability discovery.
-- [ ] Complete audit log integration across authentication, authorization, companion sessions, approvals and task operations; add privileged approvals and access-controlled audit queries. The insert-only Mongo audit writer is now wired to organization-membership success, denial and malformed-record decisions, but companion/session/task hooks and the remaining controls are outstanding.
+- [ ] Complete audit log integration across authentication, authorization, companion sessions, approvals and task operations; add privileged approvals and access-controlled audit queries. The insert-only Mongo audit writer is wired to organization-membership outcomes and NEXUS task create/approve/cancel transactions. Companion sessions, authentication outcomes, task reads/denials, tool executions, audit query/export and database-level controls remain outstanding.
 - [ ] Add database-level audit writer permissions that deny update/delete, replica-set integration tests, retention/archival, monitoring and access review.
 - [ ] Implement MAD operational metrics with source, freshness, aggregation and ownership definitions.
 
@@ -127,3 +128,12 @@ No phase is complete because its screens exist. Each capability needs working be
 - [ ] Add project creation and membership administration.
 - [ ] Implement patch proposal/review/apply, isolated execution, validation and bounded repair.
 - [ ] Build Monaco-based IDE, agent window, streaming chat, CLI, background workers and cloud agents.
+
+
+## Latest holistic scan and atomic-audit remediation
+
+- Re-scanned the live branch tree and PR diff: 165 tree entries, 57 changed files versus `main`, 121 commits at the scan head. Confirmed the canonical docs, API, companion, browser prototype, tests and CI workflows exist. Latest scan evidence was branch head `f15df4d4f2edcbb49b24d4283d1a3456f1fc11ed`; implementation commits below supersede that scan head.
+- Found a consistency defect: project-scoped task create/approve/cancel persisted task state and lifecycle events before separately appending audit events. An audit failure could therefore return an error after the task mutation had committed.
+- Corrected the persistence boundary: `MongoAuditEventStore.append` now accepts an optional Mongo session; `MongoTaskStore.create_planned` and `transition` append audit records inside the same transaction as task state and lifecycle events; API startup injects the shared audit store; NEXUS routes no longer audit those mutations after commit.
+- Added tests that prove successful task+audit commits and rollback of task state/lifecycle events when audit insertion fails. The route fakes were updated to exercise the new call contract. These tests await the latest-head CI result.
+- This does not yet provide full audit coverage. Task reads/denials, companion pairing/revocation, authentication outcomes and tool execution remain open; a live MongoDB replica-set transaction integration test and DB-level audit immutability remain release gates.
