@@ -42,14 +42,30 @@ async def _authorize_project(request: Request, organization_id: str, project_id:
     database = getattr(request.app.state, "mongo_database", None)
     if database is None:
         raise HTTPException(status_code=503, detail={"code": "PROJECT_STORE_UNAVAILABLE", "message": "Project storage is not configured."})
-    await require_organization_membership(
-        database["organization_memberships"], principal=principal, organization_id=organization_id
-    )
-    return await require_project_access(
-        database["projects"], database["project_memberships"],
-        organization_id=organization_id, project_id=project_id,
-        identity_issuer=principal.issuer, identity_subject=principal.subject,
-    )
+    try:
+        await require_organization_membership(
+            database["organization_memberships"], principal=principal, organization_id=organization_id
+        )
+        return await require_project_access(
+            database["projects"], database["project_memberships"],
+            organization_id=organization_id, project_id=project_id,
+            identity_issuer=principal.issuer, identity_subject=principal.subject,
+        )
+    except HTTPException as exc:
+        if exc.status_code in (403, 404):
+            audit = getattr(request.app.state, "audit_event_store", None)
+            if audit is None:
+                raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Authorization audit storage is not available."}) from exc
+            try:
+                await audit.append(
+                    organization_id=organization_id, actor_issuer=principal.issuer,
+                    actor_subject=principal.subject, action="nexus.project.access",
+                    target_type="project", target_id=project_id, outcome="denied",
+                    request_id=uuid4().hex, metadata={"reason": "project_access_denied"},
+                )
+            except Exception as audit_error:
+                raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Authorization audit storage is temporarily unavailable."}) from audit_error
+        raise
 
 
 async def _audit_task_action(request: Request, principal: Principal, organization_id: str, task_id: str, action: str, outcome: str, metadata: dict | None = None) -> None:
@@ -166,10 +182,14 @@ async def _transition_project_task(
     payload: TaskTransitionRequest, principal: Principal, next_status: TaskStatus,
 ) -> dict:
     try:
-        _, store, _task = await _load_authorized_task(request, organization_id, project_id, task_id, principal)
+        project, store, _task = await _load_authorized_task(request, organization_id, project_id, task_id, principal)
+        is_project_owner = project.get("owner_issuer") == principal.issuer and project.get("owner_subject") == principal.subject
+        if next_status is TaskStatus.APPROVED and not is_project_owner:
+            raise HTTPException(status_code=403, detail={"code": "PROJECT_OWNER_APPROVAL_REQUIRED", "message": "Only the project owner can approve this task."})
         updated = await store.transition(
             organization_id=organization_id, task_id=task_id,
             next_status=next_status, expected_version=payload.expected_version,
+            actor_id=principal.subject,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."}) from exc

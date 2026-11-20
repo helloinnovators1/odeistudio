@@ -61,7 +61,7 @@ class TaskStore:
         task = self.tasks.get(task_id)
         return task if task and task.organization_id == organization_id else None
 
-    async def transition(self, *, organization_id, task_id, next_status, expected_version):
+    async def transition(self, *, organization_id, task_id, next_status, expected_version, actor_id=None):
         current = await self.get(organization_id=organization_id, task_id=task_id)
         if current is None:
             raise KeyError("Task not found")
@@ -167,3 +167,26 @@ def test_stale_approval_version_returns_conflict(route_state):
     )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "TASK_VERSION_OR_STATE_CONFLICT"
+
+  
+def test_project_member_cannot_approve_another_users_task(route_state):
+    database, _, tasks = route_state
+    database.collections["projects"].document = {
+        "organization_id": "org-1", "project_id": "project-1",
+        "status": "active", "owner_issuer": "https://identity.example/",
+        "owner_subject": "project-owner",
+    }
+    database.collections["project_memberships"].document = {"status": "active"}
+    task = TaskRecord(
+        id="task-2", organization_id="org-1", project_id="project-1",
+        owner_id="user-1", goal="Add tests", plan="Inspect and test",
+        status=TaskStatus.AWAITING_APPROVAL, version=3,
+    )
+    tasks.tasks[task.id] = task
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-2/approve",
+        json={"expected_version": 3},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "PROJECT_OWNER_APPROVAL_REQUIRED"
+    assert tasks.tasks[task.id].status is TaskStatus.AWAITING_APPROVAL

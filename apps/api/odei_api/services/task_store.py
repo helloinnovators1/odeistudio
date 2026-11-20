@@ -130,6 +130,7 @@ class MongoTaskStore:
         next_status: TaskStatus,
         expected_version: int,
         plan: str | None = None,
+        actor_id: str | None = None,
     ) -> TaskRecord:
         current = await self.get(organization_id=organization_id, task_id=task_id)
         if current is None:
@@ -143,7 +144,7 @@ class MongoTaskStore:
             "organization_id": organization_id,
             "project_id": current.project_id,
             "task_id": task_id,
-            "actor_id": current.owner_id,
+            "actor_id": actor_id or current.owner_id,
             "type": "task.status_changed",
             "from_status": current.status.value,
             "to_status": updated.status.value,
