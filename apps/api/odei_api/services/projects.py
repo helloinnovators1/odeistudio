@@ -171,7 +171,7 @@ async def create_project(
     if client is None:
         raise HTTPException(status_code=503, detail={"code": "PROJECT_STORE_UNAVAILABLE"})
     try:
-        async with client.start_session() as session, session.start_transaction():
+        async with client.start_session() as session, await session.start_transaction():
             await database["projects"].insert_one(project, session=session)
             await _audit(
                 request, principal, organization_id, "project.create",
@@ -196,7 +196,7 @@ async def list_projects(
     principal: Principal = principal_dependency,
 ) -> dict:
     database = _database(request)
-    await _require_org_member(database, principal, organization_id)
+    await _require_org_member(request, database, principal, organization_id)
     try:
         member_project_ids = await _active_project_ids(database, organization_id, principal)
         query = {
@@ -246,7 +246,7 @@ async def add_project_member(
     if payload.identity_subject != payload.identity_subject.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_MEMBER_IDENTITY"})
     database = _database(request)
-    await _require_org_member(database, principal, organization_id)
+    await _require_org_member(request, database, principal, organization_id)
     await _require_owner(request, database, organization_id, project_id, principal)
     if payload.identity_issuer == principal.issuer and payload.identity_subject == principal.subject:
         raise HTTPException(status_code=409, detail={
@@ -273,7 +273,7 @@ async def add_project_member(
             "identity_subject": payload.identity_subject,
             "status": "active", "updated_at": now,
         }
-        async with client.start_session() as session, session.start_transaction():
+        async with client.start_session() as session, await session.start_transaction():
             existing = await database["project_memberships"].find_one({
                 "organization_id": organization_id, "project_id": project_id,
                 "identity_issuer": payload.identity_issuer,
@@ -325,7 +325,7 @@ async def remove_project_member(
     if parsed.scheme != "https" or not parsed.netloc:
         raise HTTPException(status_code=422, detail={"code": "INVALID_MEMBER_IDENTITY"})
     database = _database(request)
-    await _require_org_member(database, principal, organization_id)
+    await _require_org_member(request, database, principal, organization_id)
     await _require_owner(database, organization_id, project_id, principal)
     if (payload.identity_issuer == principal.issuer
             and payload.identity_subject == principal.subject):
@@ -335,7 +335,7 @@ async def remove_project_member(
         })
     client = request.app.state.mongo_client
     try:
-        async with client.start_session() as session, session.start_transaction():
+        async with client.start_session() as session, await session.start_transaction():
             result = await database["project_memberships"].update_one({
                 "organization_id": organization_id, "project_id": project_id,
                 "identity_issuer": payload.identity_issuer,
