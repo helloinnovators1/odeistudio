@@ -7,8 +7,8 @@ already have active membership in the same organization.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import uuid4
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -171,14 +171,13 @@ async def create_project(
     if client is None:
         raise HTTPException(status_code=503, detail={"code": "PROJECT_STORE_UNAVAILABLE"})
     try:
-        async with client.start_session() as session:
-            async with session.start_transaction():
-                await database["projects"].insert_one(project, session=session)
-                await _audit(
-                    request, principal, organization_id, "project.create",
-                    "project", project["project_id"], "success",
-                    {"name": payload.name}, session,
-                )
+        async with client.start_session() as session, session.start_transaction():
+            await database["projects"].insert_one(project, session=session)
+            await _audit(
+                request, principal, organization_id, "project.create",
+                "project", project["project_id"], "success",
+                {"name": payload.name}, session,
+            )
     except HTTPException:
         raise
     except PyMongoError as exc:
@@ -274,32 +273,31 @@ async def add_project_member(
             "identity_subject": payload.identity_subject,
             "status": "active", "updated_at": now,
         }
-        async with client.start_session() as session:
-            async with session.start_transaction():
-                existing = await database["project_memberships"].find_one({
-                    "organization_id": organization_id, "project_id": project_id,
-                    "identity_issuer": payload.identity_issuer,
-                    "identity_subject": payload.identity_subject,
-                }, session=session)
-                if existing and existing.get("status") == "active":
-                    raise HTTPException(status_code=409, detail={
-                        "code": "PROJECT_MEMBER_ALREADY_ACTIVE",
-                        "message": "The identity is already an active project member.",
-                    })
-                if existing:
-                    await database["project_memberships"].update_one(
-                        {"_id": existing["_id"]},
-                        {"$set": member}, session=session,
-                    )
-                else:
-                    member["created_at"] = now
-                    await database["project_memberships"].insert_one(member, session=session)
-                await _audit(
-                    request, principal, organization_id, "project.member.add",
-                    "project", project_id, "success",
-                    {"member_issuer": payload.identity_issuer,
-                     "member_subject": payload.identity_subject}, session,
+        async with client.start_session() as session, session.start_transaction():
+            existing = await database["project_memberships"].find_one({
+                "organization_id": organization_id, "project_id": project_id,
+                "identity_issuer": payload.identity_issuer,
+                "identity_subject": payload.identity_subject,
+            }, session=session)
+            if existing and existing.get("status") == "active":
+                raise HTTPException(status_code=409, detail={
+                    "code": "PROJECT_MEMBER_ALREADY_ACTIVE",
+                    "message": "The identity is already an active project member.",
+                })
+            if existing:
+                await database["project_memberships"].update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": member}, session=session,
                 )
+            else:
+                member["created_at"] = now
+                await database["project_memberships"].insert_one(member, session=session)
+            await _audit(
+                request, principal, organization_id, "project.member.add",
+                "project", project_id, "success",
+                {"member_issuer": payload.identity_issuer,
+                 "member_subject": payload.identity_subject}, session,
+            )
     except HTTPException:
         raise
     except DuplicateKeyError as exc:
@@ -337,25 +335,24 @@ async def remove_project_member(
         })
     client = request.app.state.mongo_client
     try:
-        async with client.start_session() as session:
-            async with session.start_transaction():
-                result = await database["project_memberships"].update_one({
-                    "organization_id": organization_id, "project_id": project_id,
-                    "identity_issuer": payload.identity_issuer,
-                    "identity_subject": payload.identity_subject, "status": "active",
-                }, {"$set": {"status": "inactive", "updated_at": datetime.now(timezone.utc)}},
-                    session=session)
-                if result.matched_count != 1:
-                    raise HTTPException(status_code=404, detail={
-                        "code": "PROJECT_MEMBER_NOT_FOUND",
-                        "message": "Active project membership was not found.",
-                    })
-                await _audit(
-                    request, principal, organization_id, "project.member.remove",
-                    "project", project_id, "success",
-                    {"member_issuer": payload.identity_issuer,
-                     "member_subject": payload.identity_subject}, session,
-                )
+        async with client.start_session() as session, session.start_transaction():
+            result = await database["project_memberships"].update_one({
+                "organization_id": organization_id, "project_id": project_id,
+                "identity_issuer": payload.identity_issuer,
+                "identity_subject": payload.identity_subject, "status": "active",
+            }, {"$set": {"status": "inactive", "updated_at": datetime.now(timezone.utc)}},
+                session=session)
+            if result.matched_count != 1:
+                raise HTTPException(status_code=404, detail={
+                    "code": "PROJECT_MEMBER_NOT_FOUND",
+                    "message": "Active project membership was not found.",
+                })
+            await _audit(
+                request, principal, organization_id, "project.member.remove",
+                "project", project_id, "success",
+                {"member_issuer": payload.identity_issuer,
+                 "member_subject": payload.identity_subject}, session,
+            )
     except HTTPException:
         raise
     except PyMongoError as exc:
