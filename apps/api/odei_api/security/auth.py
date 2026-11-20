@@ -5,6 +5,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import jwt
@@ -17,6 +18,9 @@ bearer_scheme = HTTPBearer(auto_error=False)
 bearer_credentials_dependency = Depends(bearer_scheme)
 JWKS_CACHE_TTL_SECONDS = 300
 JWKS_FETCH_TIMEOUT_SECONDS = 5.0
+JWKS_MAX_BYTES = 1_000_000
+JWKS_MAX_KEYS = 100
+JWT_ACCESS_TOKEN_TYPES = {"at+jwt", "application/at+jwt"}
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,9 @@ class Principal:
 
     subject: str
     issuer: str
+    client_id: str = ""
+    token_id: str = ""
+    scopes: frozenset[str] = frozenset()
 
 
 async def load_jwks(request: Request, jwks_url: str) -> dict[str, Any]:
@@ -49,11 +56,18 @@ async def load_jwks(request: Request, jwks_url: str) -> dict[str, Any]:
         client = getattr(state, "http_client", None)
         if client is None:
             raise RuntimeError("Identity HTTP client is not initialized")
+        if urlsplit(jwks_url).scheme != "https":
+            raise ValueError("JWKS endpoint must use HTTPS")
         response = await client.get(jwks_url, timeout=JWKS_FETCH_TIMEOUT_SECONDS)
         response.raise_for_status()
+        content = getattr(response, "content", b"")
+        if isinstance(content, (bytes, bytearray)) and len(content) > JWKS_MAX_BYTES:
+            raise ValueError("Identity provider JWKS document exceeds the size limit")
         document = response.json()
         if not isinstance(document, dict) or not isinstance(document.get("keys"), list):
             raise TypeError("Identity provider returned an invalid JWKS document")
+        if not document["keys"] or len(document["keys"]) > JWKS_MAX_KEYS:
+            raise ValueError("Identity provider JWKS key count is invalid")
         state.jwks_cache = {
             "document": document,
             "expires_at": now + JWKS_CACHE_TTL_SECONDS,
@@ -69,7 +83,13 @@ def verify_access_token(
     audience: str,
 ) -> Principal:
     """Verify signature and mandatory OIDC claims; only RS256 is accepted."""
+    if urlsplit(issuer).scheme != "https" or not urlsplit(issuer).netloc:
+        raise ValueError("Identity issuer must be an HTTPS origin")
+    if not audience.strip():
+        raise ValueError("Identity audience is required")
     header = jwt.get_unverified_header(token)
+    if header.get("typ") not in JWT_ACCESS_TOKEN_TYPES:
+        raise jwt.InvalidTokenError("JWT is not explicitly typed as an OAuth access token")
     if header.get("alg") != "RS256":
         raise jwt.InvalidAlgorithmError("Only RS256 access tokens are accepted")
     key_id = header.get("kid")
@@ -78,7 +98,20 @@ def verify_access_token(
 
     candidates = [
         key for key in jwks.get("keys", [])
-        if isinstance(key, dict) and key.get("kid") == key_id and key.get("kty") == "RSA"
+        if (
+            isinstance(key, dict)
+            and key.get("kid") == key_id
+            and key.get("kty") == "RSA"
+            and key.get("alg") in (None, "RS256")
+            and key.get("use") in (None, "sig")
+            and (
+                key.get("key_ops") is None
+                or (
+                    isinstance(key.get("key_ops"), list)
+                    and "verify" in key["key_ops"]
+                )
+            )
+        )
     ]
     if len(candidates) != 1:
         raise jwt.InvalidTokenError("Signing key is unknown or ambiguous")
@@ -89,12 +122,28 @@ def verify_access_token(
         algorithms=["RS256"],
         audience=audience,
         issuer=issuer,
-        options={"require": ["exp", "sub"]},
+        options={"require": ["exp", "sub", "iat", "jti", "client_id"]},
     )
     subject = claims.get("sub")
+    client_id = claims.get("client_id")
+    token_id = claims.get("jti")
+    scope_claim = claims.get("scope", "")
     if not isinstance(subject, str) or not subject.strip():
         raise jwt.InvalidTokenError("Token subject is invalid")
-    return Principal(subject=subject, issuer=issuer)
+    if not isinstance(client_id, str) or not client_id.strip():
+        raise jwt.InvalidTokenError("Token client_id is invalid")
+    if not isinstance(token_id, str) or not token_id.strip():
+        raise jwt.InvalidTokenError("Token jti is invalid")
+    if not isinstance(scope_claim, str):
+        raise jwt.InvalidTokenError("Token scope claim must be a space-delimited string")
+    scopes = frozenset(scope_claim.split())
+    return Principal(
+        subject=subject,
+        issuer=issuer,
+        client_id=client_id,
+        token_id=token_id,
+        scopes=scopes,
+    )
 
 
 async def get_current_principal(
