@@ -217,7 +217,7 @@ def test_project_member_cannot_approve_another_users_task(route_state):
 
 
 def test_same_subject_from_different_issuer_cannot_read_task(route_state):
-    database, _, tasks = route_state
+    database, audit, tasks = route_state
     database.collections["projects"].document = {
         "organization_id": "org-1", "project_id": "project-1",
         "status": "active", "owner_issuer": "https://identity.example/",
