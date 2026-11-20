@@ -1,0 +1,311 @@
+"""Read-only loopback companion for explicitly selected local workspaces."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import hmac
+import os
+import secrets
+import sys
+import time
+from collections import deque
+from collections.abc import Callable, Iterable
+from urllib.parse import urlsplit
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
+
+from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+
+
+DEFAULT_PORT = 8765
+DEFAULT_PAIRING_TTL_SECONDS = 300
+DEFAULT_TOKEN_TTL_SECONDS = 3600
+
+
+class PairRequest(BaseModel):
+    code: str
+
+
+class PairingManager:
+    """One-time pairing codes and short-lived read-only bearer sessions."""
+
+    def __init__(
+        self,
+        *,
+        pairing_ttl_seconds: int = DEFAULT_PAIRING_TTL_SECONDS,
+        token_ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+        max_failed_attempts: int = 5,
+        failure_window_seconds: int = 60,
+    ) -> None:
+        if pairing_ttl_seconds < 1 or token_ttl_seconds < 1:
+            raise ValueError("Pairing and token TTLs must be positive")
+        self.pairing_ttl_seconds = pairing_ttl_seconds
+        self.token_ttl_seconds = token_ttl_seconds
+        self._clock = clock
+        self._max_failed_attempts = max_failed_attempts
+        self._failure_window_seconds = failure_window_seconds
+        self._pairing_code: str | None = None
+        self._pairing_expires_at = 0.0
+        self._tokens: dict[str, float] = {}
+        self._failed_attempts: dict[str, deque[float]] = {}
+
+    def issue_pairing_code(self) -> str:
+        self._pairing_code = secrets.token_urlsafe(18)
+        self._pairing_expires_at = self._clock() + self.pairing_ttl_seconds
+        self._failed_attempts.clear()
+        return self._pairing_code
+
+    def exchange(self, code: str, origin: str) -> str | None:
+        now = self._clock()
+        attempts = self._failed_attempts.setdefault(origin, deque())
+        while attempts and now - attempts[0] >= self._failure_window_seconds:
+            attempts.popleft()
+        if len(attempts) >= self._max_failed_attempts:
+            return None
+
+        valid = (
+            self._pairing_code is not None
+            and now < self._pairing_expires_at
+            and hmac.compare_digest(code, self._pairing_code)
+        )
+        if not valid:
+            attempts.append(now)
+            if now >= self._pairing_expires_at:
+                self._pairing_code = None
+            return None
+
+        self._pairing_code = None
+        self._failed_attempts.clear()
+        token = secrets.token_urlsafe(32)
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        self._tokens[digest] = now + self.token_ttl_seconds
+        return token
+
+    def is_valid(self, token: str) -> bool:
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        expiry = self._tokens.get(digest)
+        if expiry is None:
+            return False
+        if self._clock() >= expiry:
+            self._tokens.pop(digest, None)
+            return False
+        return True
+
+    def revoke(self, token: str) -> bool:
+        digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        return self._tokens.pop(digest, None) is not None
+
+
+def _validate_origins(origins: Iterable[str]) -> set[str]:
+    allowed: set[str] = set()
+    for origin in origins:
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or origin != f"{parsed.scheme}://{parsed.netloc}"
+        ):
+            raise ValueError("Companion origins must be exact scheme-and-host origins")
+        allowed.add(origin)
+    if not allowed:
+        raise ValueError("At least one explicit companion browser origin is required")
+    return allowed
+
+
+def create_companion_app(
+    registry: WorkspaceHandleRegistry,
+    workspace_id: str,
+    *,
+    allowed_origins: Iterable[str],
+    pairing_manager: PairingManager | None = None,
+    port: int = DEFAULT_PORT,
+) -> FastAPI:
+    """Create a loopback-only companion API with exact Origin and Host checks."""
+    origins = _validate_origins(allowed_origins)
+    pairing = pairing_manager or PairingManager()
+    allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+    app = FastAPI(
+        title="ODEI Local Workspace Companion",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+
+    @app.middleware("http")
+    async def enforce_loopback_browser_boundary(request: Request, call_next):
+        host = request.headers.get("host", "").casefold()
+        if host not in allowed_hosts:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Invalid local companion host"},
+            )
+
+        origin = request.headers.get("origin")
+        if request.url.path == "/health" and origin is None:
+            return await call_next(request)
+        if origin not in origins:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Browser origin is not authorized"},
+            )
+
+        if request.method == "OPTIONS":
+            response = Response(status_code=204)
+        else:
+            response = await call_next(request)
+
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        response.headers["Vary"] = "Origin"
+        if request.headers.get("access-control-request-private-network", "").casefold() == "true":
+            response.headers["Access-Control-Allow-Private-Network"] = "true"
+        return response
+
+    def require_bearer(request: Request) -> str:
+        authorization = request.headers.get("authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if not separator or scheme.casefold() != "bearer" or not token:
+            raise HTTPException(status_code=401, detail="A valid companion session is required")
+        if not pairing.is_valid(token):
+            raise HTTPException(status_code=401, detail="A valid companion session is required")
+        return token
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "service": "odei-local-companion"}
+
+    @app.post("/v1/pair")
+    async def pair(payload: PairRequest, request: Request):
+        origin = request.headers.get("origin", "")
+        token = pairing.exchange(payload.code, origin)
+        if token is None:
+            raise HTTPException(status_code=401, detail="Pairing code is invalid or expired")
+        return {
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": pairing.token_ttl_seconds,
+            "permissions": ["workspace:read"],
+        }
+
+    @app.get("/v1/workspace")
+    async def workspace(request: Request):
+        require_bearer(request)
+        return {"workspace_id": workspace_id, "access": "read-only"}
+
+    @app.get("/v1/workspace/files")
+    async def list_files(request: Request):
+        require_bearer(request)
+        files = registry.list_files(workspace_id)
+        return {"files": [{"path": item.path, "size": item.size} for item in files]}
+
+    @app.get("/v1/workspace/file")
+    async def read_file(
+        request: Request,
+        path: str = Query(min_length=1, max_length=1024),
+    ):
+        require_bearer(request)
+        try:
+            content = registry.read_text(workspace_id, path)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail="File is unavailable for safe reading") from exc
+        return {"path": path, "content": content}
+
+    @app.post("/v1/session/revoke", status_code=204)
+    async def revoke_session(request: Request):
+        token = require_bearer(request)
+        pairing.revoke(token)
+        return Response(status_code=204)
+
+    return app
+
+
+def select_directory_native() -> str | None:
+    """Display an OS folder picker; return the user's explicit selection."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as exc:
+        raise RuntimeError("This Python installation does not include Tk support") from exc
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+        selected = filedialog.askdirectory(
+            parent=root,
+            title="Select a project folder for ODEI Studio",
+            mustexist=True,
+        )
+        return selected or None
+    finally:
+        root.destroy()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the ODEI read-only local workspace companion")
+    parser.add_argument("--port", type=int, default=int(os.getenv("ODEI_COMPANION_PORT", DEFAULT_PORT)))
+    args = parser.parse_args()
+
+    origins = [
+        item.strip()
+        for item in os.getenv("ODEI_COMPANION_ALLOWED_ORIGINS", "").split(",")
+        if item.strip()
+    ]
+    if not origins:
+        print(
+            "Set ODEI_COMPANION_ALLOWED_ORIGINS to the exact ODEI Studio web-app origin(s).",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        selected = select_directory_native()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if not selected:
+        print("Folder selection cancelled.")
+        return 1
+
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    pairing = PairingManager()
+    code = pairing.issue_pairing_code()
+    print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
+    print("Selected folder is held by an OS handle; access is read-only.")
+    print("Enter this one-time pairing code in the ODEI Studio web app:")
+    print(code)
+    print("The code expires in five minutes. Do not share it with anyone.")
+
+    import uvicorn
+
+    app = create_companion_app(
+        registry,
+        workspace_id,
+        allowed_origins=origins,
+        pairing_manager=pairing,
+        port=args.port,
+    )
+    try:
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=args.port,
+            log_level="warning",
+            access_log=False,
+        )
+    finally:
+        registry.revoke(workspace_id)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
