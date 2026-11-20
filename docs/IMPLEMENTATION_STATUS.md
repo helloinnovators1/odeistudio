@@ -6,7 +6,7 @@
 
 ## Verified repository work
 - Audited the linked `infoedutechos/ODEI-Multi-Ecosystem` repository (recursive tree: 2,163 entries / 1,866 files) and documented the ODEI Studio source inventory, desktop path-bridge design, upstream orchestration, ODEI AI gateway boundary, Studio MAC/MAD separation, security caveats and migration work order in `docs/UPSTREAM_ECOSYSTEM_ALIGNMENT.md`.
-- Imported 23 curated upstream Studio/ecosystem reference documents and mirrored all 68 Markdown/text files from the upstream Studio, AI, ecosystem and audit documentation directories under `docs/upstream/mirror/`. Added `docs/upstream/MIRROR_INDEX.md`; imported snapshots have provenance headers and credential redaction. They are historical source snapshots, not target implementation evidence.
+- Imported 23 curated upstream Studio/ecosystem reference documents and made all 68 Markdown/text source documents available: 47 mirrored with original paths under `docs/upstream/mirror/` and 21 preserved as curated provenance-labelled snapshots under `docs/upstream/`. Added `docs/upstream/MIRROR_INDEX.md`; imported snapshots have credential redaction. They are historical source snapshots, not target implementation evidence.
 - Added the upstream alignment document to the canonical `docs/INDEX.md`. This is a requirements/evidence synthesis; upstream code has not been copied or independently tested in this repository.
 
 - Product architecture, MAC, hosting adapter scope and initial provider research were already present and re-checked.
