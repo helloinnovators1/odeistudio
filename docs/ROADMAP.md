@@ -32,7 +32,8 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Atomically persist NEXUS task create/approve/cancel audit events in the same MongoDB transaction as task state and lifecycle events; audit failures roll back task mutations. A real MongoDB 7.0 replica-set integration test passed in API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821), job `mongodb-integration` (1 passed). Production Atlas connectivity and broader transaction/failure scenarios remain open.
 - [x] Make readiness verify MongoDB ping plus transaction-capable topology (`setName` or `isdbgrid`); standalone MongoDB is not ready for NEXUS task/audit workflows.
 - [x] Add bounded read-only NEXUS tool registry with strict schemas, injected workspace identity and unknown-tool rejection. Per-task capability enforcement and approval policy remain unchecked; this is not the complete policy/approval registry.
-- [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently. Project CRUD and membership administration remain open.
+- [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently.
+- [x] Add tenant-scoped project create/list and owner-managed membership add/remove routes; require active organization membership for creator and target; use unique indexes and transactional audit writes. Ownership transfer, org administration and invitations remain open.
 - [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction; integrated project-scoped create/read/events/approve/cancel routes enforce membership/project/task access. Full role policy, project administration and production ODID integration remain open.
 - [ ] Add patch application with hash/concurrency checks and explicit approval.
 - [ ] Add isolated command runner with timeout/resource limits and network/filesystem policy.
@@ -127,7 +128,7 @@ No phase is complete because its screens exist. Each capability needs working be
 - [x] Add audit append operations and focused route tests.
 - [x] Make task persistence, lifecycle events and audit append atomic through one MongoDB transaction; real replica-set integration passed in API CI run 44794850821.
 - [x] Add durable ordered task-event retrieval with bounded pagination and a reconnectable version cursor.
-- [ ] Add project creation and membership administration.
+- [x] Add project creation and membership administration (initial owner-managed lifecycle API; no ownership transfer or invitation flow).
 - [ ] Implement patch proposal/review/apply, isolated execution, validation and bounded repair.
 - [ ] Build Monaco-based IDE, agent window, streaming chat, CLI, background workers and cloud agents.
 
@@ -152,3 +153,12 @@ No phase is complete because its screens exist. Each capability needs working be
 - Readiness tests passed in API CI [44795590882](https://github.com/helloinnovators1/odeistudio/actions/runs/44795590882) on commit `18b6f31c3c31695d092a0ef5e6a7936f5337f0c1`; the full six-job run passed the four-way Python matrix, web tests/build and MongoDB replica-set integration.
 
 - [x] Emit semantic task lifecycle events for approval, cancellation, completion, failure and expiry; intermediate transitions use `task.status_changed`. Parameterized tests passed in API CI [44796392625](https://github.com/helloinnovators1/odeistudio/actions/runs/44796392625); security CI [44796427460](https://github.com/helloinnovators1/odeistudio/actions/runs/44796427460) passed all four checks.
+
+
+## Project lifecycle and membership increment (2026-11-20)
+
+- Added `POST/GET /api/v1/organizations/{organization_id}/projects` for tenant-scoped project creation and caller-visible listing. Active organization membership is required; creator becomes project owner.
+- Added owner-only `PUT/DELETE /api/v1/organizations/{organization_id}/projects/{project_id}/members`. Targets must already be active organization members; removals are soft status changes; project owner is implicit and cannot be removed or duplicated as a member.
+- Added unique project and membership indexes during API startup. Project creation and membership changes append audit records in the same MongoDB transaction as the mutation; authorization denials are audited.
+- Added route tests for create/list/add/remove and rejection of a target without active organization membership. These latest tests and changes are pending CI; this item is implemented but not marked verified until current-head API and security workflows pass.
+- Remaining boundaries: no org membership provisioning, project ownership transfer, invitation/acceptance workflow, arbitrary project roles, patch/write API, shell execution, IDE integration or local desktop scan.
