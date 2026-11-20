@@ -12,12 +12,12 @@ from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
 from odei_api.mongo_client import create_mongo_client
-from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.security.auth import (
     Principal,
     get_current_principal,
     require_organization_membership,
 )
+from odei_api.services.audit_store import MongoAuditEventStore
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
