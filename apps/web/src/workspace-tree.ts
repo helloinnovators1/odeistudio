@@ -13,8 +13,8 @@ export function buildWorkspaceTree(files: CompanionFile[]): WorkspaceTreeNode[] 
   const roots: WorkspaceTreeNode[] = [];
   const directories = new Map<string, WorkspaceTreeNode>();
 
-  // Stable path order makes malformed file/directory collisions deterministic.
-  for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+  // Code-unit ordering keeps every parent path before its descendants.
+  for (const file of [...files].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)) {
     const segments = file.path.split("/");
     if (
       segments.length === 0 ||
