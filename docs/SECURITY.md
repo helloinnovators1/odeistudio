@@ -59,3 +59,10 @@ An earlier run on commit `02da0ca4fb1e915c307789584f51d7e18bd3de73` failed becau
 - Sending repository text to a hosted model is a separate data-transfer decision from selecting a local folder. Require explicit consent tied to the authenticated user/session before any planner or agent call includes workspace context.
 - Redact common secrets before model submission and redact model/tool output before display or logs. Redaction is best-effort defense-in-depth and does not guarantee detection of every credential; secret files remain excluded at the filesystem layer.
 - Responses requests set store=false and replay stateless history. This disables Responses application-state storage, but does not itself enable Zero Data Retention or disable default abuse-monitoring retention. Confirm the account's retention controls and customer obligations before production use.
+
+
+## Audit event storage primitive
+
+The API now has an initial insert-only `MongoAuditEventStore` implementation. It requires verified-identity fields from its caller, tenant-scopes each event, bounds metadata, redacts sensitive key names and common credential patterns, and records request/trace correlation. It is not yet connected to authorization outcomes or companion session actions. Do not describe the product as having a complete audit trail.
+
+Application-level insert-only methods are insufficient to guarantee immutability. Production MongoDB credentials for the audit writer must be least-privilege and must not permit update or delete; audit readers should use a separate role. Add replica-set integration tests, retention/archival controls, monitoring for gaps, and periodic access review before production.
