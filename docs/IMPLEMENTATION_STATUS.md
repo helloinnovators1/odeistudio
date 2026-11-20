@@ -37,6 +37,8 @@
 - Added server-side OpenAI client configuration using SecretStr and environment variables; model name is configurable and no API key is committed.
 - Added global technical research decisions with official OpenAI, GitHub, FastAPI, MongoDB and pathspec primary sources.
 
+- Added the first ODEI Studio web workspace surface in `apps/web`: explicit user-gesture loopback connection, Chrome Local Network Access permission handling, one-time companion pairing, in-memory-only bearer token, multi-workspace navigation and read-only file preview. The selected workspace list returns safe folder-basename labels, never absolute paths. Web unit tests and a Node 20 CI build/test job are included.
+
 ## Not yet verified
 - OIDC token verification is wired to `/api/v1/auth/me`, and a server-side organization-membership lookup helper exists. No trusted ODID issuer/audience/JWKS endpoint is configured, no membership CRUD/onboarding service exists, and no task or workspace routes are exposed. End-to-end identity-provider integration and project-level authorization remain outstanding.
 - No React/TypeScript/Monaco frontend has been integrated into this target repository. The upstream UI remains reference material until service ownership and migration contracts are settled.

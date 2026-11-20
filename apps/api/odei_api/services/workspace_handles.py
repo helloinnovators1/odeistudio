@@ -40,6 +40,7 @@ class WorkspaceNotFound(WorkspaceHandleError):
 class _WorkspaceGrant:
     platform: str
     handle: object
+    label: str
     kernel32: object | None = None
     lock: threading.RLock = field(default_factory=threading.RLock)
 
@@ -57,11 +58,12 @@ class WorkspaceHandleRegistry:
         Call only from a trusted native folder-picker flow. Never pass a raw
         absolute path supplied by a remote browser request to this method.
         """
+        label = Path(selected_path).name or "Selected folder"
         if os.name == "nt":
             from odei_api.services.windows_file_handles import open_directory_handle
 
             kernel32, handle = open_directory_handle(selected_path)
-            grant = _WorkspaceGrant(platform="nt", handle=handle, kernel32=kernel32)
+            grant = _WorkspaceGrant(platform="nt", handle=handle, label=label, kernel32=kernel32)
         elif os.name == "posix":
             flags = (
                 os.O_RDONLY
@@ -76,7 +78,7 @@ class WorkspaceHandleRegistry:
             except Exception:
                 os.close(handle)
                 raise
-            grant = _WorkspaceGrant(platform="posix", handle=handle)
+            grant = _WorkspaceGrant(platform="posix", handle=handle, label=label)
         else:
             raise WorkspaceHandleError("This platform has no supported workspace handle")
 
@@ -96,6 +98,11 @@ class WorkspaceHandleRegistry:
             yield grant
         finally:
             grant.lock.release()
+
+    def display_name(self, workspace_id: str) -> str:
+        """Return only the selected folder basename, never its full path."""
+        with self._borrow(workspace_id) as grant:
+            return grant.label
 
     def list_files(
         self,

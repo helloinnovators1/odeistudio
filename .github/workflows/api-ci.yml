@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "apps/api/**"
+      - "apps/web/**"
       - ".github/workflows/api-ci.yml"
   pull_request:
     paths:
@@ -45,3 +46,22 @@ jobs:
         run: python -m ruff check odei_api tests
       - name: Run tests
         run: python -m pytest
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build

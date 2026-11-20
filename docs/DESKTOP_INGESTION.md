@@ -39,7 +39,7 @@ From a Python 3.10+ environment with Tk support:
 
 Replace the placeholder with the exact ODEI Studio frontend origin (scheme and host only; no path or wildcard). ODEI_COMPANION_PORT can override the default port. The companion listens on 127.0.0.1, not the LAN. The folder picker can be repeated in one companion process: after each selection, the console asks whether another project folder should be selected. This supports separate roots such as the ODEI Studio project and the Cursor product interface gallery. The pairing code appears in the local console, expires after five minutes and must not be shared.
 
-The frontend pairing screen/client is not implemented yet. Therefore, although the local service prototype can start, the complete browser-to-companion workflow is not yet available.
+An initial frontend pairing client is now available in `apps/web`. It requests Chrome loopback-network permission only after a user click, exchanges the one-time code, keeps the bearer token in memory, lists selected workspace labels and reads individual files. It is read-only and does not yet provide editing, ODID identity binding, tenant ownership or audit history.
 
 ## Chrome Local Network Access (LNA) requirements
 
