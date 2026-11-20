@@ -28,3 +28,8 @@ Run formatting, lint, type checks, unit/integration/contract tests, dependency a
 
 ## Reporting
 For every validation report the exact command, environment, exit code, test count and known skips. Distinguish not run, blocked, failed and passed. Do not infer success from a commit or successful build alone.
+
+
+## MongoDB task/audit transaction integration
+
+`tests/test_task_store_mongodb_integration.py` is an opt-in integration test enabled by `MONGODB_TEST_URI`. The API CI workflow starts a disposable MongoDB 7.0 replica set for a dedicated Ubuntu job and verifies task creation plus task lifecycle and audit writes in one real transaction. It deliberately injects an audit failure during approval and verifies that task status/version and lifecycle events roll back, then verifies a successful approval transaction. The cross-platform unit matrix skips this test when no replica-set URI is configured. A green unit/fake-transaction test is not a substitute for the dedicated live MongoDB integration job.
