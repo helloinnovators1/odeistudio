@@ -1,6 +1,7 @@
 """FastAPI application entry point and dependency lifecycle."""
 import asyncio
 import logging
+from uuid import uuid4
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,7 @@ from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
 from odei_api.mongo_client import create_mongo_client
+from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.security.auth import (
     Principal,
     get_current_principal,
@@ -35,6 +37,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         client, database_name = create_mongo_client(settings)
     application.state.mongo_client = client
     application.state.mongo_database = client[database_name] if client and database_name else None
+    application.state.audit_event_store = None
+    if application.state.mongo_database is not None:
+        audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
+        await audit_store.initialize()
+        application.state.audit_event_store = audit_store
     try:
         yield
     finally:
@@ -100,6 +107,47 @@ async def current_identity(principal: Principal = auth_principal_dependency) -> 
     return {"subject": principal.subject, "issuer": principal.issuer}
 
 
+async def _append_membership_audit(
+    request: Request,
+    *,
+    principal: Principal,
+    organization_id: str,
+    outcome: str,
+    reason: str | None = None,
+) -> None:
+    """Persist membership decisions before returning them; fail closed on audit errors."""
+    store = getattr(request.app.state, "audit_event_store", None)
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "AUDIT_STORE_UNAVAILABLE",
+                "message": "Authorization audit storage is not available.",
+            },
+        )
+    try:
+        await store.append(
+            organization_id=organization_id,
+            actor_issuer=principal.issuer,
+            actor_subject=principal.subject,
+            action="organization.membership.read",
+            target_type="organization",
+            target_id=organization_id,
+            outcome=outcome,
+            request_id=uuid4().hex,
+            metadata={"reason": reason} if reason else {},
+        )
+    except Exception as exc:
+        logger.error("Membership authorization audit append failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "AUDIT_STORE_UNAVAILABLE",
+                "message": "Authorization audit storage is temporarily unavailable.",
+            },
+        ) from exc
+
+
 @app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/membership", tags=["organizations"])
 async def current_organization_membership(
     request: Request,
@@ -127,7 +175,15 @@ async def current_organization_membership(
             principal=principal,
             organization_id=organization_id,
         )
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            await _append_membership_audit(
+                request,
+                principal=principal,
+                organization_id=organization_id,
+                outcome="denied",
+                reason="active_membership_required",
+            )
         raise
     except PyMongoError as exc:
         logger.warning("Organization membership lookup failed: %s", type(exc).__name__)
@@ -141,6 +197,13 @@ async def current_organization_membership(
 
     role = membership.get("role") if isinstance(membership, dict) else None
     if not isinstance(role, str) or not role.strip():
+        await _append_membership_audit(
+            request,
+            principal=principal,
+            organization_id=organization_id,
+            outcome="failure",
+            reason="membership_record_invalid",
+        )
         logger.error("Organization membership record has no valid role")
         raise HTTPException(
             status_code=503,
@@ -149,4 +212,10 @@ async def current_organization_membership(
                 "message": "Organization membership data is not valid.",
             },
         )
+    await _append_membership_audit(
+        request,
+        principal=principal,
+        organization_id=organization_id,
+        outcome="success",
+    )
     return {"organization_id": organization_id, "role": role}
