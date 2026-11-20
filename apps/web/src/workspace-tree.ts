@@ -13,7 +13,8 @@ export function buildWorkspaceTree(files: CompanionFile[]): WorkspaceTreeNode[] 
   const roots: WorkspaceTreeNode[] = [];
   const directories = new Map<string, WorkspaceTreeNode>();
 
-  for (const file of files) {
+  // Stable path order makes malformed file/directory collisions deterministic.
+  for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
     const segments = file.path.split("/");
     if (
       segments.length === 0 ||
@@ -24,6 +25,8 @@ export function buildWorkspaceTree(files: CompanionFile[]): WorkspaceTreeNode[] 
     let parentPath = "";
     for (const segment of segments.slice(0, -1)) {
       const path = parentPath ? parentPath + "/" + segment : segment;
+      const conflictingFile = siblings.find((node) => node.name === segment && node.kind === "file");
+      if (conflictingFile) break;
       let directory = directories.get(path);
       if (!directory) {
         directory = { name: segment, path, kind: "directory", children: [] };
