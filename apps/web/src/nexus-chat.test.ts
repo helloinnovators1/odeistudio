@@ -88,7 +88,9 @@ describe("NEXUS chat transport", () => {
       messages: [{ role: "user", content: "x".repeat(8_000) }],
       workspaceFiles: [{ path: "large.txt", content: "y".repeat(8_000) },
         { path: "second.txt", content: "z".repeat(8_000) },
-        { path: "third.txt", content: "w".repeat(8_000) }],
+        { path: "third.txt", content: "w".repeat(8_000) },
+        { path: "fourth.txt", content: "v".repeat(8_000) },
+        { path: "fifth.txt", content: "u".repeat(8_000) }],
     }, fetcher)).rejects.toThrow("40,000 characters");
     expect(fetcher).not.toHaveBeenCalled();
   });
