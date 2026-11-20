@@ -121,4 +121,4 @@ The project-scoped task API passes a validated audit event into `MongoTaskStore`
 The project-scoped task API records successful task reads and task-event reads before returning their data. It also records task-not-found/owner denials and project-owner approval denials. Task create/approve/cancel state changes remain atomically audited with their task lifecycle events. Authentication outcomes, companion pairing/revocation and tool execution are still not instrumented.
 
 
-Task lifecycle transitions emit semantic event types for approval and terminal outcomes (`task.approved`, `task.cancelled`, `task.completed`, `task.failed`) instead of collapsing these into a generic status-changed event. Intermediate transitions continue to use `task.status_changed` with from/to status fields.
+Task lifecycle transitions emit semantic event types for approval and terminal outcomes (`task.approved`, `task.cancelled`, `task.completed`, `task.failed`, `task.expired`) instead of collapsing these into a generic status-changed event. Intermediate transitions continue to use `task.status_changed` with from/to status fields.
