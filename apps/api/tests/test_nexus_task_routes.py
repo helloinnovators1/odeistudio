@@ -211,6 +211,9 @@ def test_project_member_cannot_approve_another_users_task(route_state):
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROJECT_OWNER_APPROVAL_REQUIRED"
     assert tasks.tasks[task.id].status is TaskStatus.AWAITING_APPROVAL
+    assert audit.events[-1]["action"] == "nexus.task.approve"
+    assert audit.events[-1]["outcome"] == "denied"
+    assert audit.events[-1]["metadata"]["reason"] == "project_owner_approval_required"
 
 
 def test_same_subject_from_different_issuer_cannot_read_task(route_state):
@@ -235,10 +238,30 @@ def test_same_subject_from_different_issuer_cannot_read_task(route_state):
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-cross-issuer"
     )
     assert response.status_code == 404
+    assert audit.events[-1]["action"] == "nexus.task.read"
+    assert audit.events[-1]["outcome"] == "denied"
+    assert audit.events[-1]["metadata"]["reason"] == "task_owner_required"
+
+
+def test_task_read_success_is_audited(route_state):
+    _, audit, tasks = route_state
+    task = TaskRecord(
+        id="task-read", organization_id="org-1", project_id="project-1",
+        owner_id=identity_owner_key("https://identity.example/", "user-1"),
+        goal="Read task", plan="Plan", status=TaskStatus.AWAITING_APPROVAL, version=3,
+    )
+    tasks.tasks[task.id] = task
+    response = TestClient(app).get(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-read"
+    )
+    assert response.status_code == 200
+    assert audit.events[-1]["action"] == "nexus.task.read"
+    assert audit.events[-1]["outcome"] == "success"
+    assert audit.events[-1]["metadata"] == {"status": "awaiting_approval"}
 
 
 def test_task_events_are_project_authorized_and_cursor_paginated(route_state):
-    _, _, tasks = route_state
+    _, audit, tasks = route_state
     task = TaskRecord(
         id="task-1", organization_id="org-1", project_id="project-1",
         owner_id=identity_owner_key("https://identity.example/", "user-1"),
@@ -254,3 +277,6 @@ def test_task_events_are_project_authorized_and_cursor_paginated(route_state):
     assert [event["version"] for event in body["events"]] == [2, 3]
     assert body["next_after_version"] == 3
     assert body["has_more"] is False
+    assert audit.events[-1]["action"] == "nexus.task.events.read"
+    assert audit.events[-1]["outcome"] == "success"
+    assert audit.events[-1]["metadata"]["returned_count"] == 2
