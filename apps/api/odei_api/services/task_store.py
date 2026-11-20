@@ -65,8 +65,8 @@ class MongoTaskStore:
             "occurred_at": now,
         }
         async with self._client.start_session() as session, await session.start_transaction():
-                await self._collection.insert_one(document, session=session)
-                await self._events.insert_one(event, session=session)
+            await self._collection.insert_one(document, session=session)
+            await self._events.insert_one(event, session=session)
         return self._to_record(document)
 
     async def get(self, *, organization_id: str, task_id: str) -> TaskRecord | None:
@@ -106,9 +106,8 @@ class MongoTaskStore:
             "version": updated.version,
             "occurred_at": occurred_at,
         }
-        async with self._client.start_session() as session:
-            async with await session.start_transaction():
-                document = await self._collection.find_one_and_update(
+        async with self._client.start_session() as session, await session.start_transaction():
+            document = await self._collection.find_one_and_update(
                     {
                         "_id": task_id,
                         "organization_id": organization_id,
