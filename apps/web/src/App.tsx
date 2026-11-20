@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import {
   connectToCompanion,
@@ -12,6 +12,7 @@ import {
 } from "./companion";
 import { formatBytes } from "./file-utils";
 import { filterWorkspaceFiles } from "./workspace-filter";
+import { buildWorkspaceTree, type WorkspaceTreeNode } from "./workspace-tree";
 import {
   isToggleNexusChatShortcut,
   languageForPath,
@@ -34,6 +35,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState("");
   const [files, setFiles] = useState<CompanionFile[]>([]);
   const [fileQuery, setFileQuery] = useState("");
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState("");
   const [busy, setBusy] = useState(false);
@@ -50,6 +52,7 @@ export default function App() {
   );
   const workspaceName = workspaces.find((item) => item.workspace_id === workspace)?.name ?? "No folder open";
   const visibleFiles = useMemo(() => filterWorkspaceFiles(files, fileQuery), [files, fileQuery]);
+  const workspaceTree = useMemo(() => buildWorkspaceTree(visibleFiles), [visibleFiles]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -114,6 +117,7 @@ export default function App() {
     setWorkspace(id);
     setTabs([]);
     setActivePath("");
+    setCollapsedFolders(new Set());
     setBusy(true);
     setError("");
     try {
@@ -167,9 +171,53 @@ export default function App() {
     setWorkspace("");
     setFiles([]);
     setFileQuery("");
+    setCollapsedFolders(new Set());
     setTabs([]);
     setActivePath("");
     setMessage("Disconnected. The in-memory local session was cleared.");
+  }
+
+  function toggleFolder(path: string) {
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+
+  function renderTree(nodes: WorkspaceTreeNode[], depth = 0): ReactNode[] {
+    return nodes.map((node) => {
+      if (node.kind === "directory") {
+        const collapsed = fileQuery.trim().length === 0 && collapsedFolders.has(node.path);
+        return (
+          <div key={node.path}>
+            <button
+              className="file-row folder-row"
+              style={{ paddingLeft: `${7 + depth * 12}px` }}
+              aria-expanded={!collapsed}
+              onClick={() => toggleFolder(node.path)}
+            >
+              <span className="file-glyph">{collapsed ? "▸" : "▾"}</span>
+              <span className="file-name">{node.name}</span>
+            </button>
+            {!collapsed && renderTree(node.children, depth + 1)}
+          </div>
+        );
+      }
+      return (
+        <button
+          key={node.path}
+          className={activePath === node.path ? "file-row active" : "file-row"}
+          style={{ paddingLeft: `${7 + depth * 12}px` }}
+          onClick={() => node.file && void chooseFile(node.file)}
+        >
+          <span className="file-glyph">▧</span>
+          <span className="file-name">{node.name}</span>
+          <small>{formatBytes(node.file?.size ?? 0)}</small>
+        </button>
+      );
+    });
   }
 
   function updateChatSide(side: ChatPanelSide) {
@@ -251,10 +299,8 @@ export default function App() {
             </select>
             <label className="field-label" htmlFor="file-filter">FILTER FILES</label>
             <input id="file-filter" className="file-filter" type="search" value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} placeholder="Search selected file paths…" autoComplete="off" />
-            <div className="file-list">
-              {visibleFiles.map((file) => <button key={file.path} className={activePath === file.path ? "file-row active" : "file-row"} onClick={() => void chooseFile(file)}>
-                <span className="file-glyph">▧</span><span className="file-name">{file.path}</span><small>{formatBytes(file.size)}</small>
-              </button>)}
+            <div className="file-list" role="tree" aria-label="Workspace files">
+              {renderTree(workspaceTree)}
               {visibleFiles.length === 0 && <div className="pane-empty">{files.length === 0 ? "No files in this selected workspace." : "No file paths match this filter."}</div>}
             </div>
           </>}
