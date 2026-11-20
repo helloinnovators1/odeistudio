@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import {
   connectToCompanion,
@@ -186,6 +186,40 @@ export default function App() {
     });
   }
 
+  function handleTreeKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, node: WorkspaceTreeNode) {
+    const root = event.currentTarget.closest('[role="tree"]');
+    if (!root) return;
+    const items = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'));
+    const index = items.indexOf(event.currentTarget);
+    const focus = (item?: HTMLButtonElement) => {
+      if (item) {
+        event.preventDefault();
+        item.focus();
+      }
+    };
+    if (event.key === "ArrowDown") focus(items[index + 1]);
+    else if (event.key === "ArrowUp") focus(items[index - 1]);
+    else if (event.key === "Home") focus(items[0]);
+    else if (event.key === "End") focus(items.at(-1));
+    else if (event.key === "ArrowRight" && node.kind === "directory") {
+      const collapsed = fileQuery.trim().length === 0 && collapsedFolders.has(node.path);
+      if (collapsed) {
+        event.preventDefault();
+        toggleFolder(node.path);
+      } else {
+        focus(items.slice(index + 1).find((item) => item.dataset.treePath?.startsWith(node.path + "/")));
+      }
+    } else if (event.key === "ArrowLeft") {
+      if (node.kind === "directory" && !collapsedFolders.has(node.path) && fileQuery.trim().length === 0) {
+        event.preventDefault();
+        toggleFolder(node.path);
+      } else {
+        const parentPath = node.path.split("/").slice(0, -1).join("/");
+        focus(items.find((item) => item.dataset.treePath === parentPath));
+      }
+    }
+  }
+
   function renderTree(nodes: WorkspaceTreeNode[], depth = 0): ReactNode[] {
     return nodes.map((node) => {
       if (node.kind === "directory") {
@@ -195,6 +229,8 @@ export default function App() {
             <button
               role="treeitem"
               aria-level={depth + 1}
+              data-tree-path={node.path}
+              onKeyDown={(event) => handleTreeKeyDown(event, node)}
               className="file-row folder-row"
               style={{ paddingLeft: `${7 + depth * 12}px` }}
               aria-expanded={!collapsed}
@@ -213,6 +249,8 @@ export default function App() {
           role="treeitem"
           aria-level={depth + 1}
           aria-selected={activePath === node.path}
+          data-tree-path={node.path}
+          onKeyDown={(event) => handleTreeKeyDown(event, node)}
           className={activePath === node.path ? "file-row active" : "file-row"}
           style={{ paddingLeft: `${7 + depth * 12}px` }}
           onClick={() => node.file && void chooseFile(node.file)}
