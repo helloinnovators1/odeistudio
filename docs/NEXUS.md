@@ -106,14 +106,14 @@ This endpoint produces a plan only. It does not connect to the local companion, 
 
 ## Project-scoped task API
 
-NEXUS now has an authenticated project-scoped task API for create, read, approve and cancel. Creation checks active organization membership and active project owner/member access, requires explicit cloud-model consent, and persists an approval-ready task with its lifecycle events. Approval is a distinct `approved` state and is deliberately not an execution trigger. Task retrieval is limited to the task owner or project owner. Mutations use optimistic version checks and append audit records.
+NEXUS now has an authenticated project-scoped task API for create, read, durable event-history retrieval, approve and cancel. Creation checks active organization membership and active project owner/member access, requires explicit cloud-model consent, and persists an approval-ready task with its lifecycle events. Approval is a distinct `approved` state and is deliberately not an execution trigger. Task retrieval and event-history reads are limited to the task owner or project owner. Task ownership uses the canonical verified issuer + subject pair. Mutations use optimistic version checks and append audit records in the same transaction as task state and lifecycle events.
 
-This increment does not add file mutation, shell execution, test execution, repair, event streaming, CLI, desktop editor or cloud agents. The local companion remains read-only.
+This increment adds ordered event-history retrieval with a bounded page size and reconnectable version cursor, but not a live event-stream transport. It does not add file mutation, shell execution, test execution, repair, CLI, desktop editor or cloud agents. The local companion remains read-only.
 
 
 ## Atomic task audit guarantee
 
-The project-scoped task API passes a validated audit event into `MongoTaskStore`. The task document, ordered `task_events`, and audit document are inserted/updated under one MongoDB session transaction. If the audit writer is missing or its insert fails, the transaction aborts and task state remains unchanged. This guarantee depends on MongoDB replica-set or sharded-cluster transaction support; only unit/fake-transaction tests are currently available, so a live replica-set integration test remains a release gate.
+The project-scoped task API passes a validated audit event into `MongoTaskStore`. The task document, ordered `task_events`, and audit document are inserted/updated under one MongoDB session transaction. If the audit writer is missing or its insert fails, the transaction aborts and task state remains unchanged. This guarantee depends on MongoDB replica-set or sharded-cluster transaction support; unit/fake-transaction tests are available, and a real MongoDB 7.0 replica-set transaction test passed in API CI run 44794850821. Production replica-set deployment and verification remain release gates.
 
 
 ## Task access audit coverage
