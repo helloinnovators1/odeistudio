@@ -5,12 +5,17 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
 from odei_api.mongo_client import create_mongo_client
-from odei_api.security.auth import Principal, get_current_principal
+from odei_api.security.auth import (
+    Principal,
+    get_current_principal,
+    require_organization_membership,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -93,3 +98,55 @@ async def readiness(request: Request) -> dict[str, object]:
 async def current_identity(principal: Principal = auth_principal_dependency) -> dict[str, str]:
     """Return only the verified caller identity; no client-supplied roles or tenant claims."""
     return {"subject": principal.subject, "issuer": principal.issuer}
+
+
+@app.get(f"{settings.api_prefix}/organizations/{{organization_id}}/membership", tags=["organizations"])
+async def current_organization_membership(
+    request: Request,
+    organization_id: str = Path(min_length=1, max_length=128),
+    principal: Principal = auth_principal_dependency,
+) -> dict[str, str]:
+    """Return the caller's active membership, resolved only from trusted server-side storage."""
+    if organization_id != organization_id.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_ORGANIZATION_ID", "message": "Organization ID is invalid."},
+        )
+    database = getattr(request.app.state, "mongo_database", None)
+    if database is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MEMBERSHIP_STORE_UNAVAILABLE",
+                "message": "Organization membership storage is not configured.",
+            },
+        )
+    try:
+        membership = await require_organization_membership(
+            database["organization_memberships"],
+            principal=principal,
+            organization_id=organization_id,
+        )
+    except HTTPException:
+        raise
+    except PyMongoError as exc:
+        logger.warning("Organization membership lookup failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MEMBERSHIP_STORE_UNAVAILABLE",
+                "message": "Organization membership storage is temporarily unavailable.",
+            },
+        ) from exc
+
+    role = membership.get("role")
+    if not isinstance(role, str) or not role.strip():
+        logger.error("Organization membership record has no valid role")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MEMBERSHIP_RECORD_INVALID",
+                "message": "Organization membership data is not valid.",
+            },
+        )
+    return {"organization_id": organization_id, "role": role}
