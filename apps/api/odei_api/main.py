@@ -38,4 +38,4 @@ async def liveness() -> dict[str, str]:
 @app.get(f"{settings.api_prefix}/health/ready", tags=["health"])
 async def readiness() -> dict[str, str]:
     """Basic readiness until dependency checks are wired to real services."""
-    return {"status": "ready", "checks": "not_configured"}
+    return {"status": "unknown", "checks": "not_configured"}
