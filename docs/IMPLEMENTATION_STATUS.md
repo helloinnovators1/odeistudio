@@ -7,7 +7,7 @@
 
 ## Current verified snapshot (2026-11-20)
 
-- Development branch: `feat/windows-handle-safe-scanner`; current documentation HEAD: `39c130710cf3309e082df183bc557b16efb703a9`.
+- Development branch: `feat/windows-handle-safe-scanner`; documentation reconciled after the latest verified code increment.
 - Latest fully verified code commit: `5f0d390ae13a7df76fd6dc0de88ae32abf32f21b`.
 - API/web CI [44804305385](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305385): **passed all six jobs** — Ubuntu and Windows with Python 3.10/3.12, web tests/build, and MongoDB 7.0 replica-set transaction integration.
 - Security scan [44804305322](https://github.com/helloinnovators1/odeistudio/actions/runs/44804305322): **passed all four jobs** — CodeQL Python/TypeScript, Gitleaks, Python dependency audit and web dependency audit.
