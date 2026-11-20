@@ -70,3 +70,32 @@ def test_does_not_follow_symlinks(tmp_path: Path) -> None:
     assert list_project_files(tmp_path) == []
     with pytest.raises(UnsafeProjectPath):
         read_project_text_file(tmp_path, "linked.txt")
+
+
+def test_respects_root_gitignore(tmp_path: Path) -> None:
+    (tmp_path / ".gitignore").write_text("*.log\nignored_dir/\n", encoding="utf-8")
+    (tmp_path / "keep.py").write_text("ok", encoding="utf-8")
+    (tmp_path / "debug.log").write_text("skip", encoding="utf-8")
+    (tmp_path / "ignored_dir").mkdir()
+    (tmp_path / "ignored_dir" / "secret.txt").write_text("skip", encoding="utf-8")
+    assert {item.path for item in list_project_files(tmp_path)} == {".gitignore", "keep.py"}
+
+
+def test_respects_nested_gitignore(tmp_path: Path) -> None:
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / ".gitignore").write_text("generated/\n*.tmp\n", encoding="utf-8")
+    (source / "main.py").write_text("ok", encoding="utf-8")
+    (source / "temp.tmp").write_text("skip", encoding="utf-8")
+    (source / "generated").mkdir()
+    (source / "generated" / "bundle.js").write_text("skip", encoding="utf-8")
+    assert {item.path for item in list_project_files(tmp_path)} == {
+        "src/.gitignore", "src/main.py"
+    }
+
+
+def test_enforces_total_scan_byte_budget(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("12345", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("67890", encoding="utf-8")
+    files = list_project_files(tmp_path, max_total_bytes=5)
+    assert sum(item.size for item in files) <= 5
