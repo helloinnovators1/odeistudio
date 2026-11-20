@@ -169,8 +169,6 @@ def create_companion_app(
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
         response.headers["Vary"] = "Origin"
-        if request.headers.get("access-control-request-private-network", "").casefold() == "true":
-            response.headers["Access-Control-Allow-Private-Network"] = "true"
         return response
 
     def require_bearer(request: Request) -> str:

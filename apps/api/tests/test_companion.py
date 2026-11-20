@@ -108,7 +108,7 @@ def test_companion_pairing_code_is_one_time_and_session_can_be_revoked(tmp_path)
         registry.close()
 
 
-def test_companion_private_network_preflight_is_scoped_to_allowed_origin(tmp_path) -> None:
+def test_companion_standard_cors_preflight_is_scoped_to_allowed_origin(tmp_path) -> None:
     client, registry, _pairing, _code = _build_client(tmp_path)
     try:
         response = client.options(
@@ -117,12 +117,12 @@ def test_companion_private_network_preflight_is_scoped_to_allowed_origin(tmp_pat
                 "Origin": ORIGIN,
                 "Access-Control-Request-Method": "GET",
                 "Access-Control-Request-Headers": "authorization",
-                "Access-Control-Request-Private-Network": "true",
             },
         )
         assert response.status_code == 204
         assert response.headers["Access-Control-Allow-Origin"] == ORIGIN
-        assert response.headers["Access-Control-Allow-Private-Network"] == "true"
+        assert "authorization" in response.headers["Access-Control-Allow-Headers"].casefold()
+        assert "Access-Control-Allow-Private-Network" not in response.headers
     finally:
         registry.close()
 
