@@ -191,7 +191,7 @@ async def test_project_membership_and_audit_share_real_mongodb_transaction():
                 raise RuntimeError("simulated project audit failure")
 
         with pytest.raises(RuntimeError, match="simulated project audit failure"):
-            async with client.start_session() as session, session.start_transaction():
+            async with client.start_session() as session, await session.start_transaction():
                 await database["project_memberships"].insert_one(membership, session=session)
                 await FailingAuditStore().append(
                     **(audit_event | {
