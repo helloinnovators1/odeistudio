@@ -6,6 +6,7 @@ authentication, tenant authorization and workspace ownership before exposing it.
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -98,6 +99,69 @@ def _safe_target(root: Path, relative_path: str) -> Path:
     return resolved
 
 
+def _is_link_or_junction(path: Path) -> bool:
+    is_junction = getattr(os.path, "isjunction", None)
+    return path.is_symlink() or bool(is_junction and is_junction(path))
+
+
+def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[int, os.stat_result]:
+    """Open a file without following path components on POSIX.
+
+    Windows uses file identity and post-open containment checks; a native
+    CreateFileW handle implementation is still required before hostile,
+    concurrently mutable workspaces are treated as a production trust boundary.
+    """
+    parts = _relative_parts(relative_path)
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory = getattr(os, "O_DIRECTORY", 0)
+
+    if os.name == "posix" and nofollow and directory:
+        root_fd = os.open(root, flags | directory)
+        opened_directories: list[int] = []
+        try:
+            current_fd = root_fd
+            for part in parts[:-1]:
+                next_fd = os.open(
+                    part,
+                    flags | directory | nofollow,
+                    dir_fd=current_fd,
+                )
+                opened_directories.append(next_fd)
+                current_fd = next_fd
+            file_fd = os.open(parts[-1], flags | nofollow, dir_fd=current_fd)
+            metadata = os.fstat(file_fd)
+            if not stat.S_ISREG(metadata.st_mode):
+                os.close(file_fd)
+                raise ProjectFileError("Requested path is not a regular file")
+            return file_fd, metadata
+        finally:
+            for directory_fd in reversed(opened_directories):
+                os.close(directory_fd)
+            os.close(root_fd)
+
+    before = target.stat()
+    file_fd = os.open(target, flags)
+    try:
+        metadata = os.fstat(file_fd)
+        after = target.stat()
+        resolved_after_open = target.resolve(strict=True)
+        identity_before = (before.st_dev, before.st_ino)
+        identity_open = (metadata.st_dev, metadata.st_ino)
+        identity_after = (after.st_dev, after.st_ino)
+        if (
+            not resolved_after_open.is_relative_to(root)
+            or not stat.S_ISREG(metadata.st_mode)
+            or identity_before != identity_open
+            or identity_open != identity_after
+        ):
+            raise UnsafeProjectPath("File identity or workspace containment changed during open")
+        return file_fd, metadata
+    except Exception:
+        os.close(file_fd)
+        raise
+
+
 def _load_ignore_spec(directory: Path) -> GitIgnoreSpec | None:
     ignore_file = directory / ".gitignore"
     if not ignore_file.is_file() or ignore_file.is_symlink():
@@ -153,7 +217,7 @@ def list_project_files(
         dirnames[:] = sorted(
             name for name in dirnames
             if name.lower() not in DEFAULT_EXCLUDED_DIRS
-            and not (current / name).is_symlink()
+            and not _is_link_or_junction(current / name)
             and not _is_excluded((*relative_dir.parts, name))
             and not _ignored_by_gitignore(workspace, current, name, is_dir=True)
         )
@@ -162,13 +226,17 @@ def list_project_files(
             candidate = current / filename
             relative = candidate.relative_to(workspace)
             parts = relative.parts
-            if candidate.is_symlink() or _is_excluded(parts):
+            if _is_link_or_junction(candidate) or _is_excluded(parts):
                 continue
             if _ignored_by_gitignore(workspace, current, filename, is_dir=False):
                 continue
-            if not candidate.is_file():
+            try:
+                metadata = candidate.lstat()
+            except OSError:
                 continue
-            size = candidate.stat().st_size
+            if not stat.S_ISREG(metadata.st_mode):
+                continue
+            size = metadata.st_size
             if total_bytes + size > max_total_bytes:
                 return found
             found.append(ProjectFile(path=relative.as_posix(), size=size))
@@ -190,13 +258,13 @@ def read_project_text_file(
         raise ValueError("max_bytes must be positive")
     workspace = _workspace_root(root)
     target = _safe_target(workspace, relative_path)
-    if not target.is_file():
-        raise ProjectFileError("Requested path is not a regular file")
-    size = target.stat().st_size
-    if size > max_bytes:
+    file_fd, metadata = _open_verified_file(workspace, relative_path, target)
+    with os.fdopen(file_fd, "rb") as file_handle:
+        if metadata.st_size > max_bytes:
+            raise ProjectFileTooLarge(f"File exceeds the {max_bytes}-byte read limit")
+        data = file_handle.read(max_bytes + 1)
+    if len(data) > max_bytes:
         raise ProjectFileTooLarge(f"File exceeds the {max_bytes}-byte read limit")
-
-    data = target.read_bytes()
     if b"\x00" in data:
         raise BinaryProjectFile("Binary files are not returned as text")
     try:
