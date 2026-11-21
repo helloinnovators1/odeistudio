@@ -196,3 +196,31 @@ async def append_conversation_message(
         raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Conversation was not found or has changed. Reload before retrying."})
     await _audit(request, principal, organization_id, project_id, "nexus.conversation.message.append", "success", conversation_id, {"role": "user", "version": document["version"]})
     return _response(document)
+
+
+
+@router.delete(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/conversations/{{conversation_id}}",
+    tags=["nexus"],
+)
+async def delete_conversation(
+    request: Request,
+    organization_id: str = Path(min_length=1, max_length=128),
+    project_id: str = Path(min_length=1, max_length=128),
+    conversation_id: str = Path(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    store = await _context(request, organization_id, project_id, principal)
+    try:
+        deleted = await store.delete_for_owner(
+            organization_id=organization_id, project_id=project_id,
+            owner_issuer=principal.issuer, owner_subject=principal.subject,
+            conversation_id=conversation_id,
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "CONVERSATION_DELETE_FAILED", "message": "NEXUS could not delete this conversation."}) from exc
+    if not deleted:
+        await _audit(request, principal, organization_id, project_id, "nexus.conversation.delete", "denied", conversation_id, {"reason": "not_found_or_not_owner"})
+        raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Conversation was not found."})
+    await _audit(request, principal, organization_id, project_id, "nexus.conversation.delete", "success", conversation_id)
+    return {"conversation_id": conversation_id, "deleted": True}
