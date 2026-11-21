@@ -257,11 +257,19 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     const controller = new AbortController();
     abortRef.current = controller;
     try {
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const created = await createNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, content.slice(0, 120) || "NEXUS conversation");
+        activeConversationId = created.conversation_id;
+        setConversationId(activeConversationId);
+        setConversations((current) => [created, ...current].slice(0, 30));
+      }
       const response = await sendNexusChat({
         apiBaseUrl: config.apiBaseUrl,
         organizationId,
         projectId,
         accessToken: access.accessToken,
+        conversationId: activeConversationId,
         messages: next.map(({ role, content: text }) => ({ role, content: text })),
         workspaceFiles: excerpt,
         cloudModelConsent: true,
@@ -271,7 +279,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         ...current,
         { id: newMessageId(), role: "assistant" as const, content: response.answer },
       ].slice(-20));
-      setNotice(`Read-only response from ${response.model}. No tools ran and no conversation was persisted.`);
+      setNotice("Saved response from " + response.model + ". Conversation history is stored in your authorized project.");
     } catch (cause) {
       if (controller.signal.aborted) {
         setNotice("Client request aborted. The current API does not guarantee provider-side cancellation.");
