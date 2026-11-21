@@ -22,7 +22,7 @@ def _build_client(tmp_path):
     selected.mkdir()
     (selected / "main.py").write_text("print('ODEI')", encoding="utf-8")
     registry = WorkspaceHandleRegistry()
-    workspace_id = registry.register_selected_root(selected)
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
     app = create_companion_app(
@@ -695,7 +695,7 @@ def test_workspace_handle_applies_root_create_and_delete_atomically(tmp_path):
     selected = tmp_path / "project"
     selected.mkdir()
     registry = WorkspaceHandleRegistry()
-    workspace_id = registry.register_selected_root(selected)
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     try:
         created_content = "print('created')"
         created_hash = hashlib.sha256(created_content.encode("utf-8")).hexdigest()
