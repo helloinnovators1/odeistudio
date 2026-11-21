@@ -48,6 +48,13 @@ class Collection:
                 return deepcopy(row)
         return None
 
+    async def delete_one(self, query):
+        key = query["conversation_id"]
+        row = self.documents.get(key)
+        if row is None or any(row.get(field) != query[field] for field in ("organization_id", "project_id", "owner_issuer", "owner_subject")):
+            return type("DeleteResult", (), {"deleted_count": 0})()
+        del self.documents[key]
+        return type("DeleteResult", (), {"deleted_count": 1})()
     async def find_one_and_update(self, query, update, return_document=None):
         row = self.documents.get(query["conversation_id"])
         if row is None:
@@ -154,3 +161,20 @@ async def test_conversation_store_rejects_invalid_title_and_message():
             owner_issuer="https://id.example/", owner_subject="alice",
             conversation_id=created["conversation_id"], role="system", content="bad",
         )
+
+
+@pytest.mark.asyncio
+async def test_conversation_delete_is_owner_scoped():
+    collection = Collection()
+    store = MongoConversationStore(collection)
+    created = await store.create(
+        organization_id="org-a", project_id="project-a",
+        owner_issuer="https://id.example/", owner_subject="alice", title="Delete me",
+    )
+    common = {
+        "organization_id": "org-a", "project_id": "project-a",
+        "owner_issuer": "https://id.example/",
+        "conversation_id": created["conversation_id"],
+    }
+    assert await store.delete_for_owner(**common, owner_subject="mallory") is False
+    assert await store.delete_for_owner(**common, owner_subject="alice") is True
