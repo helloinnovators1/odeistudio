@@ -697,11 +697,13 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
     import hashlib
 
     parts, operation, base_hash, result_hash = parsed
+    stage = "open-relative-parent"
     kernel32, ntdll, parent, directories = _open_relative_parent(root_handle, parts)
     target_name = parts[-1]
     temporary_name = ".odei-" + secrets.token_hex(16) + ".tmp"
     temporary_handle = None
     try:
+        stage = "read-current-target"
         current = _read_windows_file(root_handle, parts)
         if operation == "create":
             if current is not None:
@@ -711,6 +713,7 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                 raise UnsafeWindowsPath("The approved base file no longer matches")
 
         if operation == "delete":
+            stage = "open-target-for-delete"
             target_handle = _open_relative_file_for_delete(kernel32, ntdll, parent, target_name)
             descriptor = None
             try:
@@ -739,10 +742,12 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                 if target_handle is not None:
                     kernel32.CloseHandle(target_handle)
         else:
+            stage = "create-staged-file"
             data = item["content"].encode("utf-8")
             temporary_handle = _create_relative_file(
                 kernel32, ntdll, parent, temporary_name
             )
+            stage = "write-and-flush-staged-file"
             _write_handle(kernel32, temporary_handle, data)
             if operation == "create":
                 latest = _read_windows_file(root_handle, parts)
@@ -752,6 +757,7 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                     kernel32, temporary_handle, parent, target_name, replace=False,
                 )
             else:
+                stage = "open-target-for-replace"
                 try:
                     target_handle = _open_relative_file_for_replace(
                         kernel32, ntdll, parent, target_name
@@ -780,6 +786,7 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                     # The held target handle denies concurrent write opens and allows
                     # delete sharing, so the replacement is performed against the
                     # exact file that was just hash-checked.
+                    stage = "rename-staged-file-over-target"
                     _rename_relative(
                         kernel32, temporary_handle, parent, target_name, replace=True,
                     )
@@ -803,7 +810,9 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
     except Exception as exc:
         if isinstance(exc, UnsafeWindowsPath):
             raise
-        raise UnsafeWindowsPath("The approved patch could not be applied safely") from exc
+        raise UnsafeWindowsPath(
+            f"The approved patch could not be applied safely during {stage}"
+        ) from exc
     finally:
         if temporary_handle is not None:
             try:
