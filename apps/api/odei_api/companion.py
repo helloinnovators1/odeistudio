@@ -393,7 +393,7 @@ def create_companion_app(
         require_bearer(request)
         return {
             "workspaces": [
-                {"workspace_id": item, "name": registry.display_name(item), "access": "read-only"}
+                {"workspace_id": item, "name": registry.display_name(item), "access": "approval-gated" if patch_approval_issuer else "read-only"}
                 for item in selected_workspace_ids
             ]
         }
