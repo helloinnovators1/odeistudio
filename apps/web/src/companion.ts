@@ -123,12 +123,14 @@ export interface CompanionApplyResult {
 export async function createWorkspaceApplyChallenge(
   token: string,
   workspaceId: string,
+  fetcher: typeof fetch = fetch,
 ): Promise<CompanionApplyChallenge> {
   const id = workspaceId.trim();
   if (!id || id.length > 128) throw new TypeError("A valid selected workspace is required.");
   const result = await call<CompanionApplyChallenge>(
     "/v1/workspaces/" + encodeURIComponent(id) + "/apply-challenge",
     { method: "POST", token },
+    fetcher,
   );
   if (
     result.workspace_id !== id ||
@@ -153,6 +155,7 @@ export async function applyApprovedWorkspacePatch(
     capability: string;
     file: PatchPreviewFile;
   },
+  fetcher: typeof fetch = fetch,
 ): Promise<CompanionApplyResult> {
   const id = workspaceId.trim();
   if (!id || id.length > 128 || !request.organizationId || !request.projectId ||
@@ -191,6 +194,7 @@ export async function applyApprovedWorkspacePatch(
         }],
       },
     },
+    fetcher,
   );
   if (
     result.workspace_id !== id ||
