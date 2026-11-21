@@ -51,7 +51,7 @@ class PatchProposalRequest(BaseModel):
         for content in self.changes.values():
             if content is None:
                 continue
-            if "\\x00" in content:
+            if "\x00" in content:
                 raise ValueError("Binary content is not supported")
             size = len(content.encode("utf-8"))
             if size > MAX_FILE_BYTES:
