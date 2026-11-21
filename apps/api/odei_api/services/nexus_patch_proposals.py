@@ -12,8 +12,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, model_validator
-from starlette.concurrency import run_in_threadpool
 from pymongo import ReturnDocument
+from starlette.concurrency import run_in_threadpool
 from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
@@ -87,7 +87,7 @@ class PatchGenerationRequest(BaseModel):
         if not self.prompt.strip():
             raise ValueError("Patch instructions must not be empty")
         validate_patch_path(self.path)
-        if "\\x00" in self.base_content:
+        if "\x00" in self.base_content:
             raise ValueError("Binary file content cannot be used for patch generation")
         if len(self.prompt) + len(self.base_content) > 16_000:
             raise ValueError("Combined patch-generation input exceeds 16,000 characters")
@@ -314,7 +314,7 @@ async def create_patch_proposal(
     """Persist a validated diff preview; never apply it to local files."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
-    _, store = await _project_and_store(request, organization_id, project_id, principal)
+    project, store = await _project_and_store(request, organization_id, project_id, principal)
     try:
         for path, expected_hash in payload.expected_base_hashes.items():
             if expected_hash is None and "/" in path:
@@ -525,7 +525,7 @@ async def list_patch_proposals(
         "nexus.patch_proposal.list", "success",
         project_id=project_id, proposal_count=len(items),
     )
-    return {"proposals": [_proposal_summary(item) for item in items], "limit": 30}
+    return {"proposals": [{**_proposal_summary(item), "can_approve": _is_project_owner(project, principal)} for item in items], "limit": 30}
 
 
 @router.get(
