@@ -23,6 +23,7 @@ from odei_api.services.patch_proposals import (
     MAX_TOTAL_BYTES,
     PatchProposalError,
     build_patch_proposal,
+    validate_patch_path,
 )
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
@@ -40,13 +41,22 @@ class PatchProposalRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    changes: dict[str, StrictStr | None] = Field(min_length=1, max_length=MAX_PATCH_FILES)
-    expected_base_hashes: dict[str, StrictStr | None]
+    changes: dict[StrictStr, StrictStr | None] = Field(min_length=1, max_length=MAX_PATCH_FILES)
+    expected_base_hashes: dict[StrictStr, StrictStr | None] = Field(max_length=MAX_PATCH_FILES)
 
     @model_validator(mode="after")
     def validate_budgets(self):
+        if not self.changes or len(self.changes) > MAX_PATCH_FILES:
+            raise ValueError("A proposal must contain between 1 and 20 file changes")
         if set(self.expected_base_hashes) != set(self.changes):
             raise ValueError("Every changed path requires exactly one expected base hash")
+        for path, expected_hash in self.expected_base_hashes.items():
+            validate_patch_path(path)
+            if expected_hash is not None and (
+                len(expected_hash) != 64
+                or any(character not in "0123456789abcdef" for character in expected_hash)
+            ):
+                raise ValueError("Existing files require a valid SHA-256 base hash")
         total_bytes = 0
         for content in self.changes.values():
             if content is None:
