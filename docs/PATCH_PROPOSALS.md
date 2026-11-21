@@ -27,6 +27,8 @@ The read-only companion exposes `POST /v1/workspaces/{workspace_id}/patch-propos
 
 The response explicitly reports `mode: preview_only` and `writes_performed: false`. The endpoint does not persist the proposal, authorize it, apply it, or provide a shell. It is a local preview boundary, not the cloud project/task API or a complete code-editing workflow.
 
+The React workspace now exposes a `Preview patch` action for the active file. The user edits proposed replacement text in a separate dialog; the browser computes the base SHA-256 with Web Crypto, calls the local endpoint, validates the preview response contract, and displays the unified diff. This UI does not enable saving or applying changes.
+
 ## Required next stages
 
 1. Persist proposals with tenant, project, task, author, expiry, and immutable content hashes.
