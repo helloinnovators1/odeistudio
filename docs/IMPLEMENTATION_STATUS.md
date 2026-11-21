@@ -1,3 +1,9 @@
+## Patch proposal path validation hardening — 2026-11-21
+
+- Extended cross-platform path validation to reject non-NFC Unicode aliases, Windows COM/LPT device aliases (including superscript variants), and path components exceeding the Windows 255 UTF-16-unit limit.
+- Added regression cases for device aliases, overlong components and decomposed Unicode paths.
+- These checks remain part of the read-only proposal builder; current-head CI is still required before treating them as verified.
+
 ## NEXUS patch proposal validation — 2026-11-20
 
 - Added `apps/api/odei_api/services/patch_proposals.py`: a pure, read-only multi-file proposal validator that emits per-file unified diffs and SHA-256 base/result identities. It rejects traversal/absolute/drive/backslash/NUL paths, sensitive/excluded paths, Windows device/ADS/invalid names, stale hashes, case-insensitive duplicates, base/proposed file-directory collisions, missing-file deletes and binary/invalid-Unicode text. Base and replacement bytes are bounded before hashing/diff generation.
