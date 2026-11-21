@@ -6,7 +6,7 @@ import {
   type ODidOAuthConfig,
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
-import { createNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversation } from "./nexus-chat";
+import { createNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -66,7 +66,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [conversations, setConversations] = useState<NexusConversation[]>([]);
+  const [conversations, setConversations] = useState<NexusConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState("");
   const [conversationBusy, setConversationBusy] = useState(false);
   const [draft, setDraft] = useState("");
@@ -262,7 +262,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         const created = await createNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, content.slice(0, 120) || "NEXUS conversation");
         activeConversationId = created.conversation_id;
         setConversationId(activeConversationId);
-        setConversations((current) => [created, ...current].slice(0, 30));
+        setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
       }
       const response = await sendNexusChat({
         apiBaseUrl: config.apiBaseUrl,
