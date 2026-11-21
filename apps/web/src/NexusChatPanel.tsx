@@ -186,6 +186,11 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, sending]);
 
+  useEffect(() => {
+    setAttachActiveFile(false);
+    setUseAttachedTools(false);
+  }, [activeFile?.path]);
+
   async function signIn() {
     if (!config.auth) {
       setAuthError("ODID browser authentication is not configured. Set the required VITE_* environment values and register the exact redirect URI.");
@@ -237,7 +242,6 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setDraft("");
     setConsent(false);
     setAttachActiveFile(false);
-    setUseAttachedTools(false);
     setUseAttachedTools(false);
     setChatError("");
     setProjectError("");
