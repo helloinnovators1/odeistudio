@@ -11,15 +11,15 @@ This snapshot supersedes earlier milestone notes below where they describe capab
 | Durable project-scoped conversations | Implemented with owner isolation, bounded history and optimistic versions |
 | Task planning and owner approval | Implemented; approval records intent and does not execute |
 | Attached-file NEXUS inspection tools | Implemented for explicitly attached excerpts only; not whole-repository access |
-| Chat-generated file-change proposals | Implemented in PR #21 branch; pending exact-head CI and review |
+| Chat-generated file-change proposals | Merged in PR #21; persisted, redacted and owner-reviewable |
 | Persistent proposal history and diff review | Implemented on main |
 | Project-owner approve/reject decisions | Implemented on main; version checked; decision does not apply files |
-| Local file application and rollback | Not implemented |
+| Local file application and rollback | Not implemented; signed capability issuance foundation in PR #22, companion verification and atomic writes still outstanding |
 | Isolated terminal/test execution | Not implemented |
 | Agents Window, CLI, cloud/background agents, MAC/MAD | Not implemented beyond documented foundations |
 | Production deployment and real ODID staging | Not completed |
 
-Merged chat-related increments: [PR #14](https://github.com/helloinnovators1/odeistudio/pull/14), [PR #18](https://github.com/helloinnovators1/odeistudio/pull/18), and [PR #19](https://github.com/helloinnovators1/odeistudio/pull/19). Their reported required checks passed. The current generated-proposal increment is [PR #21](https://github.com/helloinnovators1/odeistudio/pull/21); it is not merged or deployed.
+Merged chat-related increments: [PR #14](https://github.com/helloinnovators1/odeistudio/pull/14), [PR #18](https://github.com/helloinnovators1/odeistudio/pull/18), and [PR #19](https://github.com/helloinnovators1/odeistudio/pull/19). Their reported required checks passed. Generated proposals and owner review are merged in [PR #21](https://github.com/helloinnovators1/odeistudio/pull/21). Signed apply-capability issuance is being developed in [PR #22](https://github.com/helloinnovators1/odeistudio/pull/22); it is not merged or deployed.
 
 Important external gates: actual ODID issuer/discovery, public browser client ID, registered redirect URI, scopes/resource and access-token profile; production API issuer/audience/JWKS/client allowlist; MongoDB replica-set deployment; model credentials; approved hosting and CORS origins. Do not paste secrets or tokens into chat. The local companion has not been installed/run on the user's Windows 10 build 18362 machine, no desktop folders have been scanned, and no real browser-to-local-companion staging test has been completed.
 

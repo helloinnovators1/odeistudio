@@ -5,6 +5,7 @@ Proposals are review records only. This API does not write local workspace files
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -17,6 +18,11 @@ from pymongo.errors import PyMongoError
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.nexus_tasks import _authorize_project
+from odei_api.services.patch_approval import (
+    PatchApprovalError,
+    PatchApprovalNotConfigured,
+    issue_patch_apply_capability,
+)
 from odei_api.services.patch_proposals import (
     MAX_DIFF_BYTES,
     MAX_FILE_BYTES,
@@ -70,6 +76,24 @@ class PatchProposalRequest(BaseModel):
 class PatchDecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=0)
+
+
+class PatchApplyCapabilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=0)
+    workspace_id: StrictStr = Field(min_length=16, max_length=128)
+    companion_challenge: StrictStr = Field(min_length=32, max_length=128)
+    confirm_apply: StrictBool
+
+    @model_validator(mode="after")
+    def validate_confirmation(self):
+        if not self.confirm_apply:
+            raise ValueError("Explicit apply confirmation is required")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", self.workspace_id):
+            raise ValueError("Workspace identifier is invalid")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", self.companion_challenge):
+            raise ValueError("A fresh companion challenge is required")
+        return self
 
 
 class MongoPatchProposalStore:
@@ -400,6 +424,83 @@ async def _decide_patch_proposal(
     return {
         **_proposal_summary(updated),
         "decision_recorded": True,
+        "application_enabled": False,
+    }
+
+
+@router.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/patch-proposals/{{proposal_id}}/apply-capability",
+    tags=["nexus"],
+)
+async def create_patch_apply_capability(
+    payload: PatchApplyCapabilityRequest,
+    request: Request,
+    organization_id: str = Path(min_length=1, max_length=128),
+    project_id: str = Path(min_length=1, max_length=128),
+    proposal_id: str = Path(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    """Issue a short-lived capability for a specific approved proposal/workspace pair."""
+    if (
+        organization_id != organization_id.strip()
+        or project_id != project_id.strip()
+        or proposal_id != proposal_id.strip()
+    ):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    project, store = await _project_and_store(request, organization_id, project_id, principal)
+    if not _is_project_owner(project, principal):
+        raise HTTPException(status_code=403, detail={"code": "PROJECT_OWNER_REQUIRED", "message": "Only the project owner can authorize local patch application."})
+    try:
+        item = await store.get(
+            organization_id=organization_id, project_id=project_id,
+            proposal_id=proposal_id,
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is temporarily unavailable."}) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail={"code": "PATCH_PROPOSAL_NOT_FOUND", "message": "Patch proposal was not found."})
+    if item["status"] != "approved" or item["version"] != payload.expected_version:
+        raise HTTPException(status_code=409, detail={"code": "PATCH_PROPOSAL_NOT_APPROVED", "message": "The proposal must be approved at the expected version before a capability can be issued."})
+    try:
+        capability, expires_at, digest = issue_patch_apply_capability(
+            settings=settings,
+            principal_issuer=principal.issuer,
+            principal_subject=principal.subject,
+            organization_id=organization_id,
+            project_id=project_id,
+            workspace_id=payload.workspace_id,
+            proposal_id=proposal_id,
+            proposal_version=item["version"],
+            files=item["files"],
+            challenge=payload.companion_challenge,
+        )
+    except PatchApprovalNotConfigured as exc:
+        raise HTTPException(status_code=503, detail={"code": "PATCH_APPROVAL_SIGNING_UNAVAILABLE", "message": "Local patch approval signing is not configured."}) from exc
+    except PatchApprovalError as exc:
+        raise HTTPException(status_code=422, detail={"code": "PATCH_APPROVAL_INVALID", "message": "The approved patch is not eligible for a local apply capability."}) from exc
+
+    await _audit_proposal(
+        request, principal, organization_id, proposal_id,
+        "nexus.patch_proposal.apply_capability", "started",
+        project_id=project_id, file_count=len(item["files"]),
+        version=item["version"],
+    )
+    await _audit_proposal(
+        request, principal, organization_id, proposal_id,
+        "nexus.patch_proposal.apply_capability", "success",
+        project_id=project_id, file_count=len(item["files"]),
+        version=item["version"],
+    )
+    return {
+        "capability": capability,
+        "token_type": "Bearer",
+        "expires_at": datetime.fromtimestamp(expires_at, timezone.utc).isoformat(),
+        "expires_in": settings.patch_approval_ttl_seconds,
+        "proposal_id": proposal_id,
+        "proposal_version": item["version"],
+        "workspace_id": payload.workspace_id,
+        "companion_challenge": payload.companion_challenge,
+        "patch_sha256": digest,
         "application_enabled": False,
     }
 
