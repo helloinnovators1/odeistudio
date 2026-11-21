@@ -160,23 +160,23 @@ def test_agent_rejects_untrusted_prior_message_shapes_before_model_call(tmp_path
 def test_agent_can_capture_a_review_only_file_replacement_without_writing(tmp_path) -> None:
     from odei_api.services.selected_excerpt_tools import SelectedExcerptTools
 
-    original = "def greet():\\n    return 'hello'\\n"
+    original = "original source"
     tools = SelectedExcerptTools([{"path": "src/greet.py", "content": original}])
     client = FakeClient([
         _response([
             SimpleNamespace(
                 type="function_call",
                 name="propose_attached_file_change",
-                arguments='{"path":"src/greet.py","content":"def greet():\\\\n    return \\\\'hello, ODEI\\\\'\\\\n"}',
+                arguments='{"path":"src/greet.py","content":"replacement source"}',
                 call_id="call_proposal_1",
             )
         ]),
         _response([SimpleNamespace(type="message")], "I prepared a review-only change for src/greet.py."),
     ])
     result = run_nexus_agent(
-        client, model="test-model", task="Update greet to return hello, ODEI",
+        client, model="test-model", task="Update greet",
         workspace_tools=tools, cloud_model_consent=True,
     )
     assert result.tool_names == ("propose_attached_file_change",)
-    assert tools.proposed_changes["src/greet.py"] != original
+    assert tools.proposed_changes["src/greet.py"] == "replacement source"
     assert tools.proposal_base_files["src/greet.py"] == original
