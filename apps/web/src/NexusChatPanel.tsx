@@ -268,7 +268,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setConsent(false);
     setChatError("");
     setSending(true);
-    setInspectionRunning(useAttachedTools && excerpt.length > 0);
+    const isInspection = useAttachedTools && excerpt.length > 0;
+    setInspectionRunning(isInspection);
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -279,7 +280,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         setConversationId(activeConversationId);
         setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
       }
-      if (useAttachedTools && excerpt.length > 0) {
+      if (isInspection) {
         const inspected = await sendNexusChatInspection({
           apiBaseUrl: config.apiBaseUrl,
           organizationId,
@@ -324,7 +325,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     } catch (cause) {
       setMessages((current) => current.filter((message) => !message.id.startsWith("stream-")));
       if (controller.signal.aborted) {
-        setNotice(inspectionRunning ? "Inspection cancelled in the browser; server-side model work may finish." : "Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
+        setNotice(isInspection ? "Inspection cancelled in the browser; server-side model work may finish." : "Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
       } else {
         setChatError(errorMessage(cause));
       }
