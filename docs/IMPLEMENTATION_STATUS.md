@@ -1,3 +1,18 @@
+## NEXUS chat — verified delivery snapshot (2026-11-21)
+
+The following capabilities are on the current main-based implementation branch and are covered by successful GitHub Actions checks on exact head `4bf3795970f6cdd1355654c540d63bec710cb438`. This branch is not yet merged.
+
+- **Identity and project binding:** provider-neutral ODID Authorization Code + PKCE browser client, callback validation, in-memory access-token lifecycle, server-discovered active organizations and server-authorized project selection. Actual ODID issuer/client/redirect/resource/scope configuration and staging verification remain deployment prerequisites.
+- **Composer and response delivery:** interactive message composer, explicit per-request cloud-model consent, transcript, validation, send, SSE incremental response rendering, safe error handling and browser cancellation. Provider-side cancellation remains best-effort.
+- **Durable conversations:** MongoDB owner/tenant/project-scoped create/list/read/append/delete and chat turn persistence with optimistic versioning and audit events. Production retention, encryption-at-rest, backups and operational policy still require infrastructure verification.
+- **Read-only NEXUS tools:** this branch adds list/read/literal-search over only one-to-five file excerpts explicitly attached by the user. It has no arbitrary workspace root, no access to unselected files and no filesystem handle. Strict schemas, secret redaction, request/context bounds, owner-scoped history, project authorization and audit metadata are enforced.
+- **Separate patch workflow:** patch proposal/review/approval and local companion application are distinct capabilities. A separate open PR may add approved single-file apply; do not infer multi-file atomicity, durable rollback, shell/test execution or deployment from the read-only chat tool increment.
+- **Not delivered by this branch:** whole-workspace repository tools, chat-created persistent multi-file proposals, patch application/rollback initiated from chat, terminal or test execution, agent orchestration, cloud/background agents, MAC/MAD execution, production ODID configuration or production deployment.
+
+The exact-head CI result is 10/10 successful checks: Ubuntu and Windows Python 3.10/3.12, MongoDB replica-set integration, web tests/build, CodeQL, secret scanning and Python/web dependency audits. No local checkout tests, real ODID staging test, user-machine Windows 10 build 18362 test or production deployment was performed in this hosted session.
+
+Historical sections below record earlier snapshots and should not be read as the current status when superseded by this dated delivery snapshot.
+
 ## ODID browser PKCE client foundation — 2026-11-21
 
 - Added `apps/web/src/odid-auth.ts`: provider-neutral OAuth 2.0 Authorization Code + PKCE S256 client. It validates issuer discovery, requires S256, binds the registered callback origin/path and state, bounds discovery/token response streams, uses the RFC 8707 resource parameter, and returns only a bounded bearer access token to caller memory.
