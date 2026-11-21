@@ -41,7 +41,7 @@ export async function previewWorkspacePatch(
   if (paths.length === 0 || paths.length > 20 || paths.length !== Object.keys(baseContents).length) {
     throw new Error("Patch preview requires matching base content for 1–20 changed files.");
   }
-  const expectedBaseHashes: Record<string, string | null> = {};
+  const expectedBaseHashes = Object.create(null) as Record<string, string | null>;
   for (const path of paths) {
     if (!Object.prototype.hasOwnProperty.call(baseContents, path)) {
       throw new Error("Patch preview is missing a base snapshot for a changed path.");
@@ -53,15 +53,33 @@ export async function previewWorkspacePatch(
     "/v1/workspaces/" + encodeURIComponent(workspaceId) + "/patch-proposals",
     { method: "POST", token, body: { changes, expected_base_hashes: expectedBaseHashes } },
   );
+  const responsePaths = Array.isArray(response.files)
+    ? response.files.map((file) => file?.path)
+    : [];
+  const uniqueResponsePaths = new Set(responsePaths);
+  const filesAreValid = Array.isArray(response.files) &&
+    response.files.length === paths.length &&
+    uniqueResponsePaths.size === paths.length &&
+    response.files.every((file) => {
+      if (!file || typeof file !== "object" || !paths.includes(file.path)) return false;
+      const base = baseContents[file.path];
+      const replacement = changes[file.path];
+      const expectedOperation = base === null ? "create" : replacement === null ? "delete" : "update";
+      return file.operation === expectedOperation &&
+        file.base_sha256 === (base === null ? null : expectedBaseHashes[file.path]) &&
+        file.result_sha256 === (replacement === null ? null : /^[0-9a-f]{64}$/.test(file.result_sha256 ?? "")) &&
+        file.content === replacement &&
+        typeof file.unified_diff === "string";
+    });
   if (
     response.workspace_id !== workspaceId ||
     response.mode !== "preview_only" ||
     response.writes_performed !== false ||
-    !Array.isArray(response.files) ||
-    response.files.length !== paths.length ||
-    response.files.some((file) => !paths.includes(file.path) ||
-      !["create", "update", "delete"].includes(file.operation) ||
-      typeof file.unified_diff !== "string")
+    !filesAreValid ||
+    !Number.isSafeInteger(response.total_content_bytes) ||
+    response.total_content_bytes < 0 ||
+    !Number.isSafeInteger(response.total_diff_bytes) ||
+    response.total_diff_bytes < 0
   ) {
     throw new Error("Companion returned an invalid patch preview response.");
   }
