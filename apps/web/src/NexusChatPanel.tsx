@@ -468,8 +468,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               status: inspected.patch_proposal!.status,
               version: inspected.patch_proposal!.version,
               file_count: inspected.patch_proposal!.file_count,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              created_at: inspected.patch_proposal!.created_at,
+              updated_at: inspected.patch_proposal!.updated_at,
             },
             ...items.filter((item) => item.proposal_id !== inspected.patch_proposal!.proposal_id),
           ].slice(0, 30));
