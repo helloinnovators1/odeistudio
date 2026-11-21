@@ -19,13 +19,6 @@ export interface ODidAccessToken {
   scope?: string;
 }
 
-interface DiscoveryDocument {
-  issuer?: unknown;
-  authorization_endpoint?: unknown;
-  token_endpoint?: unknown;
-  code_challenge_methods_supported?: unknown;
-}
-
 interface LoginTransaction {
   state: string;
   verifier: string;
