@@ -62,6 +62,7 @@ async def _append_nexus_chat_audit(
     message_count: int,
     file_count: int,
     model: str | None = None,
+    tool_calls: int = 0,
 ) -> None:
     """Audit chat access without recording prompts, source text or model output."""
     store = getattr(request.app.state, "audit_event_store", None)
@@ -73,6 +74,8 @@ async def _append_nexus_chat_audit(
     metadata = {"message_count": message_count, "workspace_file_count": file_count}
     if model:
         metadata["model"] = model
+    if tool_calls:
+        metadata["tool_call_count"] = tool_calls
     try:
         await store.append(
             organization_id=organization_id,
