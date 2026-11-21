@@ -21,6 +21,12 @@ Callers must obtain the base snapshot through the existing authenticated, tenant
 - Enforce at most 20 changed files, 1 MB per base/replacement file, 5 MB aggregate changed base and replacement content, and 8 MB aggregate unified diff. Require NFC-normalized paths and enforce Windows UTF-16 component length and device-name rules.
 - Return per-file operation, base/result hashes, replacement content and unified diff.
 
+## Local companion preview endpoint
+
+The read-only companion exposes `POST /v1/workspaces/{workspace_id}/patch-proposals`. It requires an active paired bearer session and a selected workspace ID. For updates/deletes it re-reads each target through the retained workspace handle, compares the supplied base SHA-256, and returns the generated diffs. New-file previews are currently limited to workspace-root paths; nested directory creation is not inferred.
+
+The response explicitly reports `mode: preview_only` and `writes_performed: false`. The endpoint does not persist the proposal, authorize it, apply it, or provide a shell. It is a local preview boundary, not the cloud project/task API or a complete code-editing workflow.
+
 ## Required next stages
 
 1. Persist proposals with tenant, project, task, author, expiry, and immutable content hashes.
