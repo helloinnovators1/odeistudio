@@ -53,7 +53,11 @@ class PatchProposalRequest(BaseModel):
                 continue
             if "\x00" in content:
                 raise ValueError("Binary content is not supported")
-            size = len(content.encode("utf-8"))
+            try:
+                encoded = content.encode("utf-8", errors="strict")
+            except UnicodeEncodeError as exc:
+                raise ValueError("New content must be valid UTF-8 text") from exc
+            size = len(encoded)
             if size > MAX_FILE_BYTES:
                 raise ValueError("A changed file exceeds the 1 MB limit")
             total_bytes += size
