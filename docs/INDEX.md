@@ -47,3 +47,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 5. Never place credentials, tokens, connection strings or private customer data in documentation.
 
 - [NEXUS Task Planning and Approval](NEXUS_TASKS.md) — task planning, ownership, approval semantics and execution boundaries.
+
+- [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization contract for future local apply; application remains disabled.

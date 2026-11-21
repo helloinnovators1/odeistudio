@@ -223,3 +223,92 @@ def test_patch_proposal_decision_requires_project_owner(patch_state, monkeypatch
     )
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROJECT_OWNER_REQUIRED"
+
+
+def test_apply_capability_requires_approved_owner_decision_and_binds_workspace(patch_state, monkeypatch):
+    _, audit, store = patch_state
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
+        json=_payload(),
+    ).json()
+    path = f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{created['proposal_id']}/apply-capability"
+    request = {
+        "expected_version": 0,
+        "workspace_id": "workspace_1234567890123456",
+        "confirm_apply": True,
+    }
+    pending = client.post(path, json=request)
+    assert pending.status_code == 409
+    assert pending.json()["detail"]["code"] == "PATCH_PROPOSAL_NOT_APPROVED"
+
+    client.post(
+        f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{created['proposal_id']}/approve",
+        json={"expected_version": 0},
+    )
+    monkeypatch.setattr(
+        "odei_api.services.nexus_patch_proposals.issue_patch_apply_capability",
+        lambda **kwargs: ("signed-capability", 1_900_000_000, "f" * 64),
+    )
+    request["expected_version"] = 1
+    response = client.post(path, json=request)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["capability"] == "signed-capability"
+    assert body["workspace_id"] == request["workspace_id"]
+    assert body["proposal_version"] == 1
+    assert body["application_enabled"] is False
+    assert "signed-capability" not in str(audit.events)
+    assert audit.events[-1]["action"] == "nexus.patch_proposal.apply_capability"
+
+
+def test_apply_capability_requires_project_owner_and_explicit_confirmation(patch_state, monkeypatch):
+    database, _, _ = patch_state
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
+        json=_payload(),
+    ).json()
+    client.post(
+        f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{created['proposal_id']}/approve",
+        json={"expected_version": 0},
+    )
+    path = f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{created['proposal_id']}/apply-capability"
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="member-2", issuer="https://identity.example/",
+    )
+    database.collections["project_memberships"].document = {
+        "status": "active", "role": "developer",
+    }
+    response = client.post(path, json={
+        "expected_version": 1,
+        "workspace_id": "workspace_1234567890123456",
+        "confirm_apply": True,
+    })
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "PROJECT_OWNER_REQUIRED"
+
+
+
+def test_apply_capability_fails_closed_without_signing_configuration(patch_state):
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
+        json=_payload(),
+    ).json()
+    path = f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{created['proposal_id']}"
+    client.post(path + "/approve", json={"expected_version": 0})
+    response = client.post(path + "/apply-capability", json={
+        "expected_version": 1,
+        "workspace_id": "workspace_1234567890123456",
+        "confirm_apply": True,
+    })
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "PATCH_APPROVAL_SIGNING_UNAVAILABLE"
+
+    unconfirmed = client.post(path + "/apply-capability", json={
+        "expected_version": 1,
+        "workspace_id": "workspace_1234567890123456",
+        "confirm_apply": False,
+    })
+    assert unconfirmed.status_code == 422
