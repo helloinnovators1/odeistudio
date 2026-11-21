@@ -845,7 +845,10 @@ def test_windows_patch_directory_access_does_not_require_delete_child(monkeypatc
         "C:\\selected-workspace", allow_patch_apply=True
     )
     assert root_handle == 0x1234
-    assert captured["root_access"] & windows.FILE_ADD_FILE
+    assert captured["root_access"] == (
+        windows.FILE_LIST_DIRECTORY | windows.FILE_TRAVERSE
+        | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE | windows.FILE_ADD_FILE
+    )
     assert not captured["root_access"] & windows.FILE_DELETE_CHILD
 
     child_capture = {}
@@ -863,5 +866,8 @@ def test_windows_patch_directory_access_does_not_require_delete_child(monkeypatc
         directory=True, allow_write=True,
     )
     assert child.value == 0x5678
-    assert child_capture["access"] & windows.FILE_ADD_FILE
+    assert child_capture["access"] == (
+        windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE
+        | windows.FILE_LIST_DIRECTORY | windows.FILE_TRAVERSE | windows.FILE_ADD_FILE
+    )
     assert not child_capture["access"] & windows.FILE_DELETE_CHILD
