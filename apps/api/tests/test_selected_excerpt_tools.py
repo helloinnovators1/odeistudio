@@ -80,3 +80,14 @@ def test_selected_excerpt_tools_cannot_propose_unattached_or_duplicate_paths():
         tools.execute("propose_attached_file_change", {
             "path": "src/greet.py", "content": "print('changed again')",
         })
+
+
+def test_selected_excerpt_proposal_redacts_generated_credentials_before_storage():
+    tools = SelectedExcerptTools([{"path": "src/settings.py", "content": "VALUE = 1"}])
+    secret = "sk-proj-" + "A" * 28
+    tools.execute("propose_attached_file_change", {
+        "path": "src/settings.py", "content": "API_KEY = '" + secret + "'",
+    })
+    assert secret not in tools.proposed_changes["src/settings.py"]
+    assert "[REDACTED]" in tools.proposed_changes["src/settings.py"]
+    assert tools.proposal_base_files["src/settings.py"] == "VALUE = 1"
