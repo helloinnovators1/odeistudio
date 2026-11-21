@@ -65,12 +65,21 @@ class WorkspaceHandleRegistry:
         if os.name == "nt":
             from odei_api.services.windows_file_handles import open_directory_handle
 
-            kernel32, handle = open_directory_handle(
-                selected_path, allow_patch_apply=allow_patch_apply
-            )
+            try:
+                kernel32, handle = open_directory_handle(
+                    selected_path, allow_patch_apply=allow_patch_apply
+                )
+                granted_write = allow_patch_apply
+            except OSError:
+                if not allow_patch_apply:
+                    raise
+                kernel32, handle = open_directory_handle(
+                    selected_path, allow_patch_apply=False
+                )
+                granted_write = False
             grant = _WorkspaceGrant(
                 platform="nt", handle=handle, label=label,
-                kernel32=kernel32, allow_patch_apply=allow_patch_apply,
+                kernel32=kernel32, allow_patch_apply=granted_write,
             )
         elif os.name == "posix":
             flags = (
@@ -86,9 +95,12 @@ class WorkspaceHandleRegistry:
             except Exception:
                 os.close(handle)
                 raise
+            granted_write = allow_patch_apply and os.access(
+                Path(selected_path).expanduser(), os.W_OK | os.X_OK
+            )
             grant = _WorkspaceGrant(
                 platform="posix", handle=handle, label=label,
-                allow_patch_apply=allow_patch_apply,
+                allow_patch_apply=granted_write,
             )
         else:
             raise WorkspaceHandleError("This platform has no supported workspace handle")
