@@ -175,6 +175,8 @@ export async function sendNexusChat(
     Number.isInteger((proposal as Record<string, unknown>).version) &&
     typeof (proposal as Record<string, unknown>).file_count === "number" &&
     Number.isInteger((proposal as Record<string, unknown>).file_count) &&
+    typeof (proposal as Record<string, unknown>).created_at === "string" &&
+    typeof (proposal as Record<string, unknown>).updated_at === "string" &&
     typeof (proposal as Record<string, unknown>).can_decide === "boolean" &&
     (proposal as Record<string, unknown>).application_enabled === false
   );
@@ -534,6 +536,8 @@ export interface NexusChatInspectionProposal {
   status: "pending";
   version: number;
   file_count: number;
+  created_at: string;
+  updated_at: string;
   can_decide: boolean;
   application_enabled: false;
 }
