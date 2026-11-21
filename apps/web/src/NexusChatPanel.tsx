@@ -473,7 +473,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           </article>
         ))}
         {conversationBusy && <div className="nexus-thinking" role="status">Loading saved conversations…</div>}
-        {sending && <div className="nexus-thinking" role="status">NEXUS is thinking…</div>}
+        {sending && <div className="nexus-thinking" role="status">{inspectionRunning ? "NEXUS is inspecting attached excerpts…" : "NEXUS is thinking…"}</div>}
         <div ref={transcriptEndRef} />
       </div>
 
