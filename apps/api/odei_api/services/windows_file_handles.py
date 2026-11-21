@@ -17,6 +17,8 @@ class UnsafeWindowsPath(OSError):
 FILE_LIST_DIRECTORY = 0x0001
 FILE_READ_DATA = 0x0001
 FILE_WRITE_DATA = 0x0002
+FILE_ADD_FILE = 0x0002
+FILE_DELETE_CHILD = 0x0040
 FILE_READ_ATTRIBUTES = 0x0080
 DELETE = 0x00010000
 SYNCHRONIZE = 0x00100000
@@ -125,7 +127,7 @@ def _check_type(kernel32, handle, *, directory: bool) -> None:
         raise UnsafeWindowsPath("Filesystem object has an unexpected type")
 
 
-def _open_child(kernel32, ntdll, parent, name: str, *, directory: bool):
+def _open_child(kernel32, ntdll, parent, name: str, *, directory: bool, allow_write: bool = False):
     if not name or "\\" in name or "/" in name or name in {".", ".."}:
         raise UnsafeWindowsPath("Invalid path component")
     name_buffer = ctypes.create_unicode_buffer(name)
@@ -149,6 +151,8 @@ def _open_child(kernel32, ntdll, parent, name: str, *, directory: bool):
     options = FILE_SYNCHRONOUS_IO_NONALERT | 0x00200000
     if directory:
         access |= FILE_LIST_DIRECTORY
+        if allow_write:
+            access |= FILE_ADD_FILE | FILE_DELETE_CHILD
         options |= FILE_DIRECTORY_FILE
     else:
         access |= FILE_READ_DATA
@@ -253,14 +257,17 @@ class _FileIdBothDirInfo(ctypes.Structure):
     ]
 
 
-def open_directory_handle(path: str | Path):
+def open_directory_handle(path: str | Path, *, allow_patch_apply: bool = False):
     """Open a selected directory without following its final reparse point."""
     if os.name != "nt":
         raise OSError("Native Windows handles are only available on Windows")
     kernel32, _ = _apis()
+    desired_access = FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE
+    if allow_patch_apply:
+        desired_access |= FILE_ADD_FILE | FILE_DELETE_CHILD
     handle = kernel32.CreateFileW(
         str(path),
-        FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        desired_access,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         None, OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
@@ -438,7 +445,9 @@ def _open_relative_parent(root_handle, parts: tuple[str, ...]):
     parent = root_handle
     directories = []
     for component in parts[:-1]:
-        child = _open_child(kernel32, ntdll, parent, component, directory=True)
+        child = _open_child(
+            kernel32, ntdll, parent, component, directory=True, allow_write=True
+        )
         directories.append(child)
         parent = child
     return kernel32, ntdll, parent, directories
