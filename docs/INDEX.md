@@ -16,6 +16,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS agent specification](NEXUS.md) — AI software engineering agent, tools, loop and runtime.
 - [IDE workspace implementation](IDE_WORKSPACE.md) — Monaco shell, NEXUS chat-panel side preference, shortcuts and explicit capability boundaries.
 - [NEXUS chat operationalisation](NEXUS_CHAT_OPERATIONALIZATION.md) — complete chat lifecycle, UX contract, identity/consent/security boundaries, event and persistence contracts, and phased acceptance gates.
+- [NEXUS project discovery transport](NEXUS_PROJECT_DISCOVERY.md) — secure typed browser client for tenant-scoped project listing and creation.
 - [NEXUS chat API](NEXUS_CHAT_API.md) — authenticated project-scoped chat contract, consent, redaction, audit and read-only limits.
 - [NEXUS patch proposals](PATCH_PROPOSALS.md) — bounded multi-file patch validation, content hashes, diff output and safe-application requirements.
 - [Master Admin Console requirements](MAC_REQUIREMENTS.md) — central configuration and governance plane.
