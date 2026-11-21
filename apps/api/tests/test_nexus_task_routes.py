@@ -508,3 +508,53 @@ def test_conversation_message_append_and_delete_are_audited(route_state):
     assert conversation_id not in conversations.documents
     assert audit.events[-2]["action"] == "nexus.conversation.message.append"
     assert audit.events[-1]["action"] == "nexus.conversation.delete"
+
+def test_nexus_stream_endpoint_persists_and_emits_redacted_sse_deltas(route_state, monkeypatch):
+    _, audit, _, conversations = route_state
+    item = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Streaming conversation"},
+    ).json()
+
+    class Stream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            return iter([
+                SimpleNamespace(type="response.output_text.delta", delta="Hello "),
+                SimpleNamespace(type="response.output_text.delta", delta="api_key=super_secret_token_12345"),
+                SimpleNamespace(type="response.output_text.delta", delta=" and welcome."),
+                SimpleNamespace(type="response.completed"),
+            ])
+
+    class Responses:
+        def stream(self, **kwargs):
+            assert kwargs["store"] is False
+            assert "tools" not in kwargs
+            return Stream()
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_tasks.get_openai_client",
+        lambda: (SimpleNamespace(responses=Responses()), "stream-model"),
+    )
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/stream",
+        json={
+            "messages": [{"role": "user", "content": "Say hello"}],
+            "conversation_id": item["conversation_id"],
+            "cloud_model_consent": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: delta" in response.text
+    assert "event: done" in response.text
+    assert "super_secret_token_12345" not in response.text
+    saved = conversations.documents[item["conversation_id"]]
+    assert [message["role"] for message in saved["messages"]] == ["user", "assistant"]
+    assert "[REDACTED]" in saved["messages"][-1]["content"]
+    assert audit.events[-1]["outcome"] == "success"
