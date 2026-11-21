@@ -6,7 +6,7 @@ import {
   type ODidOAuthConfig,
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
-import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
+import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -163,6 +163,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setProjects([]);
       setProjectId("");
       setMessages([]);
+      setConversations([]);
+      setConversationId("");
       setNotice("Your sign-in expired. Sign in again.");
       return;
     }
@@ -263,12 +265,14 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     try {
       let activeConversationId = conversationId;
       if (!activeConversationId) {
-        const created = await createNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, content.slice(0, 120) || "NEXUS conversation");
+        const created = await createNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, content.slice(0, 120) || "NEXUS conversation", fetch, controller.signal);
         activeConversationId = created.conversation_id;
         setConversationId(activeConversationId);
         setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
       }
-      const response = await sendNexusChat({
+      const assistantId = "stream-" + newMessageId();
+      let assistantStarted = false;
+      const response = await sendNexusChatStream({
         apiBaseUrl: config.apiBaseUrl,
         organizationId,
         projectId,
@@ -278,15 +282,22 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         workspaceFiles: excerpt,
         cloudModelConsent: true,
         signal: controller.signal,
+      }, (delta) => {
+        setMessages((current) => {
+          if (!assistantStarted) {
+            assistantStarted = true;
+            return [...current, { id: assistantId, role: "assistant" as const, content: delta }].slice(-20);
+          }
+          return current.map((message) => message.id === assistantId
+            ? { ...message, content: message.content + delta }
+            : message);
+        });
       });
-      setMessages((current) => [
-        ...current,
-        { id: newMessageId(), role: "assistant" as const, content: response.answer },
-      ].slice(-20));
-      setNotice("Saved response from " + response.model + ". Conversation history is stored in your authorized project.");
+      setNotice("Streaming response saved from " + response.model + ". Conversation history is stored in your authorized project.");
     } catch (cause) {
+      setMessages((current) => current.filter((message) => !message.id.startsWith("stream-")));
       if (controller.signal.aborted) {
-        setNotice("Client request aborted. The current API does not guarantee provider-side cancellation.");
+        setNotice("Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
       } else {
         setChatError(errorMessage(cause));
       }

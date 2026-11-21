@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   NexusChatTransportError,
   sendNexusChat,
+  sendNexusChatStream,
   createNexusConversation,
   deleteNexusConversation,
   listNexusConversations,
@@ -93,6 +94,74 @@ describe("NEXUS chat transport", () => {
     await expect(deleteNexusConversation(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, "conversation-1", fetcher)).resolves.toBeUndefined();
     expect(fetcher.mock.calls[0][1]?.method).toBe("DELETE");
     expect(fetcher.mock.calls[0][1]?.credentials).toBe("omit");
+  });
+
+  it("parses incremental SSE deltas and validates durable completion", async () => {
+    const events = [
+      'event: status\ndata: {"status":"generating"}\n\n',
+      'event: delta\ndata: {"delta":"Hello "}\n\n',
+      'event: delta\ndata: {"delta":"world"}\n\n',
+      'event: done\ndata: {"model":"test-model","conversation_id":"chat-one","conversation_persisted":true,"read_only":true,"tools_executed":0}\n\n',
+    ].join("");
+    const encoded = new TextEncoder().encode(events);
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+      new ReadableStream<Uint8Array>({ start(controller) {
+        controller.enqueue(encoded.slice(0, 31));
+        controller.enqueue(encoded.slice(31));
+        controller.close();
+      } }),
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    ));
+    let answer = "";
+    const result = await sendNexusChatStream(
+      { ...base, conversationId: "chat-one" },
+      (delta) => { answer += delta; },
+      fetcher,
+    );
+    expect(answer).toBe("Hello world");
+    expect(result.conversation_persisted).toBe(true);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(String(url)).toContain("/nexus/chat/stream");
+    expect(init?.credentials).toBe("omit");
+    expect(init?.cache).toBe("no-store");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer ephemeral-token");
+  });
+
+  it("parses CRLF-delimited SSE and rejects oversized event blocks", async () => {
+    const crlf = [
+      `event: delta\r\ndata: ${JSON.stringify({ delta: "hello" })}\r\n\r\n`,
+      `event: done\r\ndata: ${JSON.stringify({ model: "test", conversation_id: "chat-one", conversation_persisted: true, read_only: true, tools_executed: 0 })}\r\n\r\n`,
+    ].join("");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(crlf, {
+      status: 200, headers: { "Content-Type": "text/event-stream" },
+    }));
+    let answer = "";
+    await sendNexusChatStream({ ...base, conversationId: "chat-one" }, (delta) => { answer += delta; }, fetcher);
+    expect(answer).toBe("hello");
+    const oversized = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+      `event: delta\\ndata: ${"x".repeat(70_000)}\\n\\n`,
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    ));
+    await expect(sendNexusChatStream(
+      { ...base, conversationId: "chat-one" }, () => undefined, oversized,
+    )).rejects.toThrow("oversized stream event");
+  });
+  it("rejects stream errors and completion events for a different conversation", async () => {
+    const makeResponse = (payload: string) => new Response(payload, {
+      status: 200, headers: { "Content-Type": "text/event-stream" },
+    });
+    const errorFetcher = vi.fn<typeof fetch>().mockResolvedValue(makeResponse(
+      'event: error\ndata: {"message":"NEXUS failed"}\n\n',
+    ));
+    await expect(sendNexusChatStream(
+      { ...base, conversationId: "chat-one" }, () => undefined, errorFetcher,
+    )).rejects.toThrow("NEXUS failed");
+    const mismatchFetcher = vi.fn<typeof fetch>().mockResolvedValue(makeResponse(
+      'event: done\ndata: {"model":"test","conversation_id":"other-chat","conversation_persisted":true,"read_only":true,"tools_executed":0}\n\n',
+    ));
+    await expect(sendNexusChatStream(
+      { ...base, conversationId: "chat-one" }, () => undefined, mismatchFetcher,
+    )).rejects.toThrow("invalid stream completion contract");
   });
 
   it("allows HTTP only for loopback development endpoints", async () => {

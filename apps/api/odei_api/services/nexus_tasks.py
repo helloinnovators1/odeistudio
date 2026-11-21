@@ -5,10 +5,15 @@ it does not execute code, write files, or launch a command.
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import queue
+import threading
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 from pymongo.errors import PyMongoError
 from starlette.concurrency import run_in_threadpool
@@ -16,7 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
-from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat
+from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import (
@@ -396,6 +401,190 @@ async def cancel_project_task(
     return await _transition_project_task(request, organization_id, project_id, task_id, payload, principal, TaskStatus.CANCELLED)
 
 
+
+@router.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/chat/stream",
+    tags=["nexus"],
+)
+async def nexus_project_chat_stream(
+    payload: NexusChatRequest,
+    request: Request,
+    organization_id: str = Path(min_length=1, max_length=128),
+    project_id: str = Path(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+):
+    """Stream redacted model deltas over SSE and persist the completed assistant turn."""
+    if organization_id != organization_id.strip() or project_id != project_id.strip():
+        raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    if payload.cloud_model_consent is not True:
+        raise HTTPException(status_code=400, detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending chat or workspace data to the cloud model."})
+    if payload.conversation_id is None:
+        raise HTTPException(status_code=400, detail={"code": "CONVERSATION_REQUIRED", "message": "Streaming chat requires a saved conversation."})
+    try:
+        await _authorize_project(request, organization_id, project_id, principal)
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "PROJECT_STORE_UNAVAILABLE", "message": "Project authorization storage is temporarily unavailable."}) from exc
+    if not payload.messages or payload.messages[-1].get("role") != "user":
+        raise HTTPException(status_code=422, detail={"code": "INVALID_CHAT_HISTORY", "message": "The final conversation message must be from the user."})
+    conversation_store = getattr(request.app.state, "conversation_store", None)
+    if conversation_store is None:
+        raise HTTPException(status_code=503, detail={"code": "CONVERSATION_STORE_UNAVAILABLE", "message": "NEXUS conversation storage is not configured."})
+    try:
+        conversation = await conversation_store.get_for_owner(
+            organization_id=organization_id, project_id=project_id,
+            owner_issuer=principal.issuer, owner_subject=principal.subject,
+            conversation_id=payload.conversation_id,
+        )
+        if conversation is None:
+            raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Conversation was not found."})
+        persisted_user = await conversation_store.append(
+            organization_id=organization_id, project_id=project_id,
+            owner_issuer=principal.issuer, owner_subject=principal.subject,
+            conversation_id=payload.conversation_id, role="user",
+            content=payload.messages[-1]["content"],
+            expected_version=conversation["version"],
+        )
+        if persisted_user is None:
+            raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "Conversation changed. Reload its history before sending another message."})
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "CONVERSATION_STORE_UNAVAILABLE", "message": "NEXUS conversation storage is temporarily unavailable."}) from exc
+
+    model_messages = [
+        {"role": item["role"], "content": item["content"]}
+        for item in persisted_user["messages"][-19:]
+    ]
+    await _append_nexus_chat_audit(
+        request, principal, organization_id, project_id,
+        outcome="started", message_count=len(model_messages),
+        file_count=len(payload.workspace_files),
+    )
+    try:
+        client, model = get_openai_client()
+    except ModelConfigurationError as exc:
+        await _append_nexus_chat_audit(
+            request, principal, organization_id, project_id,
+            outcome="failure", message_count=len(model_messages),
+            file_count=len(payload.workspace_files),
+        )
+        raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
+
+    events: queue.Queue[tuple[str, str | None]] = queue.Queue(maxsize=16)
+    cancelled = threading.Event()
+
+    def publish(kind: str, value: str | None = None) -> bool:
+        while not cancelled.is_set():
+            try:
+                events.put((kind, value), timeout=0.25)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def provider_worker() -> None:
+        try:
+            for delta in stream_nexus_chat(
+                client, model=model, messages=model_messages,
+                workspace_files=payload.workspace_files,
+            ):
+                if not publish("delta", delta):
+                    return
+            publish("complete")
+        except Exception:  # noqa: BLE001 - provider SDK failures must become safe SSE errors
+            publish("error", "NEXUS could not complete the streamed response.")
+
+    def encode_event(name: str, data: dict) -> bytes:
+        return (
+            f"event: {name}\n"
+            f"data: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
+        ).encode()
+
+    async def event_stream():
+        worker = asyncio.create_task(asyncio.to_thread(provider_worker))
+        answer_parts: list[str] = []
+        loop = asyncio.get_running_loop()
+        last_heartbeat = loop.time()
+        try:
+            yield encode_event("status", {"status": "generating"})
+            while True:
+                try:
+                    kind, value = await asyncio.to_thread(events.get, True, 0.5)
+                except queue.Empty:
+                    if cancelled.is_set():
+                        return
+                    if loop.time() - last_heartbeat >= 15:
+                        last_heartbeat = loop.time()
+                        yield b": keep-alive\n\n"
+                    continue
+                if kind == "delta" and value is not None:
+                    answer_parts.append(value)
+                    yield encode_event("delta", {"delta": value})
+                elif kind == "error":
+                    await _append_nexus_chat_audit(
+                        request, principal, organization_id, project_id,
+                        outcome="failure", message_count=len(model_messages),
+                        file_count=len(payload.workspace_files),
+                    )
+                    yield encode_event("error", {"message": value or "NEXUS streaming failed."})
+                    return
+                elif kind == "complete":
+                    break
+            await worker
+            answer = "".join(answer_parts)
+            try:
+                saved = await conversation_store.append(
+                    organization_id=organization_id, project_id=project_id,
+                    owner_issuer=principal.issuer, owner_subject=principal.subject,
+                    conversation_id=payload.conversation_id, role="assistant",
+                    content=answer, expected_version=persisted_user["version"],
+                )
+                if saved is None:
+                    raise RuntimeError("Conversation version changed during streamed generation")
+                await _append_nexus_chat_audit(
+                    request, principal, organization_id, project_id,
+                    outcome="success", message_count=len(model_messages),
+                    file_count=len(payload.workspace_files), model=model,
+                )
+            except Exception:  # noqa: BLE001 - persist/audit failures must not leak through SSE
+                try:
+                    await _append_nexus_chat_audit(
+                        request, principal, organization_id, project_id,
+                        outcome="failure", message_count=len(model_messages),
+                        file_count=len(payload.workspace_files),
+                    )
+                except HTTPException:
+                    logger.warning("NEXUS stream completion audit could not be written")
+                yield encode_event("error", {"message": "NEXUS could not save the completed response. Reload conversation history."})
+                return
+            yield encode_event("done", {
+                "model": model,
+                "conversation_id": payload.conversation_id,
+                "conversation_persisted": True,
+                "read_only": True,
+                "tools_executed": 0,
+            })
+        except asyncio.CancelledError:
+            cancelled.set()
+            await _append_nexus_chat_audit(
+                request, principal, organization_id, project_id,
+                outcome="failure", message_count=len(model_messages),
+                file_count=len(payload.workspace_files),
+            )
+            raise
+        finally:
+            cancelled.set()
+            if not worker.done():
+                worker.cancel()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
 @router.post(
     f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/chat",
     tags=["nexus"],
@@ -409,10 +598,10 @@ async def nexus_project_chat(
 ) -> dict:
     """Authenticated, project-authorized, read-only NEXUS chat.
 
-    The browser carries bounded conversation history. Selected file excerpts are
-    sent only when the user explicitly consents to cloud-model processing. No
-    tools, filesystem writes, command execution or server-side conversation
-    persistence are enabled by this endpoint.
+    When a conversation ID is supplied, the server reloads its owner-scoped
+    history and persists the user and assistant turns. The legacy no-ID request
+    remains stateless. Selected file excerpts require explicit cloud consent.
+    No tools, filesystem writes or command execution are enabled.
     """
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(

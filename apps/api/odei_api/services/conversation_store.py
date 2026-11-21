@@ -123,7 +123,7 @@ class MongoConversationStore:
                         {"$sum": {"$map": {
                             "input": {"$ifNull": ["$messages", []]},
                             "as": "message",
-                            "in": {"$strLenBytes": "$message.content"},
+                            "in": {"$strLenBytes": "$$message.content"},
                         }}},
                         len(content.encode("utf-8")),
                     ]},

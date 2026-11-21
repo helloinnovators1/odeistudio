@@ -357,3 +357,34 @@ Feature branch: `feat/nexus-durable-conversations`. This increment is not merged
 - Automated tests have been added for owner/tenant isolation, optimistic versions, create/list/read/append/delete, durable chat turns, browser transport and the audit `started` lifecycle. They are not yet verified on this branch until CI completes.
 
 Not included in this increment: SSE/token streaming, guaranteed provider cancellation, tool invocation, chat-generated patch proposals, patch approval/application/rollback, isolated terminal/test execution, agent orchestration or production ODID/Mongo/model deployment configuration.
+
+
+## NEXUS SSE streaming increment — in review (2026-11-21)
+
+Feature branch: `feat/nexus-streaming-chat`. This increment is not merged or deployed.
+
+- Added authenticated `POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/stream` requiring explicit cloud-model consent and a server-owned conversation ID.
+- Streams Responses API text deltas over Server-Sent Events. The API persists the user turn before generation and the assistant turn only after successful stream completion, using optimistic conversation versions.
+- Added incremental credential redaction that withholds incomplete secret-like values across provider event boundaries before any text delta is sent to the browser.
+- Emits `status`, `delta`, `error` and `done` events; disables response caching and proxy buffering.
+- Connected the browser panel to incremental SSE parsing and rendering. The existing Stop control aborts the browser request; provider cancellation is best-effort because the synchronous SDK worker can only stop when its stream iterator yields or closes.
+- Provider streaming uses `store=False`, no tools and the existing bounded/redacted context. The panel continues to require explicit per-message cloud consent.
+- Added server streaming/redaction, route persistence, and browser SSE transport tests. CI on the exact feature head is required before merge.
+
+Still outstanding: durable transactional audit coupling for every conversation mutation, guaranteed provider-side cancellation, encrypted-at-rest/retention configuration verification, repository tool invocation, task-planning UI, persistent patch proposals, approval/application/rollback, isolated command/test execution, agent orchestration and production staging E2E.
+
+
+
+## NEXUS streaming and interactive panel increment — 2026-11-21
+
+Feature branch: `feat/nexus-streaming-chat`. This increment is not merged or deployed until its exact-head CI and review gates pass.
+
+- Added a separate authenticated `POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/stream` endpoint using Server-Sent Events. The existing JSON chat endpoint remains unchanged for compatibility.
+- The stream uses the Responses API streaming context with provider-side storage disabled, no tools, no command execution and explicit cloud-model consent. Events include a generation status, incremental text deltas, a terminal completion event, and a safe error event; a keep-alive comment is emitted during idle periods.
+- Streamed output is incrementally secret-redacted before any delta is sent to the browser. The redactor retains incomplete credential-like values across provider event boundaries and handles known API tokens, bearer values, JWT-like tokens, private-key blocks, credential assignments and credential-bearing MongoDB URIs. This is defense-in-depth, not a guarantee of detecting every secret format.
+- The endpoint reloads the owner-scoped server transcript, appends only the submitted user turn with optimistic versioning, and persists the assistant turn only after provider completion. Completion confirms the conversation ID and persisted state. The browser validates the stream contract and enforces event/output bounds.
+- The Studio panel uses the streaming transport, incrementally renders NEXUS deltas, provides a Stop control, preserves saved conversation history, and removes partial assistant output when a stream fails or is cancelled. Cancellation stops delivery and signals the worker; interruption of an in-flight provider network read is best-effort and must not be represented as guaranteed upstream cancellation.
+- Added API streaming tests, incremental secret-redaction tests, browser SSE parsing tests, CRLF framing and oversized-event tests. The conversation-store UTF-8 byte-budget aggregation expression was corrected to reference the MongoDB map variable properly and is covered by the replica-set integration test.
+- Remaining prerequisites: approved ODID issuer/client/redirect/resource/scope values, real ODID staging verification, production API/Mongo/model configuration, encryption-at-rest/retention/backup controls and deployment. No production credentials are in source and none should be pasted into chat.
+
+This increment does not implement chat-triggered repository tools, patch creation/review/application/rollback, terminal/test execution, agent orchestration, cloud/background agents or MAC/MAD operations. The current chat agent remains read-only.
