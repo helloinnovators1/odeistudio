@@ -418,3 +418,18 @@ Feature branch: `feat/nexus-chat-selected-file-tools`. This is a limited read-on
 - Added API tests for safe attached-file listing/reading, secret redaction, rejected paths, owner-scoped persistence and audit metadata; added browser transport contract tests and agent-history tests.
 
 Limitations: this does not expose the whole workspace or the existing OS-handle registry to the API. It is not a replacement for a securely paired project-wide tool bridge. No patch proposals, approval, file application, rollback, terminal/test execution, agent orchestration or cloud/background agents are enabled. The synchronous inspection request cannot guarantee cancellation of a provider operation already running on the server.
+
+
+
+
+## Persistent NEXUS patch review — 2026-11-21
+
+Feature branch: `feat/nexus-persistent-patch-review`. The review API is implemented in this branch but is not merged or production-deployed.
+
+- Added tenant/project-scoped MongoDB patch proposal storage with creator identity, title, per-file operation, base/result SHA-256 hashes, redacted replacement content, redacted unified diff, status, optimistic version and decision metadata.
+- Proposal creation revalidates the supplied base snapshot and expected hashes using the existing bounded patch builder. Paths use the existing sensitive-path and Windows-reserved-name checks; new file proposals are limited to workspace-root paths until nested directory creation is supported.
+- Active project members can create proposals; only the project owner can approve or reject. Creators can read their own proposals; project owners can review proposals for the project.
+- Every create/list/read/decision action is audited without recording source text, replacement content, prompts or diffs. Secrets are redacted before persistent storage.
+- Approve/reject use expected-version compare-and-set. Approval records a decision only; API responses explicitly return `application_enabled=false`.
+
+Important boundary: this does not apply any changes to a local workspace. Local application still requires a verified, short-lived, single-use approval capability that the loopback companion can independently validate, plus fresh base-hash checks and an atomic write/rollback implementation. Those safeguards are not implemented, so the Studio remains read-only.
