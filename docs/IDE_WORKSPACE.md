@@ -1,6 +1,6 @@
 # ODEI Studio IDE Workspace
 
-**Status:** initial Monaco workspace shell implemented; read-only companion-backed preview. Not a complete IDE or autonomous coding agent.
+**Status:** initial Monaco workspace shell with integrated NEXUS chat, bounded inspection, proposal review and approved one-file local apply. The editor remains read-only; this is not a complete IDE or autonomous coding agent.
 
 ## Current frontend boundary
 
@@ -11,7 +11,7 @@
 - Tabs: multiple read-only files can be opened, activated and closed.
 - Bottom panel: output/status messages, an honest no-LSP Problems surface and a disabled terminal explanation.
 - Patch preview: an explicit editor action opens a proposed-content dialog and requests a live, SHA-256-checked unified diff from the local companion. It is preview-only; no local files are changed.
-- NEXUS panel: UI shell only. It does not send prompts, invoke the cloud planning API, stream responses or run tools.
+- NEXUS panel: authenticated project-scoped chat with explicit cloud consent, SSE responses, durable owner-scoped history, attached-excerpt read-only tools, task planning, persisted patch proposals and owner decisions. A separately approved one-file proposal can be applied through the paired companion with a signed capability and fresh challenge. Whole-workspace tool access, rollback and execution are not available.
 
 ## NEXUS chat panel position
 
@@ -32,34 +32,40 @@
 | Multiple open tabs | Implemented |
 | NEXUS panel left/right preference | Implemented |
 | Command+I / Ctrl+I toggle | Implemented |
-| Authenticated chat and streaming | Not connected |
+| ODID PKCE browser foundation and authorized organization/project selection | Implemented; real provider configuration/staging remains open |
+| Authenticated chat composer and send | Implemented |
+| SSE streaming and browser cancellation | Implemented; provider cancellation is best-effort |
+| Durable owner-scoped conversation history | Implemented |
+| Attached-excerpt read-only inspection | Implemented; no arbitrary workspace root |
 | Whole-codebase indexing / semantic retrieval | Not implemented |
-| Agent orchestration / agents window | Not implemented in this shell |
-| Live patch proposal and diff preview | Implemented for the active file; local companion re-reads the base and checks SHA-256; no writes |
-| Proposal persistence, reviewer approval/rejection, safe apply and rollback | Not implemented |
-| File writes, rename, delete, save | Disabled; companion remains read-only |
-| Terminal / shell / command execution | Disabled |
+| Agent orchestration / Agents Window | Not implemented |
+| Persisted patch proposals and diff review | Implemented |
+| Project-owner approval/rejection | Implemented |
+| Signed one-file companion apply | Implemented; requires explicit write opt-in, pairing, signing config and fresh challenge |
+| Multi-file transactions and durable rollback | Not implemented |
+| Direct editor Save, rename, delete | Disabled; Monaco remains read-only |
+| Terminal / shell / isolated command execution | Not implemented |
 | LSP diagnostics and test runner | Not connected |
 | Git/SCM and preview server | Not connected |
 | Cloud/background agents and CLI | Not implemented |
 | Native Code-OSS/Electron desktop packaging | Not implemented |
 
-The UI must not imply that a disabled capability is operational. The NEXUS composer is disabled until authenticated chat and authorization are integrated. The terminal does not execute browser commands. The Monaco editor cannot save to disk.
+The UI must not imply that a disabled capability is operational. The composer is enabled only after trusted identity and active project context are established. The terminal does not execute browser commands. The Monaco editor cannot save to disk; approved changes are applied through the separate signed companion path.
 
 ## Security and data handling
 
 - Companion calls are loopback-only and initiated by a user gesture.
 - Pairing credentials are held in React memory, not local storage.
 - Disconnect clears the in-memory session and requests server-side revocation.
-- The browser UI lists and reads files and may send a proposed replacement to the paired local companion for a bounded diff preview. The preview remains on the loopback companion; it is not sent to a cloud model.
+- The browser UI lists and reads explicitly selected files and may send bounded excerpts to NEXUS only after explicit cloud consent. Patch preview is computed by the paired local companion; proposals are persisted for review. The companion applies only a single approved file operation after verifying the signed capability, one-use challenge and live base hash.
 - Do not enable editor writes by adding a browser-side fetch to an arbitrary path. A future patch service must use the server's handle-relative Windows and descriptor-relative POSIX path controls, validate content hashes/concurrent edits, require explicit review/approval and audit mutations atomically.
 - A future terminal must be an isolated execution service with resource/network/filesystem policy, not a shell exposed from the browser.
 
 ## Next implementation dependencies
 
-1. Connect a trusted ODID identity contract and tenant/project authorization to the browser session.
-2. Implement authenticated NEXUS chat, durable streaming/reconnect and scoped read-only tools.
-3. Extend preview to multi-file IDE review, persist proposals securely, require explicit approval, and implement safe atomic handle-relative apply/rollback.
+1. Configure and stage-test the real ODID issuer/client/redirect/resource/scope and production API trust contract.
+2. Add whole-workspace companion-mediated tools and semantic retrieval with explicit user authorization.
+3. Extend single-file apply to safe multi-file transactions with durable rollback and crash recovery.
 4. Implement isolated command execution, diagnostics and tests.
 5. Add recursive explorer, workspace persistence, file watching, Git integration and preview.
 6. Build the full Agents Window, CLI, background and cloud-agent control planes.
