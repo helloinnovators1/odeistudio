@@ -14,9 +14,16 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, model_validator
 from starlette.concurrency import run_in_threadpool
 
+from odei_api.services.patch_proposals import (
+    MAX_FILE_BYTES,
+    MAX_PATCH_FILES,
+    MAX_TOTAL_BYTES,
+    PatchProposalError,
+    build_patch_proposal,
+)
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
 DEFAULT_PORT = 8765
@@ -26,6 +33,33 @@ DEFAULT_TOKEN_TTL_SECONDS = 3600
 
 class PairRequest(BaseModel):
     code: str = Field(min_length=1, max_length=128)
+
+
+class PatchProposalRequest(BaseModel):
+    """Bounded text changes for a read-only, live-workspace diff preview."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    changes: dict[str, StrictStr | None] = Field(min_length=1, max_length=MAX_PATCH_FILES)
+    expected_base_hashes: dict[str, StrictStr | None]
+
+    @model_validator(mode="after")
+    def validate_budgets(self):
+        if set(self.expected_base_hashes) != set(self.changes):
+            raise ValueError("Every changed path requires exactly one expected base hash")
+        total_bytes = 0
+        for content in self.changes.values():
+            if content is None:
+                continue
+            if "\\x00" in content:
+                raise ValueError("Binary content is not supported")
+            size = len(content.encode("utf-8"))
+            if size > MAX_FILE_BYTES:
+                raise ValueError("A changed file exceeds the 1 MB limit")
+            total_bytes += size
+        if total_bytes > MAX_TOTAL_BYTES:
+            raise ValueError("Aggregate replacement content exceeds the 5 MB limit")
+        return self
 
 
 class PairingManager:
@@ -269,6 +303,97 @@ def create_companion_app(
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail="File is unavailable for safe reading") from exc
         return {"workspace_id": workspace_id, "path": path, "content": content}
+
+    @app.post("/v1/workspaces/{workspace_id}/patch-proposals")
+    async def preview_workspace_patch(
+        workspace_id: str, payload: PatchProposalRequest, request: Request
+    ):
+        """Build a bounded diff from fresh local files; this route never writes files."""
+        require_bearer(request)
+        require_selected_workspace(workspace_id)
+        try:
+            indexed_files = await run_in_threadpool(registry.list_files, workspace_id)
+            base_files = {item.path: "" for item in indexed_files}
+            paths_by_casefold = {item.path.casefold(): item.path for item in indexed_files}
+
+            for path, replacement in payload.changes.items():
+                expected_hash = payload.expected_base_hashes[path]
+                if expected_hash is None:
+                    # Root-level creates only: nested directory creation is not part of
+                    # this read-only preview contract and must not be guessed.
+                    if "/" in path:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="New files can only be previewed at the workspace root",
+                        )
+                    if path.casefold() in paths_by_casefold:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="A file with this path already exists; refresh the workspace",
+                        )
+                    try:
+                        await run_in_threadpool(registry.read_text, workspace_id, path)
+                    except FileNotFoundError:
+                        pass
+                    except (ValueError, OSError) as exc:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="The new path exists or cannot be safely inspected",
+                        ) from exc
+                    else:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="A file with this path already exists; refresh the workspace",
+                        )
+                    continue
+
+                actual_path = paths_by_casefold.get(path.casefold())
+                if actual_path is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="The base file no longer exists; refresh the workspace",
+                    )
+                try:
+                    current_content = await run_in_threadpool(
+                        registry.read_text, workspace_id, actual_path
+                    )
+                except (ValueError, OSError) as exc:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="The base file is no longer safely readable",
+                    ) from exc
+                base_files[actual_path] = current_content
+
+            proposal = build_patch_proposal(
+                base_files, payload.changes, payload.expected_base_hashes
+            )
+        except PatchProposalError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except HTTPException:
+            raise
+        except (ValueError, OSError) as exc:
+            raise HTTPException(
+                status_code=400, detail="Workspace snapshot is unavailable for safe preview"
+            ) from exc
+
+        return {
+            "workspace_id": workspace_id,
+            "mode": "preview_only",
+            "writes_performed": False,
+            "files": [
+                {
+                    "path": item.path,
+                    "operation": item.operation,
+                    "base_sha256": item.base_sha256,
+                    "result_sha256": item.result_sha256,
+                    "content": item.content,
+                    "unified_diff": item.unified_diff,
+                }
+                for item in proposal.files
+            ],
+            "total_content_bytes": proposal.total_content_bytes,
+            "total_diff_bytes": proposal.total_diff_bytes,
+        }
 
     @app.get("/v1/workspace")
     async def workspace(request: Request):
