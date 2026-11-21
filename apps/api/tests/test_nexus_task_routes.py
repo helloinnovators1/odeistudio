@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
@@ -558,3 +559,65 @@ def test_nexus_stream_endpoint_persists_and_emits_redacted_sse_deltas(route_stat
     assert [message["role"] for message in saved["messages"]] == ["user", "assistant"]
     assert "[REDACTED]" in saved["messages"][-1]["content"]
     assert audit.events[-1]["outcome"] == "success"
+
+
+
+def test_nexus_patch_draft_generates_preview_without_writing_files(route_state, monkeypatch):
+    _, audit, _, _ = route_state
+    original = "def greet(name):\n    return f\"Hello {name}\"\n"
+    replacement = "def greet(name):\n    return f\"Welcome {name}\"\n"
+
+    class Responses:
+        def create(self, **kwargs):
+            assert kwargs["store"] is False
+            assert "tools" not in kwargs
+            assert kwargs["text"]["format"]["strict"] is True
+            return SimpleNamespace(output_text=json.dumps({"replacement_content": replacement}))
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_tasks.get_openai_client",
+        lambda: (SimpleNamespace(responses=Responses()), "patch-test-model"),
+    )
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-drafts",
+        json={
+            "task": "Change the greeting",
+            "path": "src/greeting.py",
+            "content": original,
+            "cloud_model_consent": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["mode"] == "preview_only"
+    assert body["writes_performed"] is False
+    assert body["path"] == "src/greeting.py"
+    assert body["replacement_content"] == replacement
+    assert "Hello" in body["unified_diff"] and "Welcome" in body["unified_diff"]
+    assert len(body["base_sha256"]) == 64
+    assert len(body["result_sha256"]) == 64
+    assert audit.events[-1]["action"] == "nexus.patch_draft.generate"
+    assert audit.events[-1]["outcome"] == "success"
+
+
+def test_nexus_patch_draft_rejects_sensitive_paths_and_missing_consent(route_state):
+    sensitive = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-drafts",
+        json={
+            "task": "Edit configuration",
+            "path": ".env",
+            "content": "API_KEY=redacted",
+            "cloud_model_consent": True,
+        },
+    )
+    assert sensitive.status_code == 422
+    no_consent = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-drafts",
+        json={
+            "task": "Edit source",
+            "path": "src/main.py",
+            "content": "print('hello')",
+            "cloud_model_consent": False,
+        },
+    )
+    assert no_consent.status_code == 400
