@@ -1,4 +1,4 @@
-"""Read-only loopback companion for explicitly selected local workspaces."""
+"""Loopback companion for selected workspaces; writes require signed owner approval."""
 from __future__ import annotations
 
 import argparse
