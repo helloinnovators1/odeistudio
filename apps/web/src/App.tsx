@@ -347,7 +347,7 @@ export default function App() {
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
       companionToken={token}
       companionWorkspaceId={workspace}
-      companionCanApply={canApplyPatches}
+      companionCanApply={canApplyPatches && workspaces.some((item) => item.workspace_id === workspace && item.access === "approval-gated")}
       onPatchApplied={reloadAfterPatch}
     />
   );
@@ -367,7 +367,7 @@ export default function App() {
       <div className="ide-menubar">
         <span>File</span><span>Edit</span><span>Selection</span><span>View</span><span>Go</span><span>Run</span><span>Terminal</span><span>Help</span>
         <span className="menubar-spacer" />
-        <span className="access-pill">{canApplyPatches && workspace ? "LOCAL · APPROVAL GATED" : "LOCAL · READ ONLY"}</span>
+        <span className="access-pill">{canApplyPatches && workspaces.some((item) => item.workspace_id === workspace && item.access === "approval-gated") ? "LOCAL · APPROVAL GATED" : "LOCAL · READ ONLY"}</span>
       </div>
 
       {!token && (
