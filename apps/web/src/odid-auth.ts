@@ -17,6 +17,8 @@ export interface ODidAccessToken {
   accessToken: string;
   expiresAt: number;
   scope?: string;
+  /** Optional rotating refresh token; held in application memory only. */
+  refreshToken?: string;
 }
 
 interface LoginTransaction {
@@ -37,6 +39,7 @@ const TRANSACTION_TTL_MS = 10 * 60 * 1_000;
 const MAX_DISCOVERY_BYTES = 32_000;
 const MAX_TOKEN_RESPONSE_BYTES = 16_000;
 const MAX_ACCESS_TOKEN_CHARS = 8_192;
+const MAX_REFRESH_TOKEN_CHARS = 8_192;
 const MAX_TOKEN_LIFETIME_SECONDS = 86_400;
 
 export class ODidOAuthError extends Error {
@@ -165,7 +168,7 @@ async function readJson(response: Response, maximum: number, label: string): Pro
 async function discover(
   config: ODidOAuthConfig,
   fetcher: Fetcher,
-): Promise<{ authorizationEndpoint: string; tokenEndpoint: string }> {
+): Promise<{ authorizationEndpoint: string; tokenEndpoint: string; revocationEndpoint?: string }> {
   let response: Response;
   try {
     response = await fetcher(discoveryUrl(config.issuer), {
@@ -190,6 +193,9 @@ async function discover(
   return {
     authorizationEndpoint: endpoint(metadata.authorization_endpoint, "authorization endpoint"),
     tokenEndpoint: endpoint(metadata.token_endpoint, "token endpoint"),
+    ...(metadata.revocation_endpoint === undefined
+      ? {}
+      : { revocationEndpoint: endpoint(metadata.revocation_endpoint, "revocation endpoint") }),
   };
 }
 
@@ -268,78 +274,39 @@ export async function beginODIDLogin(
   return url.toString();
 }
 
-export async function completeODIDLogin(
-  callbackUrl: string,
+function parseTokenResponse(
+  payload: Record<string, unknown>,
+  now: number,
+  previousRefreshToken?: string,
+): ODidAccessToken {
+  return parseTokenResponse(payload, now);
+}
+
+
+export async function refreshODIDAccessToken(
   rawConfig: ODidOAuthConfig,
-  options: {
-    storage?: TransactionStorage;
-    fetcher?: Fetcher;
-    now?: number;
-  } = {},
+  currentRefreshToken: string,
+  options: { fetcher?: Fetcher; now?: number } = {},
 ): Promise<ODidAccessToken> {
   const config = validateConfig(rawConfig);
-  const storage = storageOrThrow(options.storage ?? (typeof window !== "undefined" ? window.sessionStorage : undefined));
-  let callback: URL;
-  try {
-    callback = new URL(callbackUrl);
-  } catch {
-    throw new ODidOAuthError("ODID authorization callback URL is invalid.");
-  }
-  const registeredRedirect = new URL(config.redirectUri);
   if (
-    callback.origin !== registeredRedirect.origin
-    || callback.pathname !== registeredRedirect.pathname
-    || callback.hash
+    typeof currentRefreshToken !== "string"
+    || !/^[A-Za-z0-9\-._~+/]+=*$/.test(currentRefreshToken)
+    || currentRefreshToken.length > MAX_REFRESH_TOKEN_CHARS
   ) {
-    throw new ODidOAuthError("ODID callback does not match the registered redirect URI.");
+    throw new ODidOAuthError("The in-memory ODID refresh token is invalid.");
   }
-  const codes = callback.searchParams.getAll("code");
-  const states = callback.searchParams.getAll("state");
-  const code = codes.length === 1 ? codes[0] : null;
-  const state = states.length === 1 ? states[0] : null;
-  const providerError = callback.searchParams.get("error");
-  let rawTransaction: string | null = null;
-  try {
-    rawTransaction = storage.getItem(TRANSACTION_KEY);
-    storage.removeItem(TRANSACTION_KEY);
-  } catch {
-    throw new ODidOAuthError("ODID login state could not be read securely.");
-  }
-  if (providerError) throw new ODidOAuthError("ODID authorization was not completed.");
-  if (!code || code.length > 4_096 || !state || state.length > 256 || !rawTransaction) {
-    throw new ODidOAuthError("ODID authorization callback is incomplete.");
-  }
-  let transaction: LoginTransaction;
-  try {
-    transaction = JSON.parse(rawTransaction) as LoginTransaction;
-  } catch {
-    throw new ODidOAuthError("ODID login state is invalid.");
-  }
-  const now = options.now ?? Date.now();
-  if (
-    !transaction || transaction.state !== state || transaction.issuer !== config.issuer
-    || transaction.clientId !== config.clientId || transaction.redirectUri !== config.redirectUri
-    || transaction.resource !== config.resource
-    || typeof transaction.verifier !== "string" || transaction.verifier.length < 43
-    || transaction.verifier.length > 128
-    || typeof transaction.createdAt !== "number" || !Number.isFinite(transaction.createdAt)
-    || transaction.createdAt > now || now - transaction.createdAt > TRANSACTION_TTL_MS
-  ) {
-    throw new ODidOAuthError("ODID login state is invalid or expired. Start login again.");
-  }
-
-  const metadata = await discover(config, options.fetcher ?? fetch);
+  const fetcher = options.fetcher ?? fetch;
+  const metadata = await discover(config, fetcher);
   const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: config.redirectUri,
+    grant_type: "refresh_token",
+    refresh_token: currentRefreshToken,
     client_id: config.clientId,
-    code_verifier: transaction.verifier,
     resource: config.resource,
   });
   let response: Response;
   try {
-    response = await (options.fetcher ?? fetch)(metadata.tokenEndpoint, {
+    response = await fetcher(metadata.tokenEndpoint, {
       method: "POST",
       credentials: "omit",
       cache: "no-store",
@@ -351,27 +318,52 @@ export async function completeODIDLogin(
       body: body.toString(),
     });
   } catch {
-    throw new ODidOAuthError("ODID token exchange could not be completed securely.");
+    throw new ODidOAuthError("ODID session refresh could not be completed securely.");
   }
-  const payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "token");
-  if (!response.ok) throw new ODidOAuthError("ODID rejected the authorization-code exchange.");
-  const accessToken = payload.access_token;
-  const tokenType = payload.token_type;
-  const expiresIn = payload.expires_in;
+  const payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "refresh-token");
+  if (!response.ok) throw new ODidOAuthError("ODID rejected the session refresh. Sign in again.");
+  return parseTokenResponse(payload, options.now ?? Date.now(), currentRefreshToken);
+}
+
+export async function revokeODIDToken(
+  rawConfig: ODidOAuthConfig,
+  token: string,
+  tokenTypeHint: "refresh_token" | "access_token" = "refresh_token",
+  options: { fetcher?: Fetcher } = {},
+): Promise<boolean> {
+  const config = validateConfig(rawConfig);
   if (
-    typeof accessToken !== "string" || !/^[A-Za-z0-9\-._~+/]+=*$/.test(accessToken)
-    || accessToken.length > MAX_ACCESS_TOKEN_CHARS
-    || typeof tokenType !== "string" || tokenType.toLowerCase() !== "bearer"
-    || !Number.isInteger(expiresIn) || (expiresIn as number) < 1
-    || (expiresIn as number) > MAX_TOKEN_LIFETIME_SECONDS
+    typeof token !== "string" || !/^[A-Za-z0-9\-._~+/]+=*$/.test(token)
+    || token.length > MAX_REFRESH_TOKEN_CHARS
   ) {
-    throw new ODidOAuthError("ODID returned an invalid access-token response.");
+    throw new ODidOAuthError("The in-memory ODID token is invalid.");
   }
-  return {
-    accessToken,
-    expiresAt: now + (expiresIn as number) * 1_000,
-    ...(typeof payload.scope === "string" ? { scope: payload.scope } : {}),
-  };
+  const fetcher = options.fetcher ?? fetch;
+  const metadata = await discover(config, fetcher);
+  if (!metadata.revocationEndpoint) return false;
+  const body = new URLSearchParams({
+    token,
+    token_type_hint: tokenTypeHint,
+    client_id: config.clientId,
+  });
+  let response: Response;
+  try {
+    response = await fetcher(metadata.revocationEndpoint, {
+      method: "POST",
+      credentials: "omit",
+      cache: "no-store",
+      redirect: "error",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+  } catch {
+    throw new ODidOAuthError("ODID token revocation could not be completed securely.");
+  }
+  if (!response.ok) throw new ODidOAuthError("ODID token revocation was rejected.");
+  return true;
 }
 
 export function clearODIDLoginTransaction(
