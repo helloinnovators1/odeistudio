@@ -8,12 +8,15 @@ import {
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
+import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge } from "./companion";
 import {
   approveNexusPatchProposal,
+  createNexusPatchApplyCapability,
   getNexusPatchProposal,
   listNexusPatchProposals,
   rejectNexusPatchProposal,
   type NexusPatchProposal,
+  type NexusPatchProposalFile,
   type NexusPatchProposalSummary,
 } from "./nexus-patch-proposals";
 import "./nexus-chat-panel.css";
@@ -22,6 +25,10 @@ interface Props {
   onClose: () => void;
   isOpen?: boolean;
   activeFile?: { path: string; content: string } | null;
+  companionToken?: string | null;
+  companionWorkspaceId?: string;
+  companionCanApply?: boolean;
+  onPatchApplied?: (file: NexusPatchProposalFile) => void | Promise<void>;
 }
 
 interface TranscriptMessage extends NexusChatMessage {
@@ -61,7 +68,7 @@ function newMessageId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function NexusChatPanel({ onClose, isOpen = true, activeFile = null }: Props) {
+export default function NexusChatPanel({ onClose, isOpen = true, activeFile = null, companionToken = null, companionWorkspaceId = "", companionCanApply = false, onPatchApplied }: Props) {
   const config = useMemo(environmentConfig, []);
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
