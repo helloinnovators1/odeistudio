@@ -383,7 +383,7 @@ export async function sendNexusChatStream(
     }
     totalCharacters += message.content.length;
   }
-  if (request.messages.at(-1)?.role !== "user") throw new TypeError("The final conversation message must be from the user.");
+  if (request.messages[request.messages.length - 1]?.role !== "user") throw new TypeError("The final conversation message must be from the user.");
   const workspaceFiles = request.workspaceFiles ?? [];
   if (!Array.isArray(workspaceFiles) || workspaceFiles.length > 5) throw new TypeError("At most five workspace excerpts may be sent.");
   for (const file of workspaceFiles) {
@@ -511,4 +511,111 @@ export async function sendNexusChatStream(
   }
   if (!result) throw new NexusChatTransportError("NEXUS stream ended without a completion event.", response.status);
   return result;
+}
+
+
+export interface NexusChatInspectionResponse {
+  answer: string;
+  model: string;
+  read_only: true;
+  tools_executed: number;
+  tool_names: string[];
+  conversation_persisted: true;
+  conversation_id: string;
+}
+
+export async function sendNexusChatInspection(
+  request: NexusChatRequest,
+  fetcher: typeof fetch = fetch,
+): Promise<NexusChatInspectionResponse> {
+  const apiBaseUrl = normalizeApiBaseUrl(request.apiBaseUrl);
+  const organizationId = requireIdentifier(request.organizationId, "Organization ID");
+  const projectId = requireIdentifier(request.projectId, "Project ID");
+  const conversationId = requireIdentifier(request.conversationId ?? "", "Conversation ID");
+  const accessToken = request.accessToken.trim();
+  if (!accessToken || accessToken.length > 16_384) throw new TypeError("A valid in-memory access token is required.");
+  if (request.cloudModelConsent !== true) throw new TypeError("Explicit cloud-model consent is required.");
+  if (!Array.isArray(request.messages) || request.messages.length < 1 || request.messages.length > 20 ||
+      request.messages.at(-1)?.role !== "user") {
+    throw new TypeError("A bounded conversation ending in a user message is required.");
+  }
+  const workspaceFiles = request.workspaceFiles ?? [];
+  if (!Array.isArray(workspaceFiles) || workspaceFiles.length < 1 || workspaceFiles.length > 5) {
+    throw new TypeError("Attach between one and five file excerpts before enabling inspection.");
+  }
+  let total = 0;
+  for (const message of request.messages) {
+    if (!message || !["user", "assistant"].includes(message.role) ||
+        typeof message.content !== "string" || !message.content.trim() || message.content.length > 8_000) {
+      throw new TypeError("Each message must have a valid role and contain 1 to 8,000 characters.");
+    }
+    total += message.content.length;
+  }
+  for (const file of workspaceFiles) {
+    if (!file || typeof file.path !== "string" || !file.path.trim() || file.path.length > 1_024 ||
+        typeof file.content !== "string" || file.content.length > 8_000) {
+      throw new TypeError("Each attached excerpt must have a valid relative path and at most 8,000 characters.");
+    }
+    total += file.path.length + file.content.length;
+  }
+  if (total > 40_000) throw new TypeError("Combined conversation and workspace context exceeds 40,000 characters.");
+
+  const response = await fetcher(
+    `${apiBaseUrl}/api/v1/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/nexus/chat/inspect`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        messages: request.messages,
+        workspace_files: workspaceFiles,
+        cloud_model_consent: true,
+        conversation_id: conversationId,
+      }),
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "error",
+      signal: request.signal,
+    },
+  );
+  const raw = await response.text();
+  if (raw.length > 64_000) throw new NexusChatTransportError("NEXUS returned an oversized inspection response.", response.status);
+  let payload: Record<string, unknown>;
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid");
+    payload = parsed as Record<string, unknown>;
+  } catch {
+    throw new NexusChatTransportError("NEXUS returned an invalid inspection response.", response.status);
+  }
+  if (!response.ok) {
+    const detail = payload.detail && typeof payload.detail === "object"
+      ? payload.detail as Record<string, unknown> : payload;
+    const code = typeof detail.code === "string" ? detail.code : undefined;
+    throw new NexusChatTransportError(
+      code === "MODEL_NOT_CONFIGURED" ? "The NEXUS model provider is not configured."
+        : code === "ATTACHED_EXCERPT_REQUIRED" ? "Attach a file excerpt before enabling inspection."
+        : "NEXUS could not inspect the attached excerpts.",
+      response.status, code,
+    );
+  }
+  const allowedTools = new Set([
+    "list_attached_excerpts", "read_attached_excerpt", "search_attached_excerpts",
+  ]);
+  if (
+    typeof payload.answer !== "string" || !payload.answer.trim() ||
+    typeof payload.model !== "string" || payload.read_only !== true ||
+    typeof payload.tools_executed !== "number" || !Number.isInteger(payload.tools_executed) ||
+    payload.tools_executed < 0 || payload.tools_executed > 12 ||
+    !Array.isArray(payload.tool_names) ||
+    payload.tool_names.length > payload.tools_executed ||
+    payload.tool_names.some((name) => typeof name !== "string" || !allowedTools.has(name)) ||
+    payload.conversation_persisted !== true || payload.conversation_id !== conversationId
+  ) {
+    throw new NexusChatTransportError("NEXUS returned an invalid inspection response contract.", response.status);
+  }
+  return payload as unknown as NexusChatInspectionResponse;
 }
