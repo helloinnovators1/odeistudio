@@ -207,7 +207,7 @@ def test_project_task_is_persisted_for_approval_and_audited(route_state, monkeyp
 
 
 def test_approval_records_approval_without_starting_execution(route_state, monkeypatch):
-    _, audit, tasks = route_state
+    _, audit, tasks, _ = route_state
     task = TaskRecord(
         id="task-1", organization_id="org-1", project_id="project-1",
         owner_id=identity_owner_key("https://identity.example/", "user-1"), goal="Add tests", plan="Inspect and test",
@@ -268,7 +268,7 @@ def test_project_member_cannot_approve_another_users_task(route_state):
 
 
 def test_same_subject_from_different_issuer_cannot_read_task(route_state):
-    database, audit, tasks = route_state
+    database, audit, tasks, _ = route_state
     database.collections["projects"].document = {
         "organization_id": "org-1", "project_id": "project-1",
         "status": "active", "owner_issuer": "https://identity.example/",
@@ -381,7 +381,7 @@ def test_project_nexus_chat_is_authorized_read_only_and_audited(route_state, mon
 
 
 def test_project_nexus_chat_requires_authorized_project(route_state):
-    database, audit, _ = route_state
+    database, audit, _, _ = route_state
     database.collections["projects"].document = None
     response = TestClient(app).post(
         "/api/v1/organizations/org-1/projects/project-1/nexus/chat",
@@ -440,8 +440,7 @@ def test_conversation_history_cannot_be_read_by_another_identity(route_state):
 
 
 def test_nexus_chat_persists_user_and_assistant_turns_in_conversation(route_state, monkeypatch):
-    _, audit, _, conversations = route_state
-    created = conversations.documents
+    _, _, _, conversations = route_state
     item = TestClient(app).post(
         "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
         json={"title": "Persistent chat"},
