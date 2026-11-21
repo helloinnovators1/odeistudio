@@ -744,3 +744,23 @@ def test_unconfigured_companion_stays_read_only_and_cannot_issue_apply_challenge
         assert response.status_code == 503
     finally:
         registry.close()
+
+
+def test_companion_rejects_invalid_pinned_public_keys_at_startup(tmp_path):
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
+    try:
+        with pytest.raises(ValueError, match="public keys are invalid"):
+            create_companion_app(
+                registry,
+                workspace_id,
+                allowed_origins=[ORIGIN],
+                pairing_manager=PairingManager(),
+                port=8765,
+                patch_approval_issuer="https://api.odei.example",
+                patch_approval_public_keys={"bad-key": "not-a-valid-key"},
+            )
+    finally:
+        registry.close()
