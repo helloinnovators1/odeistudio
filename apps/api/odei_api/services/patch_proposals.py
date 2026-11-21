@@ -84,6 +84,11 @@ def _validate_path(path: str) -> tuple[str, ...]:
     return parts
 
 
+def validate_patch_path(path: str) -> tuple[str, ...]:
+    """Public path validator for callers that must validate before filesystem access."""
+    return _validate_path(path)
+
+
 def sha256_text(content: str) -> str:
     if not isinstance(content, str):
         raise PatchProposalError("File content must be UTF-8 text")
