@@ -188,6 +188,38 @@ describe("NEXUS chat transport", () => {
     }, unsafe)).rejects.toThrow("invalid inspection response contract");
   });
 
+  it("accepts only a persisted review-only proposal from attached-file tool inspection", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      answer: "I prepared a patch proposal.", model: "test-model", read_only: true,
+      tools_executed: 1, tool_names: ["propose_attached_file_change"],
+      conversation_persisted: true, conversation_id: "conversation-1",
+      patch_proposal: {
+        proposal_id: "proposal-1", title: "Update selected file", status: "pending",
+        version: 0, file_count: 1, created_at: "2026-11-21T00:00:00Z",
+        updated_at: "2026-11-21T00:00:00Z", can_decide: true, application_enabled: false,
+      },
+    }), { status: 200 }));
+    const result = await sendNexusChatInspection({
+      ...base, conversationId: "conversation-1",
+      workspaceFiles: [{ path: "src/main.py", content: "print('old')" }],
+    }, fetcher);
+    expect(result.patch_proposal?.proposal_id).toBe("proposal-1");
+    const unsafe = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      answer: "x", model: "test", read_only: true, tools_executed: 1,
+      tool_names: ["propose_attached_file_change"], conversation_persisted: true,
+      conversation_id: "conversation-1",
+      patch_proposal: {
+        proposal_id: "proposal-1", title: "Unsafe", status: "pending",
+        version: 0, file_count: 1, created_at: "now", updated_at: "now",
+        can_decide: true, application_enabled: true,
+      },
+    }), { status: 200 }));
+    await expect(sendNexusChatInspection({
+      ...base, conversationId: "conversation-1",
+      workspaceFiles: [{ path: "src/main.py", content: "x" }],
+    }, unsafe)).rejects.toThrow("invalid inspection response contract");
+  });
+
   it("requires explicit attached excerpts before repository inspection", async () => {
     const fetcher = vi.fn<typeof fetch>();
     await expect(sendNexusChatInspection({ ...base, conversationId: "chat-one" }, fetcher))
