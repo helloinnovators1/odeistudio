@@ -1,9 +1,9 @@
 """In-memory registry for explicitly selected local workspace handles.
 
-This is a local-process primitive, not an HTTP authorization system. A future
-companion must call register_selected_root only after its native folder picker
-returns a user-approved folder, then bind the opaque ID to the authenticated
-user/session and revoke it on disconnect, expiry or user request.
+This local-process primitive is not an HTTP authorization system. The loopback
+companion registers only user-selected roots, binds opaque IDs to paired
+sessions, and revokes grants on disconnect, expiry or user request. Read and
+write operations remain relative to retained native root handles.
 """
 from __future__ import annotations
 
