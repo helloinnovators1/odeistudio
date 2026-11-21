@@ -558,3 +558,81 @@ def test_nexus_stream_endpoint_persists_and_emits_redacted_sse_deltas(route_stat
     assert [message["role"] for message in saved["messages"]] == ["user", "assistant"]
     assert "[REDACTED]" in saved["messages"][-1]["content"]
     assert audit.events[-1]["outcome"] == "success"
+
+
+def test_nexus_inspection_uses_only_attached_excerpt_tools_and_persists_result(route_state, monkeypatch):
+    _, audit, _, conversations = route_state
+    client = TestClient(app)
+    item = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Attached file inspection"},
+    ).json()
+    secret = "sk-proj-" + "A" * 28
+
+    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages):
+        assert model == "inspection-model"
+        assert task == "Explain this selected file"
+        assert cloud_model_consent is True
+        assert prior_messages == []
+        listed = workspace_tools.execute("list_attached_excerpts", {})
+        assert "src/main.py" in listed
+        read = workspace_tools.execute("read_attached_excerpt", {"path": "src/main.py"})
+        assert "def hello" in read
+        assert secret not in read
+        return SimpleNamespace(
+            answer="The attached file defines hello().",
+            model=model,
+            tool_calls=2,
+            tool_rounds=2,
+            tool_names=("list_attached_excerpts", "read_attached_excerpt"),
+        )
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection.get_openai_client",
+        lambda: (object(), "inspection-model"),
+    )
+    monkeypatch.setattr("odei_api.services.nexus_inspection.run_nexus_agent", fake_agent)
+    response = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+        json={
+            "messages": [{"role": "user", "content": "Explain this selected file"}],
+            "workspace_files": [{"path": "src/main.py", "content": "def hello(): return 'ODEI'\\napi_key=" + secret}],
+            "conversation_id": item["conversation_id"],
+            "cloud_model_consent": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["tools_executed"] == 2
+    assert body["tool_names"] == ["list_attached_excerpts", "read_attached_excerpt"]
+    assert body["conversation_persisted"] is True
+    stored = conversations.documents[item["conversation_id"]]
+    assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
+    assert stored["messages"][-1]["content"] == "The attached file defines hello()."
+    assert audit.events[-1]["metadata"]["tool_call_count"] == 2
+
+
+def test_nexus_inspection_rejects_unattached_or_unsafe_paths_before_model_call(route_state, monkeypatch):
+    _, _, _, conversations = route_state
+    item = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Unsafe attachment"},
+    ).json()
+    called = []
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection.get_openai_client",
+        lambda: called.append(True),
+    )
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+        json={
+            "messages": [{"role": "user", "content": "Read outside"}],
+            "workspace_files": [{"path": "../outside.txt", "content": "secret"}],
+            "conversation_id": item["conversation_id"],
+            "cloud_model_consent": True,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INVALID_ATTACHED_EXCERPT"
+    assert called == []
+    assert conversations.documents[item["conversation_id"]]["messages"] == []
