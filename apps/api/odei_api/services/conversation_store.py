@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from pymongo import ReturnDocument
 
+from odei_api.services.secret_redaction import redact_secrets
+
 MAX_CONVERSATIONS_PAGE = 50
 MAX_CONVERSATION_MESSAGES = 200
 MAX_CONVERSATION_MESSAGE_CHARS = 16_000
@@ -36,7 +38,7 @@ class MongoConversationStore:
         self, *, organization_id: str, project_id: str,
         owner_issuer: str, owner_subject: str, title: str,
     ) -> dict:
-        title = title.strip()
+        title = redact_secrets(title.strip())
         if not title or len(title) > 120:
             raise ConversationStoreError("Conversation title must contain 1 to 120 characters")
         now = datetime.now(timezone.utc)
@@ -80,6 +82,19 @@ class MongoConversationStore:
             "owner_issuer": owner_issuer,
             "owner_subject": owner_subject,
         }, {"_id": 0})
+
+    async def delete_for_owner(
+        self, *, organization_id: str, project_id: str,
+        owner_issuer: str, owner_subject: str, conversation_id: str,
+    ) -> bool:
+        result = await self._collection.delete_one({
+            "conversation_id": conversation_id,
+            "organization_id": organization_id,
+            "project_id": project_id,
+            "owner_issuer": owner_issuer,
+            "owner_subject": owner_subject,
+        })
+        return result.deleted_count == 1
 
     async def append(
         self, *, organization_id: str, project_id: str,
