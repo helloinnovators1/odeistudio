@@ -46,7 +46,7 @@ def parse_cors_origins(value: str) -> list[str]:
             parsed = urlsplit(origin)
             hostname = parsed.hostname
             # Accessing .port also validates malformed port syntax.
-            parsed.port
+            port = parsed.port
         except ValueError as exc:
             raise ValueError("CORS_ALLOWED_ORIGINS contains an invalid origin") from exc
         loopback = hostname in {"localhost", "127.0.0.1", "::1"}
@@ -54,6 +54,7 @@ def parse_cors_origins(value: str) -> list[str]:
             parsed.scheme not in ({"https", "http"} if loopback else {"https"})
             or not parsed.netloc
             or not hostname
+            or (port is not None and not 1 <= port <= 65535)
             or parsed.username is not None
             or parsed.password is not None
             or parsed.path not in ("", "/")
