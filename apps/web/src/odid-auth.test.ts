@@ -299,7 +299,7 @@ describe("ODID OAuth PKCE client", () => {
   });
 
   it("clears locally when the provider has no revocation endpoint", async () => {
-    const metadata = { ...discovery };
+    const metadata: Record<string, unknown> = { ...discovery };
     delete metadata.revocation_endpoint;
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(metadata));
     await expect(revokeODIDToken(config, "refresh-token-value", "refresh_token", { fetcher }))
