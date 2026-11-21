@@ -1,3 +1,5 @@
+import pytest
+
 from odei_api.services.secret_redaction import StreamingSecretRedactor, redact_secrets
 
 
