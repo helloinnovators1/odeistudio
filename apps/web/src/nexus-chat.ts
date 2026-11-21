@@ -487,19 +487,24 @@ export async function sendNexusChatStream(
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
       if (buffer.length > 65_536 && !buffer.includes("\n\n")) {
         throw new NexusChatTransportError("NEXUS returned an oversized stream event.", response.status);
       }
       let boundary = buffer.indexOf("\n\n");
+      if (boundary > 65_536) throw new NexusChatTransportError("NEXUS returned an oversized stream event.", response.status);
       while (boundary >= 0) {
         dispatch(buffer.slice(0, boundary).replace(/\r$/, ""));
         buffer = buffer.slice(boundary + 2);
         boundary = buffer.indexOf("\n\n");
+        if (boundary > 65_536) throw new NexusChatTransportError("NEXUS returned an oversized stream event.", response.status);
       }
     }
     buffer += decoder.decode();
     if (buffer.trim()) dispatch(buffer);
+  } catch (cause) {
+    try { await reader.cancel(); } catch { /* The stream may already be closed. */ }
+    throw cause;
   } finally {
     reader.releaseLock();
   }
