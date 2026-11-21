@@ -494,8 +494,8 @@ async def nexus_project_chat_stream(
 
     def encode_event(name: str, data: dict) -> bytes:
         return (
-            f"event: {name}\\n"
-            f"data: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\\n\\n"
+            f"event: {name}\n"
+            f"data: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
         ).encode("utf-8")
 
     async def event_stream():
@@ -504,7 +504,12 @@ async def nexus_project_chat_stream(
         try:
             yield encode_event("status", {"status": "generating"})
             while True:
-                kind, value = await asyncio.to_thread(events.get)
+                try:
+                    kind, value = await asyncio.to_thread(events.get, True, 0.5)
+                except queue.Empty:
+                    if cancelled.is_set():
+                        return
+                    continue
                 if kind == "delta" and value is not None:
                     answer_parts.append(value)
                     yield encode_event("delta", {"delta": value})
