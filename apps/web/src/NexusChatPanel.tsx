@@ -107,6 +107,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const taskAbortRef = useRef<AbortController | null>(null);
   const callbackHandled = useRef(false);
   const authGenerationRef = useRef(0);
+  const refreshAbortRef = useRef<AbortController | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -233,7 +234,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         return;
       }
       setAuthBusy(true);
-      void refreshODIDAccessToken(config.auth, refreshToken)
+      const controller = new AbortController();
+      refreshAbortRef.current = controller;
+      void refreshODIDAccessToken(config.auth, refreshToken, { signal: controller.signal })
         .then((nextToken) => {
           if (authGenerationRef.current !== generation) return;
           setAccess(nextToken);
@@ -248,10 +251,15 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           );
         })
         .finally(() => {
+          if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
           if (authGenerationRef.current === generation) setAuthBusy(false);
         });
     }, refreshDelay);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
+    };
   }, [access, config.auth]);
 
   useEffect(() => {
@@ -385,6 +393,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   function signOut() {
     const currentAccess = access;
     authGenerationRef.current += 1;
+    refreshAbortRef.current?.abort();
+    refreshAbortRef.current = null;
     abortRef.current?.abort();
     abortRef.current = null;
     taskAbortRef.current?.abort();
