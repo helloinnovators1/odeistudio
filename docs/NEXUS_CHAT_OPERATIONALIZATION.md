@@ -297,3 +297,12 @@ Feature branch: `feat/nexus-persistent-patch-review`. The review API is implemen
 - Approve/reject use expected-version compare-and-set. Approval records a decision only; API responses explicitly return `application_enabled=false`.
 
 Important boundary: this does not apply any changes to a local workspace. Local application still requires a verified, short-lived, single-use approval capability that the loopback companion can independently validate, plus fresh base-hash checks and an atomic write/rollback implementation. Those safeguards are not implemented, so the Studio remains read-only.
+
+
+## Chat-generated patch proposals and owner review — in review (2026-11-21)
+
+The attached-file inspection flow now supports a separate review-only change proposal tool. When the user explicitly enables attached-file inspection and asks NEXUS to modify that file, the model may call `propose_attached_file_change`. The tool can target only the explicitly attached path, enforces per-file and aggregate bounds, redacts secrets, and captures the replacement in memory. It does not write the file.
+
+The authenticated inspection route computes the base SHA-256 from the submitted base snapshot, validates the replacement through the patch proposal validator, persists the review record under the authenticated organization/project/author, and audits proposal creation. The panel loads the saved diff and exposes owner-only approve/reject actions with optimistic version checks.
+
+**Approval is not application.** The proposal API and UI keep `application_enabled=false`; no file writes or shell commands occur. Applying an approved proposal still requires a separately designed single-use capability, independent local companion verification, fresh handle-relative base hash checks, safe atomic writes, rollback and recovery tests. This increment is in review and has not been merged or deployed.

@@ -25,6 +25,8 @@ class SelectedExcerptTools:
         if not isinstance(workspace_files, list) or not 1 <= len(workspace_files) <= MAX_EXCERPTS:
             raise SelectedExcerptToolError("Attach between one and five file excerpts before enabling inspection")
         self._files: dict[str, dict[str, str]] = {}
+        self._base_files: dict[str, str] = {}
+        self._proposed_changes: dict[str, str] = {}
         seen: set[str] = set()
         total = 0
         for item in workspace_files:
@@ -52,10 +54,21 @@ class SelectedExcerptTools:
             total += len(canonical) + len(content)
             if total > 40_000:
                 raise SelectedExcerptToolError("Attached excerpts exceed the combined context budget")
+            self._base_files[canonical] = content
             self._files[canonical] = {
                 "path": canonical,
                 "content": redact_secrets(content),
             }
+
+    @property
+    def proposed_changes(self) -> dict[str, str]:
+        """Return redacted review-only replacements captured by the model."""
+        return dict(self._proposed_changes)
+
+    @property
+    def proposal_base_files(self) -> dict[str, str]:
+        """Return raw in-memory base snapshots only for paths with proposals."""
+        return {path: self._base_files[path] for path in self._proposed_changes}
 
     @staticmethod
     def schemas() -> list[dict[str, Any]]:
@@ -80,6 +93,21 @@ class SelectedExcerptTools:
                     "type": "object",
                     "properties": {"path": {"type": "string"}},
                     "required": ["path"], "additionalProperties": False,
+                },
+            },
+            {
+                "type": "function",
+                "name": "propose_attached_file_change",
+                "description": "Prepare a replacement for one explicitly attached file as a review-only patch proposal. This never writes or applies files.",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["path", "content"],
+                    "additionalProperties": False,
                 },
             },
             {
@@ -119,6 +147,36 @@ class SelectedExcerptTools:
             if item is None:
                 raise SelectedExcerptToolError("The requested path was not attached by the user")
             return self._encode(item)
+        if name == "propose_attached_file_change":
+            if set(arguments) != {"path", "content"} or not isinstance(arguments["path"], str) or not isinstance(arguments["content"], str):
+                raise SelectedExcerptToolError("propose_attached_file_change requires only string path and content")
+            path = arguments["path"]
+            content = arguments["content"]
+            if path not in self._base_files:
+                raise SelectedExcerptToolError("Only an explicitly attached file can be proposed for replacement")
+            if path in self._proposed_changes:
+                raise SelectedExcerptToolError("A replacement proposal already exists for this attached file")
+            if len(self._proposed_changes) >= MAX_EXCERPTS:
+                raise SelectedExcerptToolError("A proposal may change at most five attached files")
+            if len(content) > MAX_EXCERPT_CHARS or "\x00" in content:
+                raise SelectedExcerptToolError("Replacement content exceeds the 8,000-character text limit")
+            try:
+                content.encode("utf-8", errors="strict")
+            except UnicodeEncodeError as exc:
+                raise SelectedExcerptToolError("Replacement content must be valid UTF-8 text") from exc
+            redacted = redact_secrets(content)
+            if redacted == self._files[path]["content"]:
+                raise SelectedExcerptToolError("The proposed replacement is identical to the attached excerpt")
+            if sum(len(item) for item in self._proposed_changes.values()) + len(redacted) > 40_000:
+                raise SelectedExcerptToolError("Proposed replacements exceed the combined content budget")
+            self._proposed_changes[path] = redacted
+            return self._encode({
+                "proposal_captured": True,
+                "path": path,
+                "replacement_characters": len(redacted),
+                "mode": "review_only",
+                "writes_performed": False,
+            })
         if name == "search_attached_excerpts":
             if set(arguments) != {"query"} or not isinstance(arguments["query"], str):
                 raise SelectedExcerptToolError("search_attached_excerpts requires only a string query")
