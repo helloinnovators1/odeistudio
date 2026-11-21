@@ -8,14 +8,14 @@ and select a server-defined, digest-pinned SandboxProfile.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import math
 import os
+import pathlib
 import re
 import stat
 import time
 import uuid
-from dataclasses import dataclass
-from pathlib import Path
 
 
 _IMAGE_DIGEST = re.compile(r"^[A-Za-z0-9._/:@-]+@sha256:[0-9a-f]{64}$")
@@ -37,7 +37,7 @@ class UnsafeSandboxWorkspace(SandboxError):
     """The workspace is not a fresh, contained, regular-file-only directory."""
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class SandboxProfile:
     """Trusted server-side execution profile; never deserialize from a request."""
 
@@ -78,7 +78,7 @@ class SandboxProfile:
             raise ValueError("Sandbox output limit must be between 1 KB and 1 MB")
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class SandboxResult:
     exit_code: int
     stdout: str
@@ -114,9 +114,9 @@ class ContainerSandbox:
     The container receives no host environment variables or credentials.
     """
 
-    def __init__(self, *, runtime_path: str | Path, workspace_root: str | Path) -> None:
-        runtime = Path(runtime_path)
-        root = Path(workspace_root)
+    def __init__(self, *, runtime_path: str | pathlib.Path, workspace_root: str | pathlib.Path) -> None:
+        runtime = pathlib.Path(runtime_path)
+        root = pathlib.Path(workspace_root)
         if runtime.is_symlink() or not runtime.is_file():
             raise SandboxUnavailable("The configured container runtime is not a regular file")
         if not os.access(runtime, os.X_OK):
@@ -128,8 +128,8 @@ class ContainerSandbox:
         if "," in str(self._workspace_root) or "\n" in str(self._workspace_root):
             raise SandboxUnavailable("The execution workspace root contains an unsupported path character")
 
-    def _validate_workspace(self, workspace_dir: str | Path) -> Path:
-        supplied = Path(workspace_dir)
+    def _validate_workspace(self, workspace_dir: str | pathlib.Path) -> pathlib.Path:
+        supplied = pathlib.Path(workspace_dir)
         if supplied.is_symlink() or not supplied.is_dir():
             raise UnsafeSandboxWorkspace("Execution workspace must be an existing real directory")
         workspace = supplied.resolve(strict=True)
@@ -144,7 +144,7 @@ class ContainerSandbox:
                 entries += 1
                 if entries > _MAX_WORKSPACE_ENTRIES:
                     raise UnsafeSandboxWorkspace("Execution workspace contains too many entries")
-                item = Path(base) / name
+                item = pathlib.Path(base) / name
                 try:
                     mode = item.lstat().st_mode
                 except OSError as exc:
@@ -156,13 +156,13 @@ class ContainerSandbox:
         return workspace
 
     @staticmethod
-    def _prepare_workspace_permissions(workspace: Path) -> None:
+    def _prepare_workspace_permissions(workspace: pathlib.Path) -> None:
         """Make only the disposable snapshot writable by the unprivileged container UID."""
         for base, directories, files in os.walk(workspace, topdown=True, followlinks=False):
             for name in directories:
-                os.chmod(Path(base) / name, 0o777, follow_symlinks=False)
+                os.chmod(pathlib.Path(base) / name, 0o777, follow_symlinks=False)
             for name in files:
-                item = Path(base) / name
+                item = pathlib.Path(base) / name
                 mode = item.lstat().st_mode
                 os.chmod(item, 0o666 | (stat.S_IMODE(mode) & 0o111), follow_symlinks=False)
         os.chmod(workspace, 0o777)
@@ -183,7 +183,7 @@ class ContainerSandbox:
     def build_run_arguments(
         self,
         profile: SandboxProfile,
-        workspace: str | Path,
+        workspace: str | pathlib.Path,
         *,
         container_name: str,
         arguments: list[str] | tuple[str, ...] = (),
@@ -255,7 +255,7 @@ class ContainerSandbox:
     async def run(
         self,
         profile: SandboxProfile,
-        workspace_dir: str | Path,
+        workspace_dir: str | pathlib.Path,
         *,
         arguments: list[str] | tuple[str, ...] = (),
     ) -> SandboxResult:
