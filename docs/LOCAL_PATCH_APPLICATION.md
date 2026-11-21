@@ -29,6 +29,7 @@ The cloud API never receives a local filesystem path. The local companion never 
 - Existing file content is re-read and its SHA-256 checked immediately before replacement/deletion. Create operations refuse to overwrite an existing path.
 - Request content, capability size, file size and path length are bounded. The route does not expose shell, process execution, network tools or arbitrary filesystem paths.
 - The browser receives no private signing key and does not persist the capability. The token is held only for the immediate apply request.
+- The companion reports whether directory-metadata durability was confirmed. POSIX attempts to flush the parent directory after the atomic namespace operation; Windows flushes staged file contents before rename but does not claim that the directory metadata was durably flushed. A false durability flag means the operation was applied in the current filesystem view, but the metadata flush could not be confirmed.
 
 ## Configuration
 
