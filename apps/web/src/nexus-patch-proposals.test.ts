@@ -81,7 +81,7 @@ describe("NEXUS signed local apply capability", () => {
     const challenge = "C".repeat(43);
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       capability: "signed-capability",
-      expires_at: 1_900_000_000,
+      expires_at: Math.floor(Date.now() / 1000) + 60,
       workspace_id: "workspace_1234567890123456",
       companion_challenge: challenge,
       proposal_id: "proposal-1",
