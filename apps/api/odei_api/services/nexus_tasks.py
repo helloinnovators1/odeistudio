@@ -587,10 +587,10 @@ async def nexus_project_chat(
 ) -> dict:
     """Authenticated, project-authorized, read-only NEXUS chat.
 
-    The browser carries bounded conversation history. Selected file excerpts are
-    sent only when the user explicitly consents to cloud-model processing. No
-    tools, filesystem writes, command execution or server-side conversation
-    persistence are enabled by this endpoint.
+    When a conversation ID is supplied, the server reloads its owner-scoped
+    history and persists the user and assistant turns. The legacy no-ID request
+    remains stateless. Selected file excerpts require explicit cloud consent.
+    No tools, filesystem writes or command execution are enabled.
     """
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(
