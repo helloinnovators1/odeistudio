@@ -1,6 +1,4 @@
 from copy import deepcopy
-from datetime import datetime, timezone
-
 import pytest
 
 from odei_api.services.conversation_store import (
