@@ -42,6 +42,7 @@ class _WorkspaceGrant:
     handle: object
     label: str
     kernel32: object | None = None
+    allow_patch_apply: bool = False
     lock: threading.RLock = field(default_factory=threading.RLock)
 
 
@@ -52,7 +53,9 @@ class WorkspaceHandleRegistry:
         self._lock = threading.RLock()
         self._grants: dict[str, _WorkspaceGrant] = {}
 
-    def register_selected_root(self, selected_path: str | Path) -> str:
+    def register_selected_root(
+        self, selected_path: str | Path, *, allow_patch_apply: bool = False
+    ) -> str:
         """Open a user-selected root once and retain its native handle.
 
         Call only from a trusted native folder-picker flow. Never pass a raw
@@ -62,8 +65,13 @@ class WorkspaceHandleRegistry:
         if os.name == "nt":
             from odei_api.services.windows_file_handles import open_directory_handle
 
-            kernel32, handle = open_directory_handle(selected_path)
-            grant = _WorkspaceGrant(platform="nt", handle=handle, label=label, kernel32=kernel32)
+            kernel32, handle = open_directory_handle(
+                selected_path, allow_patch_apply=allow_patch_apply
+            )
+            grant = _WorkspaceGrant(
+                platform="nt", handle=handle, label=label,
+                kernel32=kernel32, allow_patch_apply=allow_patch_apply,
+            )
         elif os.name == "posix":
             flags = (
                 os.O_RDONLY
@@ -78,7 +86,10 @@ class WorkspaceHandleRegistry:
             except Exception:
                 os.close(handle)
                 raise
-            grant = _WorkspaceGrant(platform="posix", handle=handle, label=label)
+            grant = _WorkspaceGrant(
+                platform="posix", handle=handle, label=label,
+                allow_patch_apply=allow_patch_apply,
+            )
         else:
             raise WorkspaceHandleError("This platform has no supported workspace handle")
 
@@ -137,11 +148,18 @@ class WorkspaceHandleRegistry:
                 int(grant.handle), relative_path, max_bytes=max_bytes
             )
 
+    def can_apply_patch(self, workspace_id: str) -> bool:
+        """Report whether the selected root was opened with patch-write rights."""
+        with self._borrow(workspace_id) as grant:
+            return grant.allow_patch_apply
+
     def apply_patch(self, workspace_id: str, file: dict) -> dict[str, str | bool]:
         """Apply one signed, pre-authorized file operation beneath its held root."""
         from odei_api.services.workspace_patch_apply import apply_single_file_patch
 
         with self._borrow(workspace_id) as grant:
+            if not grant.allow_patch_apply:
+                raise WorkspaceHandleError("Workspace was opened read-only")
             return apply_single_file_patch(grant, file)
 
     def revoke(self, workspace_id: str) -> bool:
