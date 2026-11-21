@@ -135,7 +135,7 @@ async def test_audit_store_forwards_existing_transaction_session():
 
 @pytest.mark.asyncio
 async def test_audit_store_accepts_started_lifecycle_outcome():
-    collection = FakeCollection()
+    collection = FakeAuditCollection()
     store = MongoAuditEventStore(collection)
     event = await store.append(
         organization_id="org-1",
