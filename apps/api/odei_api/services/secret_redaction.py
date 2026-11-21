@@ -134,8 +134,8 @@ class StreamingSecretRedactor:
             elif marker.casefold().startswith("mongodb"):
                 authority_end = min(
                     (position for position in (self._buffer.find("/", end), self._buffer.find("?", end),
-                     self._buffer.find(" ", end), self._buffer.find("\\t", end), self._buffer.find("\\r", end),
-                     self._buffer.find("\\n", end)) if position >= 0),
+                     self._buffer.find(" ", end), self._buffer.find("\t", end), self._buffer.find("\r", end),
+                     self._buffer.find("\n", end)) if position >= 0),
                     default=-1,
                 )
                 authority_limit = authority_end if authority_end >= 0 else len(self._buffer)
