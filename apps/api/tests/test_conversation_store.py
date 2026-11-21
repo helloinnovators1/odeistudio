@@ -1,4 +1,5 @@
 from copy import deepcopy
+
 import pytest
 
 from odei_api.services.conversation_store import (
