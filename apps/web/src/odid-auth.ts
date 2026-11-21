@@ -210,6 +210,14 @@ async function sha256(value: string, cryptoProvider: Crypto): Promise<string> {
   return base64Url(new Uint8Array(digest));
 }
 
+function browserSessionStorage(): TransactionStorage | undefined {
+  try {
+    return typeof window !== "undefined" ? window.sessionStorage : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function storageOrThrow(storage: TransactionStorage | undefined): TransactionStorage {
   if (!storage) throw new ODidOAuthError("Secure session storage is unavailable.");
   return storage;
@@ -225,7 +233,7 @@ export async function beginODIDLogin(
   } = {},
 ): Promise<string> {
   const config = validateConfig(rawConfig);
-  const storage = storageOrThrow(options.storage ?? (typeof window !== "undefined" ? window.sessionStorage : undefined));
+  const storage = storageOrThrow(options.storage ?? browserSessionStorage());
   const cryptoProvider = options.cryptoProvider ?? (typeof window !== "undefined" ? window.crypto : undefined);
   if (!cryptoProvider?.subtle || !cryptoProvider.getRandomValues) {
     throw new ODidOAuthError("Web Crypto is required for secure PKCE login.");
@@ -367,10 +375,11 @@ export async function completeODIDLogin(
 }
 
 export function clearODIDLoginTransaction(
-  storage: TransactionStorage = window.sessionStorage,
+  storage?: TransactionStorage,
 ): void {
+  const safeStorage = storageOrThrow(storage ?? browserSessionStorage());
   try {
-    storage.removeItem(TRANSACTION_KEY);
+    safeStorage.removeItem(TRANSACTION_KEY);
   } catch {
     throw new ODidOAuthError("ODID login state could not be cleared securely.");
   }
