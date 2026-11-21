@@ -472,11 +472,12 @@ def create_companion_app(
         except (ValueError, OSError) as exc:
             cause = exc.__cause__
             logger.warning(
-                "Approved local patch operation failed safely (%s; cause=%s; winerror=%s; errno=%s)",
+                "Approved local patch operation failed safely (%s; cause=%s; winerror=%s; errno=%s; detail=%s)",
                 type(exc).__name__,
                 type(cause).__name__ if cause is not None else "none",
                 getattr(cause, "winerror", getattr(exc, "winerror", None)),
                 getattr(cause, "errno", getattr(exc, "errno", None)),
+                str(cause or exc)[:200],
             )
             raise HTTPException(status_code=409, detail="The approved patch could not be applied to the current workspace state") from exc
         return {
