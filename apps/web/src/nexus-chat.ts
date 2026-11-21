@@ -184,6 +184,14 @@ export interface NexusConversationMessage {
   created_at: string;
 }
 
+export interface NexusConversationSummary {
+  conversation_id: string;
+  title: string;
+  version: number;
+  message_count: number;
+  updated_at: string;
+}
+
 export interface NexusConversation {
   conversation_id: string;
   organization_id: string;
@@ -293,7 +301,7 @@ export async function createNexusConversation(
 export async function listNexusConversations(
   apiBaseUrl: string, organizationId: string, projectId: string,
   accessToken: string, fetcher: typeof fetch = fetch,
-): Promise<NexusConversation[]> {
+): Promise<NexusConversationSummary[]> {
   const payload = await conversationRequest(
     apiBaseUrl, organizationId, projectId, accessToken, "?limit=30", "GET",
     undefined, undefined, fetcher,
@@ -301,7 +309,19 @@ export async function listNexusConversations(
   if (!Array.isArray(payload.conversations) || payload.conversations.length > 30) {
     throw new NexusChatTransportError("NEXUS returned an invalid conversation list.", 200);
   }
-  return payload.conversations.map(validateConversation);
+  return payload.conversations.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new NexusChatTransportError("NEXUS returned an invalid conversation summary.", 200);
+    }
+    const item = value as Record<string, unknown>;
+    if (
+      typeof item.conversation_id !== "string" || !item.conversation_id ||
+      typeof item.title !== "string" || !Number.isInteger(item.version) ||
+      !Number.isInteger(item.message_count) || (item.message_count as number) < 0 ||
+      typeof item.updated_at !== "string"
+    ) throw new NexusChatTransportError("NEXUS returned an invalid conversation summary.", 200);
+    return item as unknown as NexusConversationSummary;
+  });
 }
 
 export async function getNexusConversation(
