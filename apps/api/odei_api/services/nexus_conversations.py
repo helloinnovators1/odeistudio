@@ -28,7 +28,7 @@ class AppendConversationMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     role: StrictStr
     content: StrictStr = Field(min_length=1, max_length=8_000)
-    expected_version: int | None = Field(default=None, ge=0)
+    expected_version: int = Field(ge=0)
 
 
 async def _context(request: Request, organization_id: str, project_id: str, principal: Principal):
