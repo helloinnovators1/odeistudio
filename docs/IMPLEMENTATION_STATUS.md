@@ -1,3 +1,12 @@
+## Local companion patch preview increment — 2026-11-21
+
+- Added authenticated `POST /v1/workspaces/{workspace_id}/patch-proposals` to the loopback companion. It re-lists the selected workspace through the retained root handle, reads each existing target through the handle-relative read API, checks expected SHA-256 base hashes, and returns bounded unified diffs for create/update/delete.
+- Root-level new-file previews are supported. Nested directory creation is explicitly rejected; an existing empty directory is not mistaken for a new file.
+- Request limits enforce at most 20 changed files, 1 MB per replacement, 5 MB aggregate replacement content, UTF-8 text and no NUL bytes. The proposal builder additionally enforces path safety, base hashes, hierarchy checks, base-content limits and diff budgets.
+- The endpoint is authenticated by the existing one-time paired local bearer session and only operates on explicitly selected workspace IDs. The response is marked `preview_only` and `writes_performed: false`.
+- Added companion route tests for update/create/delete previews, stale hashes, nested create rejection, missing session, binary/oversized content, empty-directory collision and confirmation that preview operations do not modify local files.
+- No proposal persistence, reviewer approval, file application, rollback, shell or command execution was added. Local Windows 10 build 18362 validation and current-head CI are still outstanding.
+
 ## Patch proposal regression coverage — 2026-11-21
 
 - Added regression tests for case-insensitive collisions against existing base paths, aggregate replacement content exceeding 5 MB, and aggregate base snapshots exceeding 5 MB.
