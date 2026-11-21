@@ -218,3 +218,64 @@ export function rejectNexusPatchProposal(
 ): Promise<NexusPatchProposalSummary> {
   return decide("reject", apiBaseUrl, organizationId, projectId, accessToken, proposalId, expectedVersion, fetcher, signal);
 }
+
+
+export interface NexusPatchApplyCapability {
+  capability: string;
+  expires_at: number;
+  workspace_id: string;
+  companion_challenge: string;
+  proposal_id: string;
+  proposal_version: number;
+  patch_sha256: string;
+  application_enabled: false;
+}
+
+export async function createNexusPatchApplyCapability(
+  apiBaseUrl: string,
+  organizationId: string,
+  projectId: string,
+  accessToken: string,
+  proposalId: string,
+  expectedVersion: number,
+  workspaceId: string,
+  companionChallenge: string,
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<NexusPatchApplyCapability> {
+  const id = proposalId.trim();
+  if (
+    !id || id.length > 128 || !Number.isInteger(expectedVersion) || expectedVersion < 0 ||
+    !workspaceId || workspaceId.length > 128 ||
+    !/^[A-Za-z0-9_-]{32,128}$/.test(companionChallenge)
+  ) {
+    throw new TypeError("A valid approved proposal, selected workspace and fresh companion challenge are required.");
+  }
+  const payload = await request(
+    apiBaseUrl, organizationId, projectId, accessToken,
+    "/" + encodeURIComponent(id) + "/apply-capability",
+    "POST",
+    {
+      expected_version: expectedVersion,
+      workspace_id: workspaceId,
+      companion_challenge: companionChallenge,
+      confirm_apply: true,
+    },
+    fetcher,
+    signal,
+  );
+  if (
+    typeof payload.capability !== "string" || !payload.capability ||
+    payload.capability.length > 8_192 ||
+    typeof payload.expires_at !== "number" || !Number.isSafeInteger(payload.expires_at) ||
+    payload.workspace_id !== workspaceId ||
+    payload.companion_challenge !== companionChallenge ||
+    payload.proposal_id !== id ||
+    payload.proposal_version !== expectedVersion ||
+    typeof payload.patch_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(payload.patch_sha256) ||
+    payload.application_enabled !== false
+  ) {
+    throw new NexusChatTransportError("NEXUS returned an invalid local apply capability.", 200);
+  }
+  return payload as unknown as NexusPatchApplyCapability;
+}
