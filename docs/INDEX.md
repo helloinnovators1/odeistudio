@@ -19,7 +19,8 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS chat operationalisation](NEXUS_CHAT_OPERATIONALIZATION.md) — complete chat lifecycle, UX contract, identity/consent/security boundaries, event and persistence contracts, and phased acceptance gates.
 - [NEXUS project discovery transport](NEXUS_PROJECT_DISCOVERY.md) — secure typed browser client for tenant-scoped project listing and creation.
 - [NEXUS chat API](NEXUS_CHAT_API.md) — authenticated project-scoped chat contract, consent, redaction, audit and read-only limits.
-- [NEXUS patch proposals](PATCH_PROPOSALS.md) — bounded multi-file patch validation, content hashes, diff output and safe-application requirements.
+- [NEXUS patch proposals](PATCH_PROPOSALS.md) — bounded multi-file patch validation, content hashes, diff output and review workflow.
+- [Local approved patch application](LOCAL_PATCH_APPLICATION.md) — signed, challenge-bound one-file local apply flow, companion verification and remaining rollback/recovery limits.
 - [Master Admin Console requirements](MAC_REQUIREMENTS.md) — central configuration and governance plane.
 - [Master Admin Dashboard](MAD.md) — operational and executive visibility.
 - [Data model](DATA_MODEL.md) — canonical entities, tenancy and persistence rules.
@@ -49,4 +50,4 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS Task Planning and Approval](NEXUS_TASKS.md) — task planning, ownership, approval semantics and execution boundaries.
 - [NEXUS Isolated Execution Engine](EXECUTION_ENGINE.md) — OCI sandbox boundaries, worker lifecycle, execution policy and acceptance gates.
 
-- [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization contract for future local apply; application remains disabled.
+- [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization and verification contract for the merged one-file local companion apply path, plus rollback and production release limits.
