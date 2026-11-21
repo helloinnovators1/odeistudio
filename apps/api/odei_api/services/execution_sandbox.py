@@ -55,10 +55,10 @@ class SandboxProfile:
     def validate(self) -> None:
         if not self.name or len(self.name) > 64 or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", self.name):
             raise ValueError("Sandbox profile name is invalid")
-        if not _IMAGE_DIGEST.fullmatch(self.image):
+        if not isinstance(self.image, str) or not _IMAGE_DIGEST.fullmatch(self.image):
             raise ValueError("Sandbox images must be pinned by a SHA-256 digest")
-        if not self.command or len(self.command) > 16:
-            raise ValueError("Sandbox profile must define a bounded command")
+        if not isinstance(self.command, tuple) or not self.command or len(self.command) > 16:
+            raise ValueError("Sandbox profile must define a bounded command tuple")
         if any(
             not isinstance(item, str) or not item or len(item) > _MAX_ARGUMENT_CHARS
             or "\x00" in item or "\r" in item or "\n" in item
@@ -197,7 +197,7 @@ class ContainerSandbox:
             raise ValueError("Sandbox container name is invalid")
 
         return (
-            "run", "--rm", "--pull=never", "--name", container_name,
+            "run", "--rm", "--init", "--pull=never", "--name", container_name,
             "--network=none", "--read-only", "--cap-drop=ALL",
             "--security-opt=no-new-privileges:true",
             "--pids-limit", str(profile.pids_limit),
