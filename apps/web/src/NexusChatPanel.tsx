@@ -205,6 +205,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setProjects([]);
     setProjectId("");
     setMessages([]);
+    setConversations([]);
+    setConversationId("");
     setConsent(false);
     try {
       const result = await listNexusProjects(config.apiBaseUrl, organizationId, access.accessToken);
@@ -226,6 +228,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setProjects([]);
     setProjectId("");
     setMessages([]);
+    setConversations([]);
+    setConversationId("");
     setDraft("");
     setConsent(false);
     setAttachActiveFile(false);
@@ -237,7 +241,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
-    if (!access || !projectId || !consent || !content || sending || !config.apiBaseUrl) return;
+    if (!access || !projectId || !consent || !content || sending || conversationBusy || !config.apiBaseUrl) return;
     if (content.length > 8_000) {
       setChatError("Messages are limited to 8,000 characters.");
       return;
@@ -332,6 +336,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               setProjects([]);
               setProjectId("");
               setMessages([]);
+              setConversationBusy(true);
               setConsent(false);
               setProjectError("");
             }} disabled={organizationBusy || organizations.length === 0}>
@@ -357,6 +362,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               <select id="nexus-project-id" value={projectId} onChange={(event) => {
                 setProjectId(event.target.value);
                 setMessages([]);
+                setConversationBusy(true);
                 setConsent(false);
                 setChatError("");
               }}>
@@ -408,6 +414,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             <p>{message.content}</p>
           </article>
         ))}
+        {conversationBusy && <div className="nexus-thinking" role="status">Loading saved conversations…</div>}
         {sending && <div className="nexus-thinking" role="status">NEXUS is thinking…</div>}
         <div ref={transcriptEndRef} />
       </div>
@@ -435,7 +442,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 rows={3}
                 maxLength={8_000}
                 value={draft}
-                disabled={sending || !consent}
+                disabled={sending || conversationBusy || !consent}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -448,7 +455,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 <span>Read-only · durable project history</span>
                 {sending
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>Stop</button>
-                  : <button type="submit" disabled={!draft.trim() || !consent}>Send</button>}
+                  : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy}>Send</button>}
               </div>
             </form>
           </>
