@@ -194,7 +194,7 @@ def test_capability_expiry_is_enforced():
 
 
 def test_pinned_public_key_map_is_validated_before_companion_writes():
-    settings, public_keys, _ = _fixture()
+    _, public_keys, _ = _fixture()
     validate_patch_approval_public_keys(public_keys)
     with pytest.raises(PatchApprovalNotConfigured):
         validate_patch_approval_public_keys({"untrusted": "not-a-valid-key"})
