@@ -185,6 +185,28 @@ describe("ODID OAuth PKCE client", () => {
     )).rejects.toThrow("invalid access-token response");
   });
 
+  it("bounds discovery responses before parsing", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("x".repeat(32_001)));
+    await expect(beginODIDLogin(config, {
+      storage, cryptoProvider: fakeCrypto(), fetcher,
+    })).rejects.toThrow("discovery response is oversized");
+  });
+
+  it("bounds token responses before parsing", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(discovery))
+      .mockResolvedValueOnce(jsonResponse(discovery))
+      .mockResolvedValueOnce(new Response("x".repeat(16_001)));
+    const authorizationUrl = await beginODIDLogin(config, {
+      storage, cryptoProvider: fakeCrypto(), fetcher, now: 1_000,
+    });
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    await expect(completeODIDLogin(
+      `https://studio.example.test/auth/callback?code=code&state=${state}`,
+      config, { storage, fetcher, now: 2_000 },
+    )).rejects.toThrow("token response is oversized");
+  });
+
   it("clears a pending login transaction", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(discovery));
     await beginODIDLogin(config, { storage, cryptoProvider: fakeCrypto(), fetcher });
