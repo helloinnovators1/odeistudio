@@ -292,7 +292,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           signal: controller.signal,
         });
         setMessages((current) => [...current, {
-          id: "inspect-" + newMessageId(), role: "assistant", content: inspected.answer,
+          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer,
         }].slice(-20));
         setNotice("Read-only inspection completed with " + inspected.tools_executed + " tool calls (" + (inspected.tool_names.join(", ") || "no tools requested") + "). Only the attached excerpt was available.");
         return;
