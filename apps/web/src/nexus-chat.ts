@@ -635,7 +635,22 @@ export async function sendNexusChatInspection(
     "list_attached_excerpts", "read_attached_excerpt", "search_attached_excerpts",
     "propose_attached_file_change",
   ]);
-  if (
+  const proposal = payload.patch_proposal;
+  const proposalIsValid = proposal === undefined || proposal === null || (
+    typeof proposal === "object" && !Array.isArray(proposal) &&
+    typeof (proposal as Record<string, unknown>).proposal_id === "string" &&
+    typeof (proposal as Record<string, unknown>).title === "string" &&
+    (proposal as Record<string, unknown>).status === "pending" &&
+    typeof (proposal as Record<string, unknown>).version === "number" &&
+    Number.isInteger((proposal as Record<string, unknown>).version) &&
+    typeof (proposal as Record<string, unknown>).file_count === "number" &&
+    Number.isInteger((proposal as Record<string, unknown>).file_count) &&
+    typeof (proposal as Record<string, unknown>).created_at === "string" &&
+    typeof (proposal as Record<string, unknown>).updated_at === "string" &&
+    typeof (proposal as Record<string, unknown>).can_decide === "boolean" &&
+    (proposal as Record<string, unknown>).application_enabled === false
+  );
+  if (!proposalIsValid || 
     typeof payload.answer !== "string" || !payload.answer.trim() ||
     typeof payload.model !== "string" || payload.read_only !== true ||
     typeof payload.tools_executed !== "number" || !Number.isInteger(payload.tools_executed) ||
