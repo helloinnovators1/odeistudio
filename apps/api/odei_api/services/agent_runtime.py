@@ -95,8 +95,6 @@ def run_nexus_agent(
                 "role": message["role"],
                 "content": redact_secrets(message["content"]),
             })
-    if history and history[-1]["role"] != "assistant":
-        raise ValueError("prior_messages must end with an assistant turn")
     history_chars += len(clean_task)
     if history_chars > MAX_AGENT_HISTORY_CHARS:
         raise ValueError("prior_messages exceeds the maximum context budget")
