@@ -94,10 +94,10 @@ describe("NEXUS signed local apply capability", () => {
       "proposal-1", 2, "workspace_1234567890123456", challenge, fetcher,
     );
     expect(result.capability).toBe("signed-capability");
-    const request = fetcher.mock.calls[0][0] as Request;
-    expect(request.url).toContain("/proposal-1/apply-capability");
-    expect(request.headers.get("Authorization")).toBe("Bearer ephemeral-token");
-    expect(await request.json()).toEqual({
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toContain("/proposal-1/apply-capability");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer ephemeral-token");
+    expect(JSON.parse(String(init?.body))).toEqual({
       expected_version: 2,
       workspace_id: "workspace_1234567890123456",
       companion_challenge: challenge,
