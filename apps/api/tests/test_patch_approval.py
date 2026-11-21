@@ -53,7 +53,7 @@ def _fixture():
 
 
 def test_capability_binds_exact_workspace_proposal_version_and_patch_and_is_one_use():
-    settings, public_keys, files = _fixture()
+    _, _, files = _fixture()
     now = int(time.time())
     token, expires_at, digest = issue_patch_apply_capability(
         settings=settings,
