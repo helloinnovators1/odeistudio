@@ -86,7 +86,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     void completeODIDLogin(window.location.href, config.auth)
       .then((token) => {
         setAccess(token);
-        setNotice("Signed in. Enter your organization ID to load your authorized projects.");
+        setNotice("Signed in. Loading your active organization memberships.");
       })
       .catch((cause: unknown) => setAuthError(errorMessage(cause)))
       .finally(() => {
@@ -123,7 +123,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     if (remaining <= 0) {
       setAccess(null);
       setOrganizations([]);
-      setOrganizations([]);
+      setOrganizationId("");
       setProjects([]);
       setProjectId("");
       setMessages([]);
@@ -132,6 +132,8 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     }
     const timer = window.setTimeout(() => {
       setAccess(null);
+      setOrganizations([]);
+      setOrganizationId("");
       setProjects([]);
       setProjectId("");
       setMessages([]);
