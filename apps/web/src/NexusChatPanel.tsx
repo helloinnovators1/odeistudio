@@ -8,12 +8,15 @@ import {
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
+import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge } from "./companion";
 import {
   approveNexusPatchProposal,
+  createNexusPatchApplyCapability,
   getNexusPatchProposal,
   listNexusPatchProposals,
   rejectNexusPatchProposal,
   type NexusPatchProposal,
+  type NexusPatchProposalFile,
   type NexusPatchProposalSummary,
 } from "./nexus-patch-proposals";
 import "./nexus-chat-panel.css";
@@ -22,6 +25,10 @@ interface Props {
   onClose: () => void;
   isOpen?: boolean;
   activeFile?: { path: string; content: string } | null;
+  companionToken?: string | null;
+  companionWorkspaceId?: string;
+  companionCanApply?: boolean;
+  onPatchApplied?: (file: NexusPatchProposalFile) => void | Promise<void>;
 }
 
 interface TranscriptMessage extends NexusChatMessage {
@@ -61,7 +68,7 @@ function newMessageId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function NexusChatPanel({ onClose, isOpen = true, activeFile = null }: Props) {
+export default function NexusChatPanel({ onClose, isOpen = true, activeFile = null, companionToken = null, companionWorkspaceId = "", companionCanApply = false, onPatchApplied }: Props) {
   const config = useMemo(environmentConfig, []);
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -414,6 +421,45 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     }
   }
 
+  async function applyApprovedPatch() {
+    if (
+      !access || !config.apiBaseUrl || !selectedPatch ||
+      selectedPatch.status !== "approved" || !selectedPatch.can_decide ||
+      !companionToken || !companionWorkspaceId || !companionCanApply ||
+      selectedPatch.files.length !== 1 || patchBusy
+    ) return;
+    setPatchBusy(true);
+    setPatchError("");
+    try {
+      const challenge = await createWorkspaceApplyChallenge(
+        companionToken, companionWorkspaceId,
+      );
+      const capability = await createNexusPatchApplyCapability(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken,
+        selectedPatch.proposal_id, selectedPatch.version,
+        companionWorkspaceId, challenge.challenge,
+      );
+      const file = selectedPatch.files[0];
+      await applyApprovedWorkspacePatch(
+        companionToken, companionWorkspaceId,
+        {
+          organizationId, projectId,
+          proposalId: selectedPatch.proposal_id,
+          proposalVersion: selectedPatch.version,
+          challenge: challenge.challenge,
+          capability: capability.capability,
+          file,
+        },
+      );
+      await onPatchApplied?.(file);
+      setNotice("Approved patch applied to the selected local workspace. The file was reloaded from disk.");
+    } catch (cause) {
+      setPatchError(errorMessage(cause));
+    } finally {
+      setPatchBusy(false);
+    }
+  }
+
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
@@ -694,7 +740,23 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             {selectedPatch.status === "pending" && !selectedPatch.can_decide && (
               <p className="nexus-task-safety">Awaiting a project-owner decision.</p>
             )}
-            <p className="nexus-task-safety">Approval records review intent only. It does not write, apply or delete local files. Application remains disabled.</p>
+            {selectedPatch.status === "approved" && selectedPatch.can_decide &&
+              companionToken && companionWorkspaceId && companionCanApply &&
+              selectedPatch.files.length === 1 && (
+                <button type="button" className="nexus-secondary-button"
+                  disabled={patchBusy} onClick={() => void applyApprovedPatch()}>
+                  {patchBusy ? "Applying…" : "Apply approved patch to selected folder"}
+                </button>
+              )}
+            {selectedPatch.status === "approved" && selectedPatch.files.length > 1 && (
+              <p className="nexus-task-safety">This proposal contains multiple files. The current local apply path is deliberately limited to one atomic file operation; split it into one-file proposals before applying.</p>
+            )}
+            {selectedPatch.status === "approved" && (!companionToken || !companionWorkspaceId || !companionCanApply) && (
+              <p className="nexus-task-safety">Approval is recorded. To apply, connect a local companion configured with the matching trusted patch-approval public key and select its workspace.</p>
+            )}
+            {selectedPatch.status !== "approved" && (
+              <p className="nexus-task-safety">Approval is required before a signed, short-lived local apply capability can be issued.</p>
+            )}
             <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
           </section>
         )}
