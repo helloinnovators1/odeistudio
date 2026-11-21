@@ -686,7 +686,10 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                 _mark_for_delete(kernel32, msvcrt.get_osfhandle(descriptor))
             finally:
                 if descriptor is not None:
-                    os.close(descriptor)
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
                 if target_handle is not None:
                     kernel32.CloseHandle(target_handle)
         else:
