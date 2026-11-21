@@ -561,7 +561,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             )}
             <label className="nexus-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              I consent to sending this message{attachActiveFile && activeFile ? " and the selected file excerpt" : ""} to the configured cloud AI provider.
+              I consent to sending this request{attachActiveFile && activeFile ? " and the selected file excerpt" : ""} to the configured cloud AI provider.
             </label>
             <form className="chat-composer" onSubmit={(event) => void submitMessage(event)}>
               <textarea
