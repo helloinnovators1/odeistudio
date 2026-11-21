@@ -99,6 +99,14 @@ def _apis():
         wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
     ]
     kernel32.SetFileInformationByHandle.restype = wintypes.BOOL
+    kernel32.GetCurrentProcess.argtypes = []
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.DuplicateHandle.argtypes = [
+        wintypes.HANDLE, wintypes.HANDLE, wintypes.HANDLE,
+        ctypes.POINTER(wintypes.HANDLE), wintypes.DWORD, wintypes.BOOL,
+        wintypes.DWORD,
+    ]
+    kernel32.DuplicateHandle.restype = wintypes.BOOL
     ntdll.NtCreateFile.argtypes = [
         ctypes.POINTER(wintypes.HANDLE), wintypes.ULONG,
         ctypes.POINTER(_ObjectAttributes), ctypes.POINTER(_IoStatusBlock),
@@ -605,35 +613,47 @@ def _write_handle(kernel32, handle, data: bytes) -> None:
 
 
 def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> None:
-    """Rename relative to a held directory handle without resolving an absolute path.
+    """Rename relative to a least-privilege duplicate of the held parent handle.
 
     SetFileInformationByHandle(FileRenameInfo) rejects a non-NULL RootDirectory
     on supported Windows filesystems with ERROR_INVALID_PARAMETER. Use the
-    native NtSetInformationFile(FileRenameInformation=10) interface instead;
-    it preserves the directory-handle-relative operation and avoids a
-    path-based fallback that could escape the selected workspace.
+    native NtSetInformationFile(FileRenameInformation=10) interface instead.
+    Windows documents that RootDirectory should be opened with only traverse
+    and read-attributes rights so the kernel's relative target open does not
+    conflict with the directory handle's access. Duplicate the retained parent
+    handle with that reduced access and never resolve an absolute path.
     """
-    _ = kernel32  # Retained in the signature for compatibility with callers.
     encoded_name = name.encode("utf-16-le")
     offset = _FileRenameInfo.FileName.offset
     buffer_size = offset + len(encoded_name)
     buffer = ctypes.create_string_buffer(buffer_size)
     info = ctypes.cast(buffer, ctypes.POINTER(_FileRenameInfo)).contents
     info.ReplaceIfExists = bool(replace)
-    info.RootDirectory = parent
     info.FileNameLength = len(encoded_name)
     ctypes.memmove(ctypes.addressof(buffer) + offset, encoded_name, len(encoded_name))
     _kernel32, ntdll = _apis()
-    io_status = _IoStatusBlock()
-    status = ntdll.NtSetInformationFile(
-        handle,
-        ctypes.byref(io_status),
-        buffer,
-        len(buffer),
-        10,  # FileRenameInformation
-    )
-    if status < 0:
-        raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+    rename_root = wintypes.HANDLE()
+    process = kernel32.GetCurrentProcess()
+    desired_access = FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE
+    if not kernel32.DuplicateHandle(
+        process, parent, process, ctypes.byref(rename_root),
+        desired_access, False, 0,
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        info.RootDirectory = rename_root
+        io_status = _IoStatusBlock()
+        status = ntdll.NtSetInformationFile(
+            handle,
+            ctypes.byref(io_status),
+            buffer,
+            len(buffer),
+            10,  # FileRenameInformation
+        )
+        if status < 0:
+            raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+    finally:
+        kernel32.CloseHandle(rename_root)
 
 
 def _mark_for_delete(kernel32, handle) -> None:
