@@ -688,3 +688,34 @@ def test_companion_rejects_stale_or_mismatched_signed_patch_without_writing(tmp_
         assert registry.read_text(workspace_id, "main.py") == original
     finally:
         registry.close()
+
+
+def test_workspace_handle_applies_root_create_and_delete_atomically(tmp_path):
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    try:
+        created_content = "print('created')"
+        created_hash = hashlib.sha256(created_content.encode("utf-8")).hexdigest()
+        created = registry.apply_patch(workspace_id, {
+            "path": "created.py",
+            "operation": "create",
+            "base_sha256": None,
+            "result_sha256": created_hash,
+            "content": created_content,
+        })
+        assert created["applied"] is True
+        assert registry.read_text(workspace_id, "created.py") == created_content
+
+        deleted = registry.apply_patch(workspace_id, {
+            "path": "created.py",
+            "operation": "delete",
+            "base_sha256": created_hash,
+            "result_sha256": None,
+            "content": None,
+        })
+        assert deleted["operation"] == "delete"
+        assert not (selected / "created.py").exists()
+    finally:
+        registry.close()
