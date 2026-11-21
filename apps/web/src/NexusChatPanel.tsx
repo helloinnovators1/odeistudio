@@ -6,7 +6,7 @@ import {
   type ODidOAuthConfig,
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
-import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
+import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -163,6 +163,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setProjects([]);
       setProjectId("");
       setMessages([]);
+      setConversations([]);
+      setConversationId("");
       setNotice("Your sign-in expired. Sign in again.");
       return;
     }
