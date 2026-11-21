@@ -126,11 +126,14 @@ def canonical_patch_digest(*, workspace_id: str, proposal_id: str, proposal_vers
 def issue_patch_apply_capability(
     *, settings: Settings, principal_issuer: str, principal_subject: str,
     organization_id: str, project_id: str, workspace_id: str, proposal_id: str,
-    proposal_version: int, files: list[dict[str, Any]], now: int | None = None,
+    proposal_version: int, files: list[dict[str, Any]], challenge: str,
+    now: int | None = None,
 ) -> tuple[str, int, str]:
     """Sign a short-lived capability; no token is persisted."""
     if not settings.patch_approval_issuer or not settings.patch_approval_key_id or not settings.patch_approval_private_key_b64:
         raise PatchApprovalNotConfigured("Patch approval signing is not configured")
+    if not isinstance(challenge, str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", challenge):
+        raise PatchApprovalError("A fresh companion challenge is required")
     digest = canonical_patch_digest(
         workspace_id=workspace_id, proposal_id=proposal_id,
         proposal_version=proposal_version, files=files,
@@ -149,6 +152,7 @@ def issue_patch_apply_capability(
         "organization_id": organization_id, "project_id": project_id,
         "workspace_id": workspace_id, "proposal_id": proposal_id,
         "proposal_version": proposal_version, "patch_sha256": digest,
+        "companion_challenge": challenge,
         "jti": uuid4().hex, "iat": issued_at, "exp": expires_at,
     }
     token = jwt.encode(
@@ -184,7 +188,7 @@ def verify_patch_apply_capability(
     token: str, *, public_keys: Mapping[str, str], issuer: str,
     organization_id: str, project_id: str, workspace_id: str,
     proposal_id: str, proposal_version: int, files: list[dict[str, Any]],
-    replay_cache: CapabilityReplayCache, now: int | None = None,
+    challenge: str, replay_cache: CapabilityReplayCache, now: int | None = None,
 ) -> dict[str, Any]:
     """Verify signature, issuer, audience, expiry, payload binding and replay."""
     if not isinstance(token, str) or not token or len(token.encode("utf-8")) > MAX_CAPABILITY_BYTES:
@@ -207,7 +211,7 @@ def verify_patch_apply_capability(
             options={"require": [
                 "iss", "aud", "sub", "actor_issuer", "organization_id",
                 "project_id", "workspace_id", "proposal_id", "proposal_version",
-                "patch_sha256", "jti", "iat", "exp",
+                "patch_sha256", "companion_challenge", "jti", "iat", "exp",
             ]},
         )
     except InvalidPatchCapability:
@@ -220,6 +224,9 @@ def verify_patch_apply_capability(
         or claims.get("workspace_id") != workspace_id
         or claims.get("proposal_id") != proposal_id
         or claims.get("proposal_version") != proposal_version
+        or claims.get("companion_challenge") != challenge
+        or not isinstance(challenge, str)
+        or not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", challenge)
         or not isinstance(claims.get("sub"), str) or not claims.get("sub")
         or not isinstance(claims.get("actor_issuer"), str) or not claims.get("actor_issuer")
         or claims.get("exp", 0) <= claims.get("iat", 0)
