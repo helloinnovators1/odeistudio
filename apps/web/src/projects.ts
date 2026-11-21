@@ -1,3 +1,13 @@
+export interface NexusOrganization {
+  organization_id: string;
+  role: string;
+}
+
+export interface NexusOrganizationList {
+  organizations: NexusOrganization[];
+  limit: number;
+}
+
 export interface NexusProjectOwner {
   issuer: string;
   subject: string;
@@ -150,6 +160,56 @@ async function request(
   const payload = parseObject(await response.text(), response.status);
   if (!response.ok) throw safeError(payload, response.status);
   return payload;
+}
+
+/** List only organizations where the authenticated identity has an active server-side membership. */
+export async function listNexusOrganizations(
+  apiBaseUrl: string,
+  accessToken: string,
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<NexusOrganizationList> {
+  const response = await fetcher(
+    `${normalizeApiBaseUrl(apiBaseUrl)}/api/v1/organizations`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${bearer(accessToken)}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "error",
+      signal,
+    },
+  );
+  const payload = parseObject(await response.text(), response.status);
+  if (!response.ok) throw safeError(payload, response.status);
+  if (
+    !Array.isArray(payload.organizations)
+    || payload.organizations.length > 100
+    || payload.limit !== 100
+    || !payload.organizations.every((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      const organization = value as Record<string, unknown>;
+      return typeof organization.organization_id === "string"
+        && organization.organization_id.length > 0
+        && organization.organization_id.length <= 128
+        && organization.organization_id.trim() === organization.organization_id
+        && typeof organization.role === "string"
+        && organization.role.length > 0
+        && organization.role.length <= 128;
+    })
+  ) {
+    throw new NexusProjectTransportError("NEXUS returned an unexpected organization-list contract.", 200);
+  }
+  const ids = payload.organizations.map((value) =>
+    (value as NexusOrganization).organization_id
+  );
+  if (new Set(ids).size !== ids.length) {
+    throw new NexusProjectTransportError("NEXUS returned duplicate organization identities.", 200);
+  }
+  return payload as unknown as NexusOrganizationList;
 }
 
 /** List only projects the authenticated identity may access in this organization. */
