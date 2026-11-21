@@ -176,6 +176,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     if (!access || !config.apiBaseUrl || !organizationId || !projectId) {
       setPatchProposals([]);
       setSelectedPatch(null);
+      setPatchError("");
       return;
     }
     let active = true;
@@ -750,12 +751,14 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             )}
             {attachActiveFile && activeFile && (
               <label className="nexus-attach-toggle nexus-tools-toggle">
-                <input type="checkbox" checked={useAttachedTools} onChange={(event) => setUseAttachedTools(event.target.checked)} />
+                <input type="checkbox" checked={useAttachedTools}
+                  disabled={activeFile.content.length > 8_000}
+                  onChange={(event) => setUseAttachedTools(event.target.checked)} />
                 Allow NEXUS inspection and review-only change proposals for this attached excerpt
               </label>
             )}
             {attachActiveFile && activeFile && activeFile.content.length > 8_000 && (
-              <p className="nexus-muted">Only the first 8,000 characters of the selected file will be shared.</p>
+              <p className="nexus-muted">Only the first 8,000 characters can be shared. To prevent stale base hashes, repository inspection and generated patch proposals are disabled for this larger file.</p>
             )}
             <label className="nexus-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
