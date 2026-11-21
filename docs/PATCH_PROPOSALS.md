@@ -29,16 +29,24 @@ The response explicitly reports `mode: preview_only` and `writes_performed: fals
 
 The React workspace now exposes a `Preview patch` action for the active file. The user edits proposed replacement text in a separate dialog; the browser computes the base SHA-256 with Web Crypto, calls the local endpoint, validates the preview response contract, and displays the unified diff. This UI does not enable saving or applying changes.
 
-## Required next stages
+## Current delivery and remaining stages
 
-1. Persist proposals with tenant, project, task, author, expiry, and immutable content hashes.
-2. Render the exact proposal in the IDE diff/review surface; require explicit reviewer decision.
-3. Re-read every target through the secure workspace handle, verify all base hashes, and reject stale snapshots before applying anything.
-4. Implement atomic, handle-relative Windows writes and POSIX descriptor-relative writes, with same-directory staging, no-follow/reparse protections, rollback, and race tests. Do not use path-based writes or bypass the existing read-only scanner.
-5. Record proposal, approval, application, rollback and failure events in the audit trail.
-6. Run isolated tests and diagnostics only after the separately designed sandboxed execution service is available.
+Completed in the authenticated API and NEXUS panel:
 
-The current module implements only validation and diff generation. Persistence, IDE review, approval, safe application, rollback, execution and test orchestration remain unimplemented.
+1. Tenant/project/author-scoped MongoDB persistence with immutable file hashes and bounded review content.
+2. Saved proposal listing and detail retrieval, unified-diff review, project-owner-only approve/reject decisions, and optimistic version checks.
+3. Audit events for proposal creation, listing, reading and decisions without placing prompt/source content or diffs in audit metadata.
+4. Chat-triggered proposal generation for explicitly attached files only. The model can prepare a replacement, but the tool is review-only and never writes local files.
+
+Still required before any local application:
+
+1. Re-read every target through the secure workspace handle and independently verify all base hashes immediately before application.
+2. Issue a short-lived, single-use approval capability that the local companion independently verifies; a MongoDB approval record alone must never authorize local writes.
+3. Implement atomic, handle-relative Windows writes and POSIX descriptor-relative writes, same-directory staging, no-follow/reparse protections, rollback, recovery and race tests. Do not use path-based writes or bypass the existing read-only scanner.
+4. Record application, rollback and failure events in the audit trail.
+5. Add isolated terminal/test execution only after a separately designed sandboxed execution service is available.
+
+The current delivery supports proposal generation, persistence, review and owner decisions only. `application_enabled` remains false; execution, safe application, rollback and test orchestration are not enabled.
 
 
 ## Chat-generated proposals and owner decisions
