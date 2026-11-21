@@ -27,8 +27,12 @@ export interface PatchPreviewResponse {
   total_diff_bytes: number;
 }
 async function sha256Text(content: string): Promise<string> {
-  if (!globalThis.crypto?.subtle) throw new Error("Secure hashing is unavailable in this browser.");
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("Secure hashing is unavailable in this browser.");
+  }
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(content),
+  );
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 export async function previewWorkspacePatch(
@@ -38,7 +42,11 @@ export async function previewWorkspacePatch(
   baseContents: Record<string, string | null>,
 ): Promise<PatchPreviewResponse> {
   const paths = Object.keys(changes);
-  if (paths.length === 0 || paths.length > 20 || paths.length !== Object.keys(baseContents).length) {
+  if (
+    paths.length === 0 ||
+    paths.length > 20 ||
+    paths.length !== Object.keys(baseContents).length
+  ) {
     throw new Error("Patch preview requires matching base content for 1–20 changed files.");
   }
   const expectedBaseHashes = Object.create(null) as Record<string, string | null>;
@@ -53,6 +61,9 @@ export async function previewWorkspacePatch(
     "/v1/workspaces/" + encodeURIComponent(workspaceId) + "/patch-proposals",
     { method: "POST", token, body: { changes, expected_base_hashes: expectedBaseHashes } },
   );
+  if (!response || typeof response !== "object") {
+    throw new Error("Companion returned an invalid patch preview response.");
+  }
   const responsePaths = Array.isArray(response.files)
     ? response.files.map((file) => file?.path)
     : [];
