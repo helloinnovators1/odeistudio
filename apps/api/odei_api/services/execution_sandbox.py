@@ -11,7 +11,6 @@ import asyncio
 import math
 import os
 import re
-import shutil
 import stat
 import time
 import uuid
@@ -153,7 +152,21 @@ class ContainerSandbox:
                     raise UnsafeSandboxWorkspace("Execution workspace changed during validation") from exc
                 if stat.S_ISLNK(mode) or not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
                     raise UnsafeSandboxWorkspace("Execution workspace contains a link or special file")
+                if stat.S_ISREG(mode) and item.stat(follow_symlinks=False).st_nlink != 1:
+                    raise UnsafeSandboxWorkspace("Execution workspace contains a hard-linked file")
         return workspace
+
+    @staticmethod
+    def _prepare_workspace_permissions(workspace: Path) -> None:
+        """Make only the disposable snapshot writable by the unprivileged container UID."""
+        for base, directories, files in os.walk(workspace, topdown=True, followlinks=False):
+            for name in directories:
+                os.chmod(Path(base) / name, 0o777, follow_symlinks=False)
+            for name in files:
+                item = Path(base) / name
+                mode = item.lstat().st_mode
+                os.chmod(item, 0o666 | (stat.S_IMODE(mode) & 0o111), follow_symlinks=False)
+        os.chmod(workspace, 0o777)
 
     @staticmethod
     def _validate_arguments(arguments: Sequence[str]) -> tuple[str, ...]:
@@ -225,6 +238,7 @@ class ContainerSandbox:
         """Run a fixed-profile command and always attempt container cleanup."""
         profile.validate()
         workspace = self._validate_workspace(workspace_dir)
+        self._prepare_workspace_permissions(workspace)
         extra = self._validate_arguments(arguments)
         container_name = "odei-exec-" + uuid.uuid4().hex
         command = (
