@@ -403,3 +403,18 @@ Feature branch: `feat/nexus-task-planning-ui-main`. This increment is not merged
 - Added browser transport tests. CI is required before merge.
 
 Still outstanding: repository tool invocation, chat-generated patch proposals, persistent proposal review, safe patch application/rollback, isolated command/test execution, task event live updates, agent orchestration and production staging verification.
+
+
+## NEXUS attached-excerpt tool inspection — 2026-11-21
+
+Feature branch: `feat/nexus-chat-selected-file-tools`. This is a limited read-only tool increment, not whole-repository agent access.
+
+- Added `SelectedExcerptTools` with three strict function schemas: list attached excerpts, read one attached excerpt, and literal search across attached excerpts.
+- Tool scope is constructed from the file excerpts explicitly attached by the user to that message. It has no workspace ID, no arbitrary root, no local companion handle and no path outside the submitted excerpt map. Unknown paths and unregistered tool names fail closed.
+- The authenticated `/nexus/chat/inspect` endpoint rechecks organization/project authorization, loads owner-scoped saved history, appends the user turn with optimistic versioning, runs the bounded read-only Responses tool loop, persists the assistant answer and audits the tool-call count without storing source text or prompt content in audit metadata.
+- The browser exposes a separate unchecked opt-in for read-only tools, shown only after the user attaches the active file excerpt. The default streamed chat remains unchanged. The UI states that the model can inspect only the attached excerpt.
+- Tool names and count are validated by the browser. No tool can edit, create, delete, execute commands, install packages, deploy, access network resources or read unselected files.
+- The existing agent runtime now replays a bounded saved conversation context and returns the names of invoked tools.
+- Added API tests for safe attached-file listing/reading, secret redaction, rejected paths, owner-scoped persistence and audit metadata; added browser transport contract tests and agent-history tests.
+
+Limitations: this does not expose the whole workspace or the existing OS-handle registry to the API. It is not a replacement for a securely paired project-wide tool bridge. No patch proposals, approval, file application, rollback, terminal/test execution, agent orchestration or cloud/background agents are enabled. The synchronous inspection request cannot guarantee cancellation of a provider operation already running on the server.
