@@ -70,7 +70,7 @@ describe("NEXUS chat transport", () => {
     };
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify(item), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ conversations: [item], limit: 30 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ conversations: [{ conversation_id: item.conversation_id, title: item.title, version: item.version, message_count: 1, updated_at: item.updated_at }], limit: 30 }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(item), { status: 200 }));
     const created = await createNexusConversation(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, "First chat", fetcher);
     const listed = await listNexusConversations(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, fetcher);
