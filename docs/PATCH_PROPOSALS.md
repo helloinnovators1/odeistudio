@@ -14,7 +14,7 @@ Callers must obtain the base snapshot through the existing authenticated, tenant
 
 ## Validation
 
-- Reject absolute, drive-qualified, traversal, empty-component, NUL and backslash paths, Windows-reserved device names, alternate data streams and invalid Windows filename characters.
+- Reject absolute, drive-qualified, traversal, empty-component, NUL and backslash paths, Windows-reserved device names (including COM/LPT aliases), alternate data streams, invalid Windows filename characters, overlong components and non-NFC Unicode aliases.
 - Reject sensitive paths and excluded directories such as `.git`, `.ssh`, `.aws`, `.env*`, credentials, private keys and dependency directories.
 - Reject case-insensitive duplicate paths and file/directory hierarchy collisions in both the base snapshot and proposed changes.
 - Reject stale/malformed hashes, deletion of missing files, binary/NUL content and invalid UTF-8 text.
