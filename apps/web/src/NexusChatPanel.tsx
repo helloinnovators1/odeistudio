@@ -268,36 +268,44 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
   async function approveTaskPlan() {
     if (!access || !taskPlan || !config.apiBaseUrl || taskBusy) return;
+    const controller = new AbortController();
+    taskAbortRef.current = controller;
     setTaskBusy(true);
     setTaskError("");
     try {
       const updated = await approveNexusTask(
         config.apiBaseUrl, organizationId, projectId,
-        access.accessToken, taskPlan.task_id, taskPlan.version,
+        access.accessToken, taskPlan.task_id, taskPlan.version, fetch, controller.signal,
       );
+      if (controller.signal.aborted) return;
       setTaskPlan(updated);
       setNotice("Project owner approval recorded. Execution is not enabled; no files or commands were changed.");
     } catch (cause) {
-      setTaskError(errorMessage(cause));
+      if (!controller.signal.aborted) setTaskError(errorMessage(cause));
     } finally {
+      if (taskAbortRef.current === controller) taskAbortRef.current = null;
       setTaskBusy(false);
     }
   }
 
   async function cancelTaskPlan() {
     if (!access || !taskPlan || !config.apiBaseUrl || taskBusy) return;
+    const controller = new AbortController();
+    taskAbortRef.current = controller;
     setTaskBusy(true);
     setTaskError("");
     try {
       const updated = await cancelNexusTask(
         config.apiBaseUrl, organizationId, projectId,
-        access.accessToken, taskPlan.task_id, taskPlan.version,
+        access.accessToken, taskPlan.task_id, taskPlan.version, fetch, controller.signal,
       );
+      if (controller.signal.aborted) return;
       setTaskPlan(updated);
       setNotice("Task cancelled.");
     } catch (cause) {
-      setTaskError(errorMessage(cause));
+      if (!controller.signal.aborted) setTaskError(errorMessage(cause));
     } finally {
+      if (taskAbortRef.current === controller) taskAbortRef.current = null;
       setTaskBusy(false);
     }
   }
