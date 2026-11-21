@@ -130,12 +130,12 @@ export function getNexusTask(
 export function approveNexusTask(
   apiBaseUrl: string, organizationId: string, projectId: string,
   accessToken: string, taskId: string, expectedVersion: number,
-  fetcher: typeof fetch = fetch,
+  fetcher: typeof fetch = fetch, signal?: AbortSignal,
 ): Promise<NexusTask> {
   return taskRequest(
     apiBaseUrl, organizationId, projectId, accessToken,
     "/" + encodeURIComponent(taskId) + "/approve", "POST",
-    { expected_version: expectedVersion }, undefined, fetcher,
+    { expected_version: expectedVersion }, signal, fetcher,
   );
 }
 
@@ -147,6 +147,6 @@ export function cancelNexusTask(
   return taskRequest(
     apiBaseUrl, organizationId, projectId, accessToken,
     "/" + encodeURIComponent(taskId) + "/cancel", "POST",
-    { expected_version: expectedVersion }, undefined, fetcher,
+    { expected_version: expectedVersion }, signal, fetcher,
   );
 }
