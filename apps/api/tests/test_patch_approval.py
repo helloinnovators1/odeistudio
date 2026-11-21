@@ -10,6 +10,7 @@ from odei_api.config import Settings
 from odei_api.services.patch_approval import (
     CapabilityReplayCache,
     InvalidPatchCapability,
+    PatchApprovalError,
     PatchApprovalNotConfigured,
     PatchCapabilityReplay,
     canonical_patch_digest,
@@ -134,12 +135,12 @@ def test_capability_rejects_untrusted_keys_and_invalid_workspace_or_file_hash():
             proposal_id="proposal-1", proposal_version=2, files=files,
             replay_cache=CapabilityReplayCache(),
         )
-    with pytest.raises(Exception):
+    with pytest.raises(PatchApprovalError):
         canonical_patch_digest(
             workspace_id="../escape", proposal_id="proposal-1",
             proposal_version=2, files=files,
         )
-    with pytest.raises(Exception):
+    with pytest.raises(PatchApprovalError):
         canonical_patch_digest(
             workspace_id="workspace_1234567890123456", proposal_id="proposal-1",
             proposal_version=2, files=[dict(files[0], result_sha256="0" * 64)],
@@ -149,3 +150,25 @@ def test_capability_rejects_untrusted_keys_and_invalid_workspace_or_file_hash():
 def test_patch_approval_settings_must_be_configured_as_a_complete_keyset():
     with pytest.raises(ValueError, match="must be configured together"):
         Settings(patch_approval_issuer="https://api.odei.example")
+
+
+def test_capability_expiry_is_enforced():
+    settings, public_keys, files = _fixture()
+    expired_at = int(time.time()) - 600
+    token, _, _ = issue_patch_apply_capability(
+        settings=settings,
+        principal_issuer="https://identity.odei.example",
+        principal_subject="user-123",
+        organization_id="org-1", project_id="project-1",
+        workspace_id="workspace_1234567890123456",
+        proposal_id="proposal-1", proposal_version=2, files=files,
+        now=expired_at,
+    )
+    with pytest.raises(InvalidPatchCapability):
+        verify_patch_apply_capability(
+            token, public_keys=public_keys, issuer="https://api.odei.example",
+            organization_id="org-1", project_id="project-1",
+            workspace_id="workspace_1234567890123456",
+            proposal_id="proposal-1", proposal_version=2, files=files,
+            replay_cache=CapabilityReplayCache(),
+        )
