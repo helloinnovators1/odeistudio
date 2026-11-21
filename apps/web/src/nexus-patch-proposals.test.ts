@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   approveNexusPatchProposal,
+  createNexusPatchApplyCapability,
   getNexusPatchProposal,
   listNexusPatchProposals,
   rejectNexusPatchProposal,
@@ -71,5 +72,53 @@ describe("NEXUS patch proposal browser client", () => {
     const oversized = vi.fn<typeof fetch>().mockResolvedValue(new Response("x".repeat(8_500_001), { status: 200 }));
     await expect(listNexusPatchProposals(base.api, base.org, base.project, base.token, oversized))
       .rejects.toThrow("oversized patch proposal response");
+  });
+});
+
+
+describe("NEXUS signed local apply capability", () => {
+  it("requests a short-lived capability bound to the approved proposal and companion challenge", async () => {
+    const challenge = "C".repeat(43);
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      capability: "signed-capability",
+      expires_at: 1_900_000_000,
+      workspace_id: "workspace_1234567890123456",
+      companion_challenge: challenge,
+      proposal_id: "proposal-1",
+      proposal_version: 2,
+      patch_sha256: "f".repeat(64),
+      application_enabled: false,
+    }), { status: 200 }));
+    const result = await createNexusPatchApplyCapability(
+      base.api, base.org, base.project, base.token,
+      "proposal-1", 2, "workspace_1234567890123456", challenge, fetcher,
+    );
+    expect(result.capability).toBe("signed-capability");
+    const request = fetcher.mock.calls[0][0] as Request;
+    expect(request.url).toContain("/proposal-1/apply-capability");
+    expect(request.headers.get("Authorization")).toBe("Bearer ephemeral-token");
+    expect(await request.json()).toEqual({
+      expected_version: 2,
+      workspace_id: "workspace_1234567890123456",
+      companion_challenge: challenge,
+      confirm_apply: true,
+    });
+  });
+
+  it("rejects a capability bound to another local workspace", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      capability: "signed-capability",
+      expires_at: 1_900_000_000,
+      workspace_id: "other-workspace",
+      companion_challenge: "C".repeat(43),
+      proposal_id: "proposal-1",
+      proposal_version: 2,
+      patch_sha256: "f".repeat(64),
+      application_enabled: false,
+    }), { status: 200 }));
+    await expect(createNexusPatchApplyCapability(
+      base.api, base.org, base.project, base.token,
+      "proposal-1", 2, "workspace_1234567890123456", "C".repeat(43), fetcher,
+    )).rejects.toThrow("invalid local apply capability");
   });
 });
