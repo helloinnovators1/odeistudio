@@ -636,7 +636,7 @@ def _read_windows_file(root_handle, parts: tuple[str, ...]) -> str | None:
         os.close(descriptor)
 
 
-def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict[str, str]:
+def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict[str, str | bool]:
     """Atomically create, replace or delete one approved file beneath a root handle."""
     import hashlib
 
