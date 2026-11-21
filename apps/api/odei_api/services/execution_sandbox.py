@@ -115,7 +115,11 @@ class ContainerSandbox:
     def __init__(self, *, runtime_path: str | pathlib.Path, workspace_root: str | pathlib.Path) -> None:
         runtime = pathlib.Path(runtime_path)
         root = pathlib.Path(workspace_root)
-        if runtime.is_symlink() or not runtime.is_file():
+        try:
+            runtime = runtime.resolve(strict=True)
+        except OSError as exc:
+            raise SandboxUnavailable("The configured container runtime is unavailable") from exc
+        if not runtime.is_file():
             raise SandboxUnavailable("The configured container runtime is not a regular file")
         if not os.access(runtime, os.X_OK):
             raise SandboxUnavailable("The configured container runtime is not executable")
