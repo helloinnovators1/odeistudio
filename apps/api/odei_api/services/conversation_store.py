@@ -9,7 +9,7 @@ from pymongo import ReturnDocument
 
 MAX_CONVERSATIONS_PAGE = 50
 MAX_CONVERSATION_MESSAGES = 200
-MAX_CONVERSATION_MESSAGE_CHARS = 8_000
+MAX_CONVERSATION_MESSAGE_CHARS = 16_000
 MAX_CONVERSATION_TOTAL_CHARS = 1_000_000
 
 
@@ -89,7 +89,7 @@ class MongoConversationStore:
         if role not in {"user", "assistant"}:
             raise ConversationStoreError("Conversation message role is invalid")
         if not isinstance(content, str) or not content.strip() or len(content) > MAX_CONVERSATION_MESSAGE_CHARS:
-            raise ConversationStoreError("Conversation message must contain 1 to 8,000 characters")
+            raise ConversationStoreError("Conversation message must contain 1 to 16,000 characters")
         if expected_version is not None and expected_version < 0:
             raise ConversationStoreError("Conversation version is invalid")
         query: dict[str, Any] = {
