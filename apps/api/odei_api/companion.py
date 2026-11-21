@@ -24,8 +24,8 @@ from odei_api.services.patch_approval import (
     PatchApprovalError,
     PatchApprovalNotConfigured,
     PatchCapabilityReplay,
-    verify_patch_apply_capability,
     validate_patch_approval_public_keys,
+    verify_patch_apply_capability,
 )
 from odei_api.services.patch_proposals import (
     MAX_FILE_BYTES,
