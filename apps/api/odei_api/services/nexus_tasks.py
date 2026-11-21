@@ -513,7 +513,7 @@ async def nexus_project_chat_stream(
                         return
                     if loop.time() - last_heartbeat >= 15:
                         last_heartbeat = loop.time()
-                        yield b": keep-alive\\n\\n"
+                        yield b": keep-alive\n\n"
                     continue
                 if kind == "delta" and value is not None:
                     answer_parts.append(value)
