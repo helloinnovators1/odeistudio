@@ -74,7 +74,6 @@ def test_capability_binds_exact_workspace_proposal_version_and_patch_and_is_one_
     assert digest == canonical_patch_digest(
         workspace_id="workspace_1234567890123456",
         proposal_id="proposal-1", proposal_version=2, files=files,
-        challenge=CHALLENGE,
     )
     replay = CapabilityReplayCache()
     claims = verify_patch_apply_capability(
@@ -109,6 +108,7 @@ def test_capability_rejects_changed_content_and_wrong_workspace():
         organization_id="org-1", project_id="project-1",
         workspace_id="workspace_1234567890123456",
         proposal_id="proposal-1", proposal_version=2, files=files,
+        challenge=CHALLENGE,
     )
     replay = CapabilityReplayCache()
     changed = [dict(files[0], content="different")]
@@ -127,7 +127,7 @@ def test_capability_rejects_changed_content_and_wrong_workspace():
             organization_id="org-1", project_id="project-1",
             workspace_id="workspace_different123456",
             proposal_id="proposal-1", proposal_version=2, files=files,
-            replay_cache=replay,
+            challenge=CHALLENGE, replay_cache=replay,
         )
 
 
