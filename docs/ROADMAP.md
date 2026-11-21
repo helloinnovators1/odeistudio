@@ -49,7 +49,8 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Integrate the upstream React/Next.js/TypeScript/Monaco Agents and Editor experience after settling the canonical service boundary.
 - [ ] Deliver full project explorer, editor, tabs and multi-card/multi-tab persistence.
 - [ ] Add agent chat, task plan and approval UI.
-- [x] Add active-file preview-only diff dialog in the IDE, backed by the local companion's live hash-checked proposal endpoint.\n- [ ] Add multi-file proposal persistence, explicit reviewer approval/rejection, safe atomic apply/rollback and isolated terminal integration.
+- [x] Add active-file preview-only diff dialog in the IDE, backed by the local companion's live hash-checked proposal endpoint.
+- [ ] Add multi-file proposal persistence, explicit reviewer approval/rejection, safe atomic apply/rollback and isolated terminal integration.
 - [ ] Add preview and diagnostics.
 - [ ] Add persistent tasks and reconnect/resume behavior.
 
