@@ -163,3 +163,27 @@ def test_rejects_non_nfc_unicode_paths() -> None:
     decomposed = "cafe\\u0301.txt"
     with pytest.raises(PatchProposalError, match="Unicode NFC"):
         build_patch_proposal({}, {decomposed: "content"}, {decomposed: None})
+
+
+def test_rejects_case_insensitive_collision_with_base_path() -> None:
+    with pytest.raises(PatchProposalError, match="case-insensitive path"):
+        build_patch_proposal(
+            {"SRC/App.py": "old"},
+            {"src/app.py": "new"},
+            {"src/app.py": None},
+        )
+
+
+def test_rejects_aggregate_replacement_content_over_five_megabytes() -> None:
+    changes = {f"file-{index}.txt": "x" * 900_000 for index in range(6)}
+    hashes = {path: None for path in changes}
+    with pytest.raises(PatchProposalError, match="aggregate content or diff budget"):
+        build_patch_proposal({}, changes, hashes)
+
+
+def test_rejects_aggregate_base_snapshot_over_five_megabytes() -> None:
+    base = {f"file-{index}.txt": "x" * 900_000 for index in range(6)}
+    changes = {path: "replacement" for path in base}
+    hashes = {path: sha256_text(content) for path, content in base.items()}
+    with pytest.raises(PatchProposalError, match="Base snapshot exceeds"):
+        build_patch_proposal(base, changes, hashes)
