@@ -69,7 +69,7 @@ class StreamingSecretRedactor:
         r"db[_-]?password|password|passwd|secret|credential)\b[\"']?\s*[:=]\s*"
     )
     _BEARER = re.compile(r"(?i)\bBearer\s+")
-    _MONGO = re.compile(r"(?i)mongodb(?:\+srv)?://[^:/@\s]+:[^/@\s]+@")
+    _MONGO = re.compile(r"(?i)mongodb(?:\+srv)?://")
     _TOKENS = (
         re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
         re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}"),
@@ -132,7 +132,24 @@ class StreamingSecretRedactor:
                 if ending:
                     secret_end = ending.end()
             elif marker.casefold().startswith("mongodb"):
-                secret_end = end
+                authority_end = min(
+                    (position for position in (self._buffer.find("/", end), self._buffer.find("?", end),
+                     self._buffer.find(" ", end), self._buffer.find("\\t", end), self._buffer.find("\\r", end),
+                     self._buffer.find("\\n", end)) if position >= 0),
+                    default=-1,
+                )
+                authority_limit = authority_end if authority_end >= 0 else len(self._buffer)
+                at = self._buffer.find("@", end, authority_limit)
+                if at >= 0 and ":" in self._buffer[end:at]:
+                    secret_end = at + 1
+                elif authority_end >= 0:
+                    output.append(self._buffer[:authority_end])
+                    self._buffer = self._buffer[authority_end:]
+                    continue
+                elif final:
+                    output.append(self._buffer)
+                    self._buffer = ""
+                    break
             elif marker.casefold().startswith("bearer"):
                 token_end = self._token_end(self._buffer, end, self._TOKEN_CHARS)
                 if token_end < len(self._buffer):
