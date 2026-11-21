@@ -209,7 +209,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
       setNotice(`Read-only response from ${response.model}. No tools ran and no conversation was persisted.`);
     } catch (cause) {
       if (controller.signal.aborted) {
-        setNotice("Request cancelled. The partial request was not reported as completed.");
+        setNotice("Client request aborted. The current API does not guarantee provider-side cancellation.");
       } else {
         setChatError(errorMessage(cause));
       }
