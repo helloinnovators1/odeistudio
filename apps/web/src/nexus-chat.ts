@@ -169,7 +169,7 @@ export async function sendNexusChat(
     typeof payload.answer !== "string" || !payload.answer.trim() ||
     typeof payload.model !== "string" || payload.read_only !== true ||
     payload.tools_executed !== 0 || typeof payload.conversation_persisted !== "boolean" ||
-    (request.conversationId && payload.conversation_persisted !== true)
+    (request.conversationId && (payload.conversation_persisted !== true || payload.conversation_id !== request.conversationId))
   ) {
     throw new NexusChatTransportError("NEXUS returned an unexpected response contract.", response.status);
   }
@@ -236,7 +236,7 @@ async function conversationRequest(
     },
   );
   const raw = await response.text();
-  if (raw.length > 1_100_000) throw new NexusChatTransportError("NEXUS returned oversized conversation data.", response.status);
+  if (raw.length > 7_000_000) throw new NexusChatTransportError("NEXUS returned oversized conversation data.", response.status);
   let payload: Record<string, unknown>;
   try {
     const parsed: unknown = raw ? JSON.parse(raw) : {};
