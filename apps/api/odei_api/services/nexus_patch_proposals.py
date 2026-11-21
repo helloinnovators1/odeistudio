@@ -82,6 +82,7 @@ class PatchApplyCapabilityRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=0)
     workspace_id: StrictStr = Field(min_length=16, max_length=128)
+    companion_challenge: StrictStr = Field(min_length=32, max_length=128)
     confirm_apply: StrictBool
 
     @model_validator(mode="after")
@@ -90,6 +91,8 @@ class PatchApplyCapabilityRequest(BaseModel):
             raise ValueError("Explicit apply confirmation is required")
         if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", self.workspace_id):
             raise ValueError("Workspace identifier is invalid")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", self.companion_challenge):
+            raise ValueError("A fresh companion challenge is required")
         return self
 
 
@@ -469,6 +472,7 @@ async def create_patch_apply_capability(
             proposal_id=proposal_id,
             proposal_version=item["version"],
             files=item["files"],
+            challenge=payload.companion_challenge,
         )
     except PatchApprovalNotConfigured as exc:
         raise HTTPException(status_code=503, detail={"code": "PATCH_APPROVAL_SIGNING_UNAVAILABLE", "message": "Local patch approval signing is not configured."}) from exc
@@ -495,6 +499,7 @@ async def create_patch_apply_capability(
         "proposal_id": proposal_id,
         "proposal_version": item["version"],
         "workspace_id": payload.workspace_id,
+        "companion_challenge": payload.companion_challenge,
         "patch_sha256": digest,
         "application_enabled": False,
     }
