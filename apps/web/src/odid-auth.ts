@@ -297,11 +297,7 @@ function parseTokenResponse(
   ) {
     throw new ODidOAuthError("ODID returned an invalid access-token response.");
   }
-  if (returnedRefreshToken !== undefined && (
-    typeof returnedRefreshToken !== "string"
-    || !/^[A-Za-z0-9\-._~+/]+=*$/.test(returnedRefreshToken)
-    || returnedRefreshToken.length > MAX_REFRESH_TOKEN_CHARS
-  )) {
+  if (returnedRefreshToken !== undefined && !validRefreshToken(returnedRefreshToken)) {
     throw new ODidOAuthError("ODID returned an invalid refresh-token response.");
   }
   const refreshToken = typeof returnedRefreshToken === "string"
@@ -412,11 +408,7 @@ export async function refreshODIDAccessToken(
   options: { fetcher?: Fetcher; now?: number; signal?: AbortSignal } = {},
 ): Promise<ODidAccessToken> {
   const config = validateConfig(rawConfig);
-  if (
-    typeof currentRefreshToken !== "string"
-    || !/^[A-Za-z0-9\-._~+/]+=*$/.test(currentRefreshToken)
-    || currentRefreshToken.length > MAX_REFRESH_TOKEN_CHARS
-  ) {
+  if (!validRefreshToken(currentRefreshToken)) {
     throw new ODidOAuthError("The in-memory ODID refresh token is invalid.");
   }
   const fetcher = options.fetcher ?? fetch;
@@ -456,10 +448,7 @@ export async function revokeODIDToken(
   options: { fetcher?: Fetcher } = {},
 ): Promise<boolean> {
   const config = validateConfig(rawConfig);
-  if (
-    typeof token !== "string" || !/^[A-Za-z0-9\-._~+/]+=*$/.test(token)
-    || token.length > MAX_REFRESH_TOKEN_CHARS
-  ) {
+  if (!validRefreshToken(token)) {
     throw new ODidOAuthError("The in-memory ODID token is invalid.");
   }
   const fetcher = options.fetcher ?? fetch;
