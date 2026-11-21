@@ -413,6 +413,11 @@ def create_companion_app(
         require_selected_workspace(workspace_id)
         if patch_approval_issuer is None or patch_approval_public_keys is None:
             raise HTTPException(status_code=503, detail="Signed patch application is not configured")
+        try:
+            if not registry.can_apply_patch(workspace_id):
+                raise HTTPException(status_code=409, detail="The selected workspace is read-only")
+        except WorkspaceNotFound as exc:
+            raise HTTPException(status_code=404, detail="The selected workspace is no longer available") from exc
         challenge = apply_challenges.issue(workspace_id, session_token)
         return {
             "workspace_id": workspace_id,
