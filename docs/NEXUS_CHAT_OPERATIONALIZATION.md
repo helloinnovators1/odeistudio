@@ -1,6 +1,6 @@
 # NEXUS Chat Panel Operationalisation
 
-**Status:** implementation contract and delivery gates. The current panel is a UI shell; the authenticated API and browser transport exist, but the transport is not connected to the composer. This document defines the complete operational target without representing planned capabilities as shipped.
+**Status:** implementation contract and delivery gates. The current panel is a UI shell; the authenticated API and browser transports exist, but neither identity acquisition nor chat submission is connected to the composer. A provider-neutral OAuth 2.0 PKCE client now exists as an unconnected integration foundation. This document defines the complete operational target without representing planned capabilities as shipped.
 
 ## 1. Product responsibility
 
@@ -171,11 +171,13 @@ Implemented:
 - NEXUS panel shell, left/right preference and Ctrl+I/Command+I toggle.
 - Project-scoped authenticated read-only API foundation.
 - Bounded chat transport with in-memory bearer token input, HTTPS/loopback validation, no cookies/cache, abort signal and response-contract validation.
+- Provider-neutral OAuth 2.0 Authorization Code + PKCE S256 browser client with issuer discovery validation, callback-origin/state validation, bounded token exchange and no access-token persistence. It is not wired to the app and has not been tested against ODID staging.
 - Secret redaction, explicit cloud consent, server-side membership checks and audit events.
 - Bounded selected workspace excerpt contract.
 
 Not yet implemented or connected:
-- ODID browser login/PKCE and trusted project selector.
+- ODID production browser login integration: the generic PKCE helper exists, but approved ODID issuer/client/redirect/resource/scope configuration, callback route, runtime configuration and real issuer/JWKS verification are still absent.
+- Trusted organization discovery and project selector.
 - Composer-to-transport integration.
 - Streaming and cancellation endpoint.
 - Durable conversation history and retention controls.
