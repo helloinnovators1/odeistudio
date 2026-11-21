@@ -10,6 +10,8 @@ import pytest
 from odei_api.services.execution_sandbox import (
     ContainerSandbox,
     SandboxProfile,
+    SandboxProfileNotFound,
+    SandboxProfileRegistry,
     UnsafeSandboxWorkspace,
     _capture_bounded,
 )
@@ -44,6 +46,24 @@ def test_profile_requires_digest_pinned_image_and_bounded_command() -> None:
         profile(command=()).validate()
     with pytest.raises(ValueError, match="timeout"):
         profile(timeout_seconds=601).validate()
+
+
+
+def test_profile_registry_only_returns_registered_validated_profiles() -> None:
+    approved = profile()
+    registry = SandboxProfileRegistry([approved])
+    assert registry.names == ("python-tests",)
+    assert registry.get("python-tests") is approved
+    with pytest.raises(SandboxProfileNotFound):
+        registry.get("node-tests")
+    with pytest.raises(SandboxProfileNotFound):
+        registry.get("../python-tests")
+    with pytest.raises(ValueError, match="At least one"):
+        SandboxProfileRegistry([])
+    with pytest.raises(ValueError, match="Duplicate"):
+        SandboxProfileRegistry([approved, profile()])
+    with pytest.raises(ValueError, match="pinned"):
+        SandboxProfileRegistry([profile(image="ghcr.io/odei/python:latest")])
 
 
 def test_runtime_arguments_enforce_network_and_privilege_boundaries(tmp_path: Path) -> None:
