@@ -333,10 +333,11 @@ def test_companion_builds_live_patch_preview_without_writing_files(tmp_path) -> 
     try:
         headers = _paired_headers(client, code)
         original = "print('ODEI')"
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
         response = client.post(
-            "/v1/workspaces/" + registry_id := client.get(
-                "/v1/workspaces", headers=headers
-            ).json()["workspaces"][0]["workspace_id"] + "/patch-proposals",
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
             headers=headers,
             json={
                 "changes": {"main.py": "print('NEXUS')"},
@@ -352,7 +353,7 @@ def test_companion_builds_live_patch_preview_without_writing_files(tmp_path) -> 
         assert payload["files"][0]["operation"] == "update"
         assert "-print('ODEI')" in payload["files"][0]["unified_diff"]
         assert "+print('NEXUS')" in payload["files"][0]["unified_diff"]
-        assert registry.read_text(registry_id, "main.py") == original
+        assert registry.read_text(workspace_id, "main.py") == original
     finally:
         registry.close()
 
@@ -423,7 +424,6 @@ def test_companion_patch_preview_rejects_stale_hash_and_nested_create(tmp_path) 
 def test_companion_patch_preview_requires_valid_session(tmp_path) -> None:
     client, registry, _pairing, _code = _build_client(tmp_path)
     try:
-        workspace_id = registry.list_files  # Keep the route test independent of private registry state.
         response = client.post(
             "/v1/workspaces/not-authorized/patch-proposals",
             headers={"Origin": ORIGIN},
