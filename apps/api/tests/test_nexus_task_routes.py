@@ -74,6 +74,17 @@ class ConversationStore:
             return None
         return item
 
+    async def delete_for_owner(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id):
+        item = await self.get_for_owner(
+            organization_id=organization_id, project_id=project_id,
+            owner_issuer=owner_issuer, owner_subject=owner_subject,
+            conversation_id=conversation_id,
+        )
+        if item is None:
+            return False
+        del self.documents[conversation_id]
+        return True
+
     async def append(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id, role, content, expected_version=None):
         item = await self.get_for_owner(
             organization_id=organization_id, project_id=project_id,
@@ -469,3 +480,29 @@ def test_nexus_chat_persists_user_and_assistant_turns_in_conversation(route_stat
     stored = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
     assert stored["messages"][1]["content"] == "I will use the saved context."
+
+
+
+def test_conversation_message_append_and_delete_are_audited(route_state):
+    _, audit, _, conversations = route_state
+    client = TestClient(app)
+    item = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Message lifecycle"},
+    ).json()
+    conversation_id = item["conversation_id"]
+    appended = client.post(
+        f"/api/v1/organizations/org-1/projects/project-1/nexus/conversations/{conversation_id}/messages",
+        json={"role": "user", "content": "Hello", "expected_version": 0},
+    )
+    assert appended.status_code == 200, appended.text
+    assert appended.json()["version"] == 1
+    assert appended.json()["messages"][0]["content"] == "Hello"
+    deleted = client.delete(
+        f"/api/v1/organizations/org-1/projects/project-1/nexus/conversations/{conversation_id}"
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+    assert conversation_id not in conversations.documents
+    assert audit.events[-2]["action"] == "nexus.conversation.message.append"
+    assert audit.events[-1]["action"] == "nexus.conversation.delete"
