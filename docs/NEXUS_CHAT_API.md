@@ -1,114 +1,99 @@
 # NEXUS project chat API
 
-**Status:** first authenticated, project-authorized, read-only chat endpoint implemented. Browser ODID session integration and streaming are not yet connected.
+**Current status (2026-11-21):** the main branch includes authenticated project-scoped JSON chat, SSE streaming, durable owner-scoped conversations, bounded read-only inspection of explicitly attached excerpts, persisted patch proposals, project-owner decisions, signed apply-capability issuance and a merged one-file local companion apply path. Production ODID configuration, MongoDB deployment controls, model credentials, Windows 10 build 18362 acceptance and staging E2E remain open. The basic chat route remains tool-free; the separate inspection route exposes only the attached-excerpt allowlist.
 
-## Endpoint
+## 1. Identity and authorization
+
+All API routes require the existing RS256/JWKS bearer dependency and validate issuer, audience, access-token type, client allowlist and required claims. Organization membership and project access are resolved server-side. Client-supplied organization roles, project IDs and conversation IDs are not authorization evidence.
+
+The browser uses a provider-neutral OAuth 2.0 Authorization Code + PKCE S256 client. It keeps access tokens in memory and does not put them in localStorage, sessionStorage, cookies, URLs or logs. Actual ODID issuer/discovery, public client ID, registered redirect URI, scopes/resource, token profile and refresh/revocation contract must be configured and staging-verified by the identity/API owners.
+
+## 2. Chat request contract
+
+### JSON chat
 
 `POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat`
 
-Requires a verified ODEI Identity OAuth access token through the API's existing RS256/JWKS bearer dependency, an active organization membership, and active project access. Client-supplied organization roles are never trusted.
+The request contains:
+- `messages`: 1–20 user/assistant messages, final message from the user, at most 8,000 characters each.
+- Optional `workspace_files`: at most five explicitly selected excerpts, at most 8,000 characters each.
+- Strict `cloud_model_consent: true`.
+- Optional server-generated `conversation_id` for durable history.
 
-Example request:
+Combined request context is bounded to 40,000 characters. Secret-like values are redacted before model submission. Repository content and prior conversation are untrusted data, never instructions.
 
-```json
-{
-  "messages": [
-    {"role": "user", "content": "Review the selected source file."}
-  ],
-  "workspace_files": [
-    {"path": "src/main.py", "content": "print('hello')"}
-  ],
-  "cloud_model_consent": true
-}
-```
+The basic JSON chat route is tool-free and read-only. Its response includes the answer/model and a contract indicating no tools were executed; when a conversation ID is supplied, user and assistant turns are persisted separately by ODEI. Provider-side storage remains disabled (`store=false`).
 
-Example response:
+### SSE streaming
 
-```json
-{
-  "answer": "…",
-  "model": "…",
-  "read_only": true,
-  "tools_executed": 0,
-  "conversation_persisted": false
-}
-```
+`POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/stream`
 
-## Consent and bounded input
+The separate streaming endpoint emits status, incremental delta, error and completion events. It persists the user turn before generation and the assistant turn only after successful completion, using optimistic conversation versions. Secret redaction is incremental across provider event boundaries so incomplete secret-like values are withheld before a delta reaches the browser.
 
-- `cloud_model_consent` is a required strict boolean and must be true.
-- 1–20 conversation messages, roles limited to `user` and `assistant`; final message must be from the user.
-- Maximum 8,000 characters per message; 40,000 combined input characters.
-- Up to 5 selected workspace file excerpts, each up to 8,000 characters.
-- Common secret formats and credential assignments are redacted before model submission.
-- Workspace content and prior conversation are untrusted data, never instructions.
-- Responses API uses `store=false`; server-side conversation persistence is not enabled.
+The browser can abort its request and stop waiting. Provider cancellation is best-effort: the synchronous provider worker can stop only when the stream iterator yields/closes. The UI must not represent a browser abort as guaranteed upstream cancellation.
 
-## Authorization and audit
+## 3. Read-only attached-excerpt tools
 
-- API verifies the bearer token signature, issuer, audience, token type, client allowlist and required claims.
-- Organization membership and project access are resolved from MongoDB.
-- A denied project lookup is audited by the existing project authorization guard.
-- Chat request start, success and failure are audited with actor issuer/subject and project target.
-- Audit metadata contains counts and model identifier only; prompt text, workspace contents and model answer are not recorded.
-- If the audit store is unavailable before model submission, the request fails closed.
-- The model request is synchronous; no SSE/WebSocket streaming or cancellation is exposed yet.
+`POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/inspect`
 
-## Capability boundaries
+This route requires a saved conversation, explicit cloud consent and one to five file excerpts explicitly attached by the user. It rechecks project access and conversation ownership before running the bounded agent loop.
 
-This is a project-authorized chat endpoint, not the complete coding agent:
+Allowlisted tools:
+- `list_attached_excerpts`: lists only attached relative paths and character counts.
+- `read_attached_excerpt`: reads the exact excerpt attached in this request.
+- `search_attached_excerpts`: literal case-insensitive search, bounded result count and line size.
 
-- No model tools are registered for this route.
-- No file writes, patch application, shell commands, test execution, deployment or settings changes.
-- No server-side conversation history, durable chat sessions, streaming or reconnect cursor.
-- The browser IDE does not yet acquire an ODID access token or call this endpoint. The existing NEXUS composer remains disabled until the trusted browser identity integration is implemented.
-- Workspace excerpts are supplied by the authenticated caller. The endpoint cannot independently verify that the caller's selected local file bytes came from the companion; the client must only submit content read from its explicitly paired read-only companion and must present consent before sending it.
+The schemas are strict and reject additional properties. The tool loop is capped at six rounds and twelve calls. No arbitrary workspace root, companion handle, unselected file, filesystem access, shell, network, write or deployment tool is exposed. This is not whole-repository indexing or semantic retrieval.
 
-## Tests
+## 4. Durable conversations
 
-- Consent required before any provider call.
-- Active project authorization required.
-- Audit start/success events exclude message contents.
-- Read-only response contract is asserted.
-- Stateless provider call asserts `store=false` and absence of tool definitions.
-- Input bounds, role validation, missing answers and secret redaction are unit-tested.
+Authenticated conversation routes create, list, read, append and delete records scoped to organization, project and verified issuer/subject. Every request rechecks membership and project access. Conversations are visible only to their owner identity, even among project members.
 
-See [NEXUS](NEXUS.md), [API and events](API_AND_EVENTS.md), and [IDE workspace](IDE_WORKSPACE.md).
+Writes use optimistic version checks. Message count is capped at 200 and aggregate UTF-8 content at 1 MB. Lists return metadata summaries rather than transcripts. Titles/messages are secret-redacted before persistence; audit events cover lifecycle actions without storing prompts or source contents. MongoDB indexes are initialized by API lifespan.
 
+A CI replica-set test verifies transactional storage behavior, but it is not evidence that a production Atlas/replica-set deployment, encryption-at-rest, backups, retention, deletion/export or recovery policy is configured.
 
-## Browser transport increment
+## 5. Patch proposal and approval workflow
 
-The web application now has a typed transport in `apps/web/src/nexus-chat.ts` with Vitest coverage. It sends the project-scoped request using an in-memory bearer token supplied by its future trusted identity integration; it does not persist tokens, include cookies, follow redirects or cache responses. It requires HTTPS except for loopback development, enforces message/file/combined context limits before network access, requires explicit consent, supports abort signals, and validates the read-only response contract.
+Authenticated project-scoped proposal routes create/list/read proposals and allow the project owner to approve or reject an exact version. Proposals store bounded file operations, base/result SHA-256 hashes, proposed content and unified diffs. Limits are 20 files, 1 MB per file, 5 MB aggregate replacement content and 8 MB aggregate diff. New nested-directory creation is not supported.
 
-This transport is not an ODID login implementation. No issuer, discovery metadata, authorization endpoint, token endpoint, registered browser client ID, redirect URI or refresh/revocation contract has been supplied. Therefore the composer remains disabled. Do not ask users to paste access tokens into the application or enable the composer until the production identity contract is approved and the browser authorization-code-with-PKCE integration is implemented and tested.
+Only the project owner can approve/reject. Decisions use optimistic version checks and do not themselves write local files.
 
+The apply-capability route issues a short-lived Ed25519 capability only for an approved proposal and fresh companion challenge. The capability binds issuer/audience, identity, organization/project, workspace, proposal/version, canonical patch digest, token ID and expiry.
 
-## Durable NEXUS conversations — implementation in review (2026-11-21)
+The paired companion independently verifies the signature and all bindings, consumes the one-use challenge, re-reads the live target and checks its base hash. It accepts exactly one file operation per apply request. Windows uses handle-relative FileRenameInformationEx POSIX-semantics replacement; POSIX uses descriptor-relative no-follow operations. The API does not receive a local filesystem path and never performs the local write itself.
 
-Feature branch: `feat/nexus-durable-conversations`. This increment is not merged or production-deployed.
+Multi-file transactional apply, durable rollback journals and crash recovery are not implemented.
 
-- Added MongoDB-backed conversation records keyed by conversation ID and scoped to organization, project, verified identity issuer and subject.
-- Added authenticated create/list/read/append/delete endpoints. Every endpoint rechecks active organization membership and project access. A conversation is visible only to its creating identity, even among project members.
-- Conversation writes use optimistic version checks; message count is capped at 200 and aggregate UTF-8 content at 1 MB. Conversation lists return metadata summaries rather than full transcripts.
-- Added secret redaction before conversation titles and messages are persisted. Audit events cover create/list/read/append/delete and chat request outcomes without logging prompts or source contents.
-- The chat endpoint now loads history from the authorized conversation, appends the user's turn and persists the assistant response. The provider receives only the latest bounded 19 persisted turns plus the new turn and explicitly selected workspace excerpts. Existing stateless compatibility remains available when no conversation ID is supplied.
-- The Studio loads the most recent saved conversation when a project is selected, supports switching histories, starting a new conversation and deleting a saved conversation.
-- MongoDB indexes are initialized by the API lifespan. Durable storage requires a configured MongoDB deployment; encryption-at-rest is a database/hosting configuration requirement and has not been verified here.
-- Automated tests have been added for owner/tenant isolation, optimistic versions, create/list/read/append/delete, durable chat turns, browser transport and the audit `started` lifecycle. They are not yet verified on this branch until CI completes.
+## 6. Audit and data handling
 
-Not included in this increment: SSE/token streaming, guaranteed provider cancellation, tool invocation, chat-generated patch proposals, patch approval/application/rollback, isolated terminal/test execution, agent orchestration or production ODID/Mongo/model deployment configuration.
+- Explicit cloud-model consent is required before sending prompts or attached excerpts to the provider.
+- Provider requests use `store=false`; ODEI conversation history is stored separately under tenant/project/owner scope.
+- Audit metadata records action, outcome, actor, project, counts, model and bounded tool-call metadata. Prompts, source content, diffs, bearer tokens and private signing keys are not audit payloads.
+- If required audit storage is unavailable before a sensitive operation, the request fails closed.
+- Local companion pairing is not API identity and is not cloud consent.
+- No access token or private signing key is persisted by the browser.
 
+## 7. Current tests
 
-## NEXUS SSE streaming increment — in review (2026-11-21)
+Coverage includes:
+- Project/organization authorization and owner-only decisions.
+- Consent, request bounds, role validation, secret redaction and safe errors.
+- Durable conversation ownership, version conflicts, append/delete and audit behavior.
+- SSE parsing, incremental secret redaction, response persistence and cancellation semantics.
+- Attached-excerpt tool schemas, path scoping, secret redaction, unregistered tool rejection and bounded call loops.
+- Patch proposal path/hash/size validation, owner decisions, capability signatures, replay/challenge checks and local apply safety.
+- Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB replica-set integration, CodeQL, secret scanning and Python/web dependency audits on the merged PR #24 source head.
 
-Feature branch: `feat/nexus-streaming-chat`. This increment is not merged or deployed.
+## 8. Explicit non-capabilities and release gates
 
-- Added authenticated `POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/stream` requiring explicit cloud-model consent and a server-owned conversation ID.
-- Streams Responses API text deltas over Server-Sent Events. The API persists the user turn before generation and the assistant turn only after successful stream completion, using optimistic conversation versions.
-- Added incremental credential redaction that withholds incomplete secret-like values across provider event boundaries before any text delta is sent to the browser.
-- Emits `status`, `delta`, `error` and `done` events; disables response caching and proxy buffering.
-- Connected the browser panel to incremental SSE parsing and rendering. The existing Stop control aborts the browser request; provider cancellation is best-effort because the synchronous SDK worker can only stop when its stream iterator yields or closes.
-- Provider streaming uses `store=False`, no tools and the existing bounded/redacted context. The panel continues to require explicit per-message cloud consent.
-- Added server streaming/redaction, route persistence, and browser SSE transport tests. CI on the exact feature head is required before merge.
+Not implemented:
+- Whole-workspace model tools, semantic indexing and autonomous repository discovery.
+- Multi-file atomic apply, durable rollback, crash recovery and rollback UI.
+- Terminal/shell, isolated command/test execution, package installation or execution artifacts.
+- Agents Window orchestration, CLI, cloud/background agents and MAC/MAD execution.
+- Production deployment, production monitoring and verified production backup/restore.
 
-Still outstanding: durable transactional audit coupling for every conversation mutation, guaranteed provider-side cancellation, encrypted-at-rest/retention configuration verification, repository tool invocation, task-planning UI, persistent patch proposals, approval/application/rollback, isolated command/test execution, agent orchestration and production staging E2E.
+Before production use, configure and staging-test the actual ODID/API trust contract, MongoDB replica-set topology and encryption/backup policy, server-side model credentials, patch signer/pinned companion public key and exact CORS origins. Install and test the local companion on the user's Windows 10 build 18362 device. No such device test, real ODID staging test or production deployment has been performed in this hosted session.
+
+See [NEXUS chat operationalisation](NEXUS_CHAT_OPERATIONALIZATION.md), [local patch application](LOCAL_PATCH_APPLICATION.md), [patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md), [NEXUS task planning](NEXUS_TASKS.md) and [implementation status](IMPLEMENTATION_STATUS.md).
