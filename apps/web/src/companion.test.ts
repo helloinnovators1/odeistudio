@@ -131,7 +131,7 @@ describe("signed companion patch application", () => {
       applied: true,
       files: [{
         path: "main.py", operation: "update",
-        result_sha256: "b".repeat(64), applied: true,
+        result_sha256: "b".repeat(64), applied: true, durability_confirmed: true,
       }],
     }), { status: 200 }));
     const file = {
