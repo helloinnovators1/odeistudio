@@ -108,8 +108,46 @@ function endpoint(value: unknown, label: string): string {
 }
 
 async function readJson(response: Response, maximum: number, label: string): Promise<Record<string, unknown>> {
-  const text = await response.text();
-  if (text.length > maximum) throw new ODidOAuthError(`ODID ${label} response is oversized.`);
+  const declaredLength = Number(response.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maximum) {
+    throw new ODidOAuthError(`ODID ${label} response is oversized.`);
+  }
+  let text: string;
+  if (response.body) {
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > maximum) {
+          await reader.cancel();
+          throw new ODidOAuthError(`ODID ${label} response is oversized.`);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new ODidOAuthError(`ODID ${label} response is invalid.`);
+    }
+  } else {
+    text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maximum) {
+      throw new ODidOAuthError(`ODID ${label} response is oversized.`);
+    }
+  }
   let value: unknown;
   try {
     value = JSON.parse(text);
