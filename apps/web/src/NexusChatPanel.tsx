@@ -366,6 +366,31 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             </label>
           )}
           {selectedProject && <p className="nexus-selected-project">Project: <strong>{selectedProject.name}</strong></p>}
+          {selectedProject && (
+            <div className="nexus-conversation-controls">
+              <label htmlFor="nexus-conversation-id">CONVERSATION HISTORY</label>
+              <select id="nexus-conversation-id" value={conversationId} disabled={conversationBusy || sending}
+                onChange={async (event) => {
+                  const selected = event.target.value;
+                  if (!selected) { setConversationId(""); setMessages([]); return; }
+                  setConversationBusy(true);
+                  try {
+                    const item = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access!.accessToken, selected);
+                    setConversationId(item.conversation_id);
+                    setMessages(item.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+                    setChatError("");
+                  } catch (cause) { setChatError(errorMessage(cause)); }
+                  finally { setConversationBusy(false); }
+                }}>
+                <option value="">New conversation</option>
+                {conversations.map((item) => <option key={item.conversation_id} value={item.conversation_id}>{item.title}</option>)}
+              </select>
+              <button type="button" className="nexus-link-button" disabled={sending || conversationBusy}
+                onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setChatError(""); }}>
+                New
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -420,7 +445,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 }}
               />
               <div>
-                <span>Read-only · session-only history</span>
+                <span>Read-only · durable project history</span>
                 {sending
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>Stop</button>
                   : <button type="submit" disabled={!draft.trim() || !consent}>Send</button>}
