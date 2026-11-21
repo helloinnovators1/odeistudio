@@ -320,6 +320,11 @@ async def list_patch_proposals(
         )
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is temporarily unavailable."}) from exc
+    await _audit_proposal(
+        request, principal, organization_id, project_id,
+        "nexus.patch_proposal.list", "success",
+        project_id=project_id, proposal_count=len(items),
+    )
     return {"proposals": [_proposal_summary(item) for item in items], "limit": 30}
 
 
