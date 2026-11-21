@@ -530,25 +530,31 @@ async def nexus_project_chat_stream(
                     break
             await worker
             answer = "".join(answer_parts)
-            saved = await conversation_store.append(
-                organization_id=organization_id, project_id=project_id,
-                owner_issuer=principal.issuer, owner_subject=principal.subject,
-                conversation_id=payload.conversation_id, role="assistant",
-                content=answer, expected_version=persisted_user["version"],
-            )
-            if saved is None:
+            try:
+                saved = await conversation_store.append(
+                    organization_id=organization_id, project_id=project_id,
+                    owner_issuer=principal.issuer, owner_subject=principal.subject,
+                    conversation_id=payload.conversation_id, role="assistant",
+                    content=answer, expected_version=persisted_user["version"],
+                )
+                if saved is None:
+                    raise RuntimeError("Conversation version changed during streamed generation")
                 await _append_nexus_chat_audit(
                     request, principal, organization_id, project_id,
-                    outcome="failure", message_count=len(model_messages),
-                    file_count=len(payload.workspace_files),
+                    outcome="success", message_count=len(model_messages),
+                    file_count=len(payload.workspace_files), model=model,
                 )
-                yield encode_event("error", {"message": "Conversation changed while NEXUS was responding. Reload its history."})
+            except Exception:
+                try:
+                    await _append_nexus_chat_audit(
+                        request, principal, organization_id, project_id,
+                        outcome="failure", message_count=len(model_messages),
+                        file_count=len(payload.workspace_files),
+                    )
+                except HTTPException:
+                    logger.warning("NEXUS stream completion audit could not be written")
+                yield encode_event("error", {"message": "NEXUS could not save the completed response. Reload conversation history."})
                 return
-            await _append_nexus_chat_audit(
-                request, principal, organization_id, project_id,
-                outcome="success", message_count=len(model_messages),
-                file_count=len(payload.workspace_files), model=model,
-            )
             yield encode_event("done", {
                 "model": model,
                 "conversation_id": payload.conversation_id,
