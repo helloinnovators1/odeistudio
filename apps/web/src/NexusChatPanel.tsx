@@ -168,6 +168,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setProjects([]);
       setProjectId("");
       setMessages([]);
+      setTaskPlan(null);
+      setTaskError("");
       setNotice("Your sign-in expired. Sign in again.");
       return;
     }
@@ -178,6 +180,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setProjects([]);
       setProjectId("");
       setMessages([]);
+      setTaskPlan(null);
+      setTaskError("");
       setNotice("Your sign-in expired. Sign in again.");
     }, remaining);
     return () => window.clearTimeout(timer);
@@ -234,7 +238,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       return;
     }
     const projectContext = attachActiveFile && activeFile
-      ? "Selected file: " + activeFile.path + "\\n" + activeFile.content.slice(0, 8_000)
+      ? "Selected file: " + activeFile.path + "\n" + activeFile.content.slice(0, 8_000)
       : "";
     const controller = new AbortController();
     taskAbortRef.current = controller;
