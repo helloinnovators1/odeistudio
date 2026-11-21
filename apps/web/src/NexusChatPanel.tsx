@@ -108,6 +108,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const callbackHandled = useRef(false);
   const authGenerationRef = useRef(0);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshPromiseRef = useRef<Promise<ODidAccessToken> | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -251,7 +252,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setAuthBusy(true);
       const controller = new AbortController();
       refreshAbortRef.current = controller;
-      void refreshODIDAccessToken(config.auth, refreshToken, { signal: controller.signal })
+      const refreshPromise = refreshODIDAccessToken(config.auth, refreshToken, { signal: controller.signal });
+      refreshPromiseRef.current = refreshPromise;
+      void refreshPromise
         .then((nextToken) => {
           if (authGenerationRef.current !== generation) return;
           setAccess(nextToken);
@@ -266,6 +269,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           );
         })
         .finally(() => {
+          if (refreshPromiseRef.current === refreshPromise) refreshPromiseRef.current = null;
           if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
           if (authGenerationRef.current === generation) setAuthBusy(false);
         });
@@ -410,9 +414,15 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
   function signOut() {
     const currentAccess = access;
+    const pendingRefresh = refreshPromiseRef.current;
     authGenerationRef.current += 1;
-    refreshAbortRef.current?.abort();
-    refreshAbortRef.current = null;
+    if (pendingRefresh) {
+      // Let a rotating refresh finish so sign-out can revoke the replacement token.
+      refreshAbortRef.current = null;
+    } else {
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
+    }
     abortRef.current?.abort();
     abortRef.current = null;
     taskAbortRef.current?.abort();
@@ -422,11 +432,24 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setAuthError("");
     try { clearODIDLoginTransaction(); } catch { /* no pending transaction to clear */ }
     if (config.auth && currentAccess) {
-      const token = currentAccess.refreshToken ?? currentAccess.accessToken;
-      const hint = currentAccess.refreshToken ? "refresh_token" : "access_token";
-      void revokeODIDToken(config.auth, token, hint).catch(() => {
-        // Local sign-out must complete even when the provider revocation endpoint is unavailable.
-      });
+      void (async () => {
+        let token = currentAccess.refreshToken ?? currentAccess.accessToken;
+        let hint: "refresh_token" | "access_token" = currentAccess.refreshToken
+          ? "refresh_token"
+          : "access_token";
+        if (pendingRefresh) {
+          try {
+            const refreshed = await pendingRefresh;
+            token = refreshed.refreshToken ?? refreshed.accessToken;
+            hint = refreshed.refreshToken ? "refresh_token" : "access_token";
+          } catch {
+            // Fall back to revoking the token held before the refresh attempt.
+          }
+        }
+        await revokeODIDToken(config.auth!, token, hint).catch(() => {
+          // Local sign-out must complete even when provider revocation is unavailable.
+        });
+      })();
     }
     setOrganizations([]);
     setOrganizationId("");
