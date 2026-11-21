@@ -1,6 +1,6 @@
 # NEXUS Chat Panel Operationalisation
 
-**Status:** the NEXUS panel now has an interactive ODID PKCE sign-in/callback path, tenant-scoped project listing, per-request cloud consent and a functional synchronous read-only composer. Production use remains gated on real ODID/API configuration and staging validation. Streaming, durable history, tools, patch application, isolated execution and agents remain future work.
+**Current status (2026-11-21):** the panel has an interactive provider-neutral ODID PKCE login/callback path, server-discovered organization memberships, authorized project selection, explicit per-request cloud consent, a working composer, durable owner-scoped conversations, SSE streaming and cancellation controls. A separate read-only inspection mode now invokes strict list/read/literal-search tools over only the file excerpts explicitly attached by the user. The exact feature-branch head `4bf3795970f6cdd1355654c540d63bec710cb438` has 10/10 successful GitHub checks but is not yet merged. Production ODID configuration and staging validation remain external prerequisites. Whole-workspace tools, chat-driven patch creation/approval/application, rollback, isolated terminal/test execution and agent orchestration are not delivered by this increment.
 
 ## 1. Product responsibility
 
