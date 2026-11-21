@@ -732,7 +732,8 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
             "path": item["path"],
             "operation": operation,
             "result_sha256": result_hash or "",
-            "applied": "true",
+            "applied": True,
+            "durability_confirmed": False,
         }
     except Exception as exc:
         if isinstance(exc, UnsafeWindowsPath):
