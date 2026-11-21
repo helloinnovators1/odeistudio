@@ -84,6 +84,7 @@ def run_nexus_agent(
         for message in prior_messages:
             if (
                 not isinstance(message, dict) or set(message) != {"role", "content"}
+                or not isinstance(message["role"], str)
                 or message["role"] not in {"user", "assistant"}
                 or not isinstance(message["content"], str)
                 or not message["content"].strip()
