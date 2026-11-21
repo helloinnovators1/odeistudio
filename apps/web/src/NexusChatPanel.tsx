@@ -6,7 +6,7 @@ import {
   type ODidOAuthConfig,
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
-import { sendNexusChat, type NexusChatMessage } from "./nexus-chat";
+import { createNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversation } from "./nexus-chat";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -66,6 +66,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [conversations, setConversations] = useState<NexusConversation[]>([]);
+  const [conversationId, setConversationId] = useState("");
+  const [conversationBusy, setConversationBusy] = useState(false);
   const [draft, setDraft] = useState("");
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
@@ -128,6 +131,28 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     return () => { active = false; };
   }, [access, config.apiBaseUrl]);
 
+  useEffect(() => {
+    if (!access || !config.apiBaseUrl || !organizationId || !projectId) {
+      setConversations([]); setConversationId(""); return;
+    }
+    let active = true;
+    setConversationBusy(true); setMessages([]); setConversationId("");
+    void listNexusConversations(config.apiBaseUrl, organizationId, projectId, access.accessToken)
+      .then(async (items) => {
+        if (!active) return;
+        setConversations(items);
+        if (items.length > 0) {
+          const latest = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, items[0].conversation_id);
+          if (!active) return;
+          setConversationId(latest.conversation_id);
+          setMessages(latest.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+          setNotice("Loaded your most recent saved conversation.");
+        } else { setNotice("No saved conversations in this project. Start a new conversation."); }
+      })
+      .catch((cause: unknown) => { if (active) setChatError(errorMessage(cause)); })
+      .finally(() => { if (active) setConversationBusy(false); });
+    return () => { active = false; };
+  }, [access, config.apiBaseUrl, organizationId, projectId]);
   useEffect(() => {
     if (!access) return;
     const remaining = access.expiresAt - Date.now();
