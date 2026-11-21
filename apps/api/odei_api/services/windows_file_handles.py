@@ -422,7 +422,7 @@ def open_readonly_file_from_handle(
 
 class _FileRenameInfo(ctypes.Structure):
     _fields_ = [
-        ("ReplaceIfExists", wintypes.BOOL),
+        ("ReplaceIfExists", ctypes.c_ubyte),
         ("RootDirectory", wintypes.HANDLE),
         ("FileNameLength", wintypes.DWORD),
         ("FileName", wintypes.WCHAR * 1),
@@ -430,7 +430,7 @@ class _FileRenameInfo(ctypes.Structure):
 
 
 class _FileDispositionInfo(ctypes.Structure):
-    _fields_ = [("DeleteFile", wintypes.BOOL)]
+    _fields_ = [("DeleteFile", ctypes.c_ubyte)]
 
 
 def _open_relative_parent(root_handle, parts: tuple[str, ...]):
