@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import time
 
 from fastapi.testclient import TestClient
 from cryptography.hazmat.primitives import serialization
@@ -548,11 +547,12 @@ def _build_apply_client(tmp_path):
         serialization.Encoding.Raw,
         serialization.PublicFormat.Raw,
     )
-    encode = lambda value: base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+    private_encoded = base64.urlsafe_b64encode(private_raw).decode("ascii").rstrip("=")
+    public_encoded = base64.urlsafe_b64encode(public_raw).decode("ascii").rstrip("=")
     settings = Settings(
         patch_approval_issuer="https://api.odei.example",
         patch_approval_key_id="companion-test",
-        patch_approval_private_key_b64=SecretStr(encode(private_raw)),
+        patch_approval_private_key_b64=SecretStr(private_encoded),
         patch_approval_ttl_seconds=60,
     )
     app = create_companion_app(
@@ -562,7 +562,7 @@ def _build_apply_client(tmp_path):
         pairing_manager=pairing,
         port=8765,
         patch_approval_issuer="https://api.odei.example",
-        patch_approval_public_keys={"companion-test": encode(public_raw)},
+        patch_approval_public_keys={"companion-test": public_encoded},
     )
     return TestClient(app, base_url=BASE_URL), registry, pairing, code, workspace_id, settings, original
 
@@ -582,14 +582,15 @@ def test_companion_apply_challenge_is_short_lived_session_bound_and_one_use():
 def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
     client, registry, _pairing, code, workspace_id, settings, original = _build_apply_client(tmp_path)
     try:
-        headers = _paired_headers(client, code)
+        pair_response = client.post(
+            "/v1/pair", headers={"Origin": ORIGIN}, json={"code": code},
+        )
+        assert pair_response.status_code == 200
+        assert "patch:apply" in pair_response.json()["permissions"]
+        headers = {"Origin": ORIGIN, "Authorization": f"Bearer {pair_response.json()['access_token']}"}
         paired = client.get("/v1/workspaces", headers=headers)
         assert paired.status_code == 200
         assert paired.json()["workspaces"][0]["workspace_id"] == workspace_id
-        assert "patch:apply" in client.post(
-            "/v1/pair", headers={"Origin": ORIGIN},
-            json={"code": "replay-is-invalid"},
-        ).json().get("permissions", []) if False else True
 
         challenge_response = client.post(
             f"/v1/workspaces/{workspace_id}/apply-challenge", headers=headers,
