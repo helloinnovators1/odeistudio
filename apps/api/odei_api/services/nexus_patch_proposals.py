@@ -247,6 +247,9 @@ async def create_patch_proposal(
         if membership is None or membership.get("role") not in {"owner", "maintainer", "developer"}:
             raise HTTPException(status_code=403, detail={"code": "PATCH_PROPOSAL_FORBIDDEN", "message": "An active project maintainer or developer role is required to create a patch proposal."})
     try:
+        for path, expected_hash in payload.expected_base_hashes.items():
+            if expected_hash is None and "/" in path:
+                raise PatchProposalError("New files are limited to workspace-root paths until nested directory creation is supported")
         redacted_changes = {
             path: redact_secrets(content) if content is not None else None
             for path, content in payload.changes.items()
@@ -269,8 +272,9 @@ async def create_patch_proposal(
         }
         for item in proposal.files
     ]
+    proposal_id = uuid4().hex
     await _audit_proposal(
-        request, principal, organization_id, "pending",
+        request, principal, organization_id, proposal_id,
         "nexus.patch_proposal.create", "started",
         project_id=project_id, file_count=len(files),
     )
@@ -278,7 +282,7 @@ async def create_patch_proposal(
         created = await store.create(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
-            title=payload.title, files=files,
+            title=payload.title, files=files, proposal_id=proposal_id,
         )
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is temporarily unavailable."}) from exc
