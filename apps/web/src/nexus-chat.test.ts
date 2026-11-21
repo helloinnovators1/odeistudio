@@ -3,6 +3,7 @@ import {
   NexusChatTransportError,
   sendNexusChat,
   sendNexusChatStream,
+  sendNexusChatInspection,
   createNexusConversation,
   deleteNexusConversation,
   listNexusConversations,
@@ -164,6 +165,35 @@ describe("NEXUS chat transport", () => {
     )).rejects.toThrow("invalid stream completion contract");
   });
 
+  it("sends explicit read-only attached-excerpt inspection requests and validates tool provenance", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      answer: "The attached file defines hello().", model: "test-model", read_only: true,
+      tools_executed: 2, tool_names: ["list_attached_excerpts", "read_attached_excerpt"],
+      conversation_persisted: true, conversation_id: "conversation-1",
+    }), { status: 200 }));
+    const result = await sendNexusChatInspection({
+      ...base, conversationId: "conversation-1",
+      workspaceFiles: [{ path: "src/main.py", content: "def hello(): pass" }],
+    }, fetcher);
+    expect(result.tools_executed).toBe(2);
+    expect(result.tool_names).toContain("read_attached_excerpt");
+    expect(String(fetcher.mock.calls[0][0])).toContain("/nexus/chat/inspect");
+    expect(fetcher.mock.calls[0][1]?.credentials).toBe("omit");
+    const unsafe = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      answer: "x", model: "test", read_only: true, tools_executed: 1,
+      tool_names: ["run_shell"], conversation_persisted: true, conversation_id: "conversation-1",
+    }), { status: 200 }));
+    await expect(sendNexusChatInspection({
+      ...base, conversationId: "conversation-1", workspaceFiles: [{ path: "src/main.py", content: "x" }],
+    }, unsafe)).rejects.toThrow("invalid inspection response contract");
+  });
+
+  it("requires explicit attached excerpts before repository inspection", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(sendNexusChatInspection({ ...base, conversationId: "chat-one" }, fetcher))
+      .rejects.toThrow("Attach between one and five");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("allows HTTP only for loopback development endpoints", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(okResponse());
     await sendNexusChat({ ...base, apiBaseUrl: "http://127.0.0.1:8000" }, fetcher);
