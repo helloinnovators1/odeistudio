@@ -187,6 +187,7 @@ async def _audit_proposal(
     request: Request, principal: Principal, organization_id: str,
     proposal_id: str, action: str, outcome: str,
     *, project_id: str, file_count: int = 0, version: int | None = None,
+    proposal_count: int = 0, decision: str | None = None,
 ) -> None:
     audit = getattr(request.app.state, "audit_event_store", None)
     if audit is None:
@@ -194,6 +195,10 @@ async def _audit_proposal(
     metadata: dict[str, Any] = {"project_id": project_id, "file_count": file_count}
     if version is not None:
         metadata["version"] = version
+    if proposal_count:
+        metadata["proposal_count"] = proposal_count
+    if decision is not None:
+        metadata["decision"] = decision
     try:
         await audit.append(
             organization_id=organization_id,
@@ -357,6 +362,7 @@ async def _decide_patch_proposal(
         request, principal, organization_id, proposal_id,
         "nexus.patch_proposal.decision", "started",
         project_id=project_id, version=payload.expected_version,
+        decision=decision,
     )
     try:
         updated = await store.decide(
@@ -373,7 +379,7 @@ async def _decide_patch_proposal(
         request, principal, organization_id, proposal_id,
         "nexus.patch_proposal.decision", "success",
         project_id=project_id, file_count=len(updated["files"]),
-        version=updated["version"],
+        version=updated["version"], decision=decision,
     )
     return {
         **_proposal_summary(updated),
