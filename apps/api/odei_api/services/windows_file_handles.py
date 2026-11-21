@@ -4,6 +4,7 @@ from __future__ import annotations
 import ctypes
 import msvcrt
 import os
+import secrets
 import stat
 from ctypes import wintypes
 from pathlib import Path
@@ -15,7 +16,9 @@ class UnsafeWindowsPath(OSError):
 
 FILE_LIST_DIRECTORY = 0x0001
 FILE_READ_DATA = 0x0001
+FILE_WRITE_DATA = 0x0002
 FILE_READ_ATTRIBUTES = 0x0080
+DELETE = 0x00010000
 SYNCHRONIZE = 0x00100000
 FILE_SHARE_READ = 0x1
 FILE_SHARE_WRITE = 0x2
@@ -26,6 +29,8 @@ FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
 FILE_ATTRIBUTE_DIRECTORY = 0x10
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 FILE_OPEN = 1
+FILE_CREATE = 2
+FILE_ATTRIBUTE_NORMAL = 0x80
 FILE_DIRECTORY_FILE = 0x00000001
 FILE_NON_DIRECTORY_FILE = 0x00000040
 FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020
@@ -80,6 +85,17 @@ def _apis():
     kernel32.GetFileInformationByHandleEx.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.WriteFile.argtypes = [
+        wintypes.HANDLE, wintypes.LPCVOID, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+    ]
+    kernel32.WriteFile.restype = wintypes.BOOL
+    kernel32.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+    kernel32.FlushFileBuffers.restype = wintypes.BOOL
+    kernel32.SetFileInformationByHandle.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
+    ]
+    kernel32.SetFileInformationByHandle.restype = wintypes.BOOL
     ntdll.NtCreateFile.argtypes = [
         ctypes.POINTER(wintypes.HANDLE), wintypes.ULONG,
         ctypes.POINTER(_ObjectAttributes), ctypes.POINTER(_IoStatusBlock),
@@ -400,5 +416,334 @@ def open_readonly_file_from_handle(
     finally:
         if file_handle is not None:
             kernel32.CloseHandle(file_handle)
+        for handle in reversed(directories):
+            kernel32.CloseHandle(handle)
+
+
+class _FileRenameInfo(ctypes.Structure):
+    _fields_ = [
+        ("ReplaceIfExists", wintypes.BOOL),
+        ("RootDirectory", wintypes.HANDLE),
+        ("FileNameLength", wintypes.DWORD),
+        ("FileName", wintypes.WCHAR * 1),
+    ]
+
+
+class _FileDispositionInfo(ctypes.Structure):
+    _fields_ = [("DeleteFile", wintypes.BOOL)]
+
+
+def _open_relative_parent(root_handle, parts: tuple[str, ...]):
+    kernel32, ntdll = _apis()
+    parent = root_handle
+    directories = []
+    for component in parts[:-1]:
+        child = _open_child(kernel32, ntdll, parent, component, directory=True)
+        directories.append(child)
+        parent = child
+    return kernel32, ntdll, parent, directories
+
+
+def _create_relative_file(kernel32, ntdll, parent, name: str):
+    if not name or "\\" in name or "/" in name or name in {".", ".."}:
+        raise UnsafeWindowsPath("Invalid temporary file name")
+    name_buffer = ctypes.create_unicode_buffer(name)
+    name_bytes = len(name.encode("utf-16-le"))
+    unicode_name = _UnicodeString(
+        Length=name_bytes,
+        MaximumLength=name_bytes + 2,
+        Buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    )
+    object_attributes = _ObjectAttributes(
+        Length=ctypes.sizeof(_ObjectAttributes),
+        RootDirectory=parent,
+        ObjectName=ctypes.pointer(unicode_name),
+        Attributes=OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor=None,
+        SecurityQualityOfService=None,
+    )
+    io_status = _IoStatusBlock()
+    handle = wintypes.HANDLE()
+    status = ntdll.NtCreateFile(
+        ctypes.byref(handle),
+        FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
+        ctypes.byref(object_attributes),
+        ctypes.byref(io_status),
+        None,
+        FILE_ATTRIBUTE_NORMAL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_CREATE,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+        0,
+    )
+    if status < 0:
+        raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+    try:
+        _check_type(kernel32, handle, directory=False)
+        return handle
+    except Exception:
+        kernel32.CloseHandle(handle)
+        raise
+
+
+def _open_relative_file_for_delete(kernel32, ntdll, parent, name: str):
+    if not name or "\\" in name or "/" in name or name in {".", ".."}:
+        raise UnsafeWindowsPath("Invalid target file name")
+    name_buffer = ctypes.create_unicode_buffer(name)
+    name_bytes = len(name.encode("utf-16-le"))
+    unicode_name = _UnicodeString(
+        Length=name_bytes,
+        MaximumLength=name_bytes + 2,
+        Buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    )
+    object_attributes = _ObjectAttributes(
+        Length=ctypes.sizeof(_ObjectAttributes),
+        RootDirectory=parent,
+        ObjectName=ctypes.pointer(unicode_name),
+        Attributes=OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor=None,
+        SecurityQualityOfService=None,
+    )
+    io_status = _IoStatusBlock()
+    handle = wintypes.HANDLE()
+    status = ntdll.NtCreateFile(
+        ctypes.byref(handle),
+        FILE_READ_DATA | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
+        ctypes.byref(object_attributes),
+        ctypes.byref(io_status),
+        None,
+        0,
+        FILE_SHARE_READ,
+        FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+        0,
+    )
+    if status < 0:
+        raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+    try:
+        _check_type(kernel32, handle, directory=False)
+        return handle
+    except Exception:
+        kernel32.CloseHandle(handle)
+        raise
+
+
+def _open_relative_file_for_replace(kernel32, ntdll, parent, name: str):
+    """Open an existing file while denying concurrent write opens but allowing rename."""
+    if not name or "\\" in name or "/" in name or name in {".", ".."}:
+        raise UnsafeWindowsPath("Invalid target file name")
+    name_buffer = ctypes.create_unicode_buffer(name)
+    name_bytes = len(name.encode("utf-16-le"))
+    unicode_name = _UnicodeString(
+        Length=name_bytes,
+        MaximumLength=name_bytes + 2,
+        Buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    )
+    object_attributes = _ObjectAttributes(
+        Length=ctypes.sizeof(_ObjectAttributes),
+        RootDirectory=parent,
+        ObjectName=ctypes.pointer(unicode_name),
+        Attributes=OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor=None,
+        SecurityQualityOfService=None,
+    )
+    io_status = _IoStatusBlock()
+    handle = wintypes.HANDLE()
+    status = ntdll.NtCreateFile(
+        ctypes.byref(handle),
+        FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        ctypes.byref(object_attributes),
+        ctypes.byref(io_status),
+        None,
+        0,
+        FILE_SHARE_READ | FILE_SHARE_DELETE,
+        FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+        0,
+    )
+    if status < 0:
+        raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+    try:
+        _check_type(kernel32, handle, directory=False)
+        return handle
+    except Exception:
+        kernel32.CloseHandle(handle)
+        raise
+
+
+def _write_handle(kernel32, handle, data: bytes) -> None:
+    offset = 0
+    while offset < len(data):
+        chunk = data[offset:offset + 65_536]
+        buffer = ctypes.create_string_buffer(chunk)
+        written = wintypes.DWORD()
+        if not kernel32.WriteFile(handle, buffer, len(chunk), ctypes.byref(written), None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if written.value <= 0:
+            raise OSError("Windows file write made no progress")
+        offset += int(written.value)
+    if not kernel32.FlushFileBuffers(handle):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> None:
+    encoded_name = name.encode("utf-16-le")
+    offset = _FileRenameInfo.FileName.offset
+    buffer = ctypes.create_string_buffer(offset + len(encoded_name))
+    info = ctypes.cast(buffer, ctypes.POINTER(_FileRenameInfo)).contents
+    info.ReplaceIfExists = bool(replace)
+    info.RootDirectory = parent
+    info.FileNameLength = len(encoded_name)
+    ctypes.memmove(ctypes.addressof(buffer) + offset, encoded_name, len(encoded_name))
+    if not kernel32.SetFileInformationByHandle(
+        handle, 3, buffer, len(buffer)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _mark_for_delete(kernel32, handle) -> None:
+    info = _FileDispositionInfo(DeleteFile=True)
+    if not kernel32.SetFileInformationByHandle(
+        handle, 4, ctypes.byref(info), ctypes.sizeof(info)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _read_windows_file(root_handle, parts: tuple[str, ...]) -> str | None:
+    try:
+        descriptor, metadata = open_readonly_file_from_handle(root_handle, parts)
+    except FileNotFoundError:
+        return None
+    try:
+        if metadata.st_size > 1_000_000:
+            raise UnsafeWindowsPath("Target file exceeds the safe read limit")
+        data = bytearray()
+        while len(data) <= 1_000_000:
+            chunk = os.read(descriptor, min(65_536, 1_000_001 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > 1_000_000 or b"\\x00" in data:
+            raise UnsafeWindowsPath("Target is binary or exceeds the safe read limit")
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise UnsafeWindowsPath("Target is not UTF-8 text") from exc
+    finally:
+        os.close(descriptor)
+
+
+def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict[str, str]:
+    """Atomically create, replace or delete one approved file beneath a root handle."""
+    import hashlib
+
+    parts, operation, base_hash, result_hash = parsed
+    kernel32, ntdll, parent, directories = _open_relative_parent(root_handle, parts)
+    target_name = parts[-1]
+    temporary_name = ".odei-" + secrets.token_hex(16) + ".tmp"
+    temporary_handle = None
+    try:
+        current = _read_windows_file(root_handle, parts)
+        if operation == "create":
+            if current is not None:
+                raise UnsafeWindowsPath("A file already exists at the approved create path")
+        else:
+            if current is None or hashlib.sha256(current.encode("utf-8")).hexdigest() != base_hash:
+                raise UnsafeWindowsPath("The approved base file no longer matches")
+
+        if operation == "delete":
+            target_handle = _open_relative_file_for_delete(kernel32, ntdll, parent, target_name)
+            descriptor = None
+            try:
+                descriptor = msvcrt.open_osfhandle(
+                    int(target_handle.value), os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                )
+                target_handle = None
+                data = bytearray()
+                while len(data) <= 1_000_000:
+                    chunk = os.read(descriptor, min(65_536, 1_000_001 - len(data)))
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                if (
+                    len(data) > 1_000_000 or b"\\x00" in data
+                    or hashlib.sha256(data).hexdigest() != base_hash
+                ):
+                    raise UnsafeWindowsPath("The file changed immediately before deletion")
+                _mark_for_delete(kernel32, msvcrt.get_osfhandle(descriptor))
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+                if target_handle is not None:
+                    kernel32.CloseHandle(target_handle)
+        else:
+            data = item["content"].encode("utf-8")
+            temporary_handle = _create_relative_file(
+                kernel32, ntdll, parent, temporary_name
+            )
+            _write_handle(kernel32, temporary_handle, data)
+            if operation == "create":
+                latest = _read_windows_file(root_handle, parts)
+                if latest is not None:
+                    raise UnsafeWindowsPath("A file appeared at the approved create path")
+                _rename_relative(
+                    kernel32, temporary_handle, parent, target_name, replace=False,
+                )
+            else:
+                target_handle = _open_relative_file_for_replace(
+                    kernel32, ntdll, parent, target_name
+                )
+                descriptor = None
+                try:
+                    descriptor = msvcrt.open_osfhandle(
+                        int(target_handle.value), os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                    )
+                    target_handle = None
+                    data_check = bytearray()
+                    while len(data_check) <= 1_000_000:
+                        chunk = os.read(
+                            descriptor, min(65_536, 1_000_001 - len(data_check))
+                        )
+                        if not chunk:
+                            break
+                        data_check.extend(chunk)
+                    if (
+                        len(data_check) > 1_000_000 or b"\\x00" in data_check
+                        or hashlib.sha256(data_check).hexdigest() != base_hash
+                    ):
+                        raise UnsafeWindowsPath("The file changed immediately before replacement")
+                    # The held target handle denies concurrent write opens and allows
+                    # delete sharing, so the replacement is performed against the
+                    # exact file that was just hash-checked.
+                    _rename_relative(
+                        kernel32, temporary_handle, parent, target_name, replace=True,
+                    )
+                finally:
+                    if descriptor is not None:
+                        os.close(descriptor)
+                    if target_handle is not None:
+                        kernel32.CloseHandle(target_handle)
+            kernel32.CloseHandle(temporary_handle)
+            temporary_handle = None
+        return {
+            "path": item["path"],
+            "operation": operation,
+            "result_sha256": result_hash or "",
+            "applied": "true",
+        }
+    except Exception as exc:
+        if isinstance(exc, UnsafeWindowsPath):
+            raise
+        raise UnsafeWindowsPath("The approved patch could not be applied safely") from exc
+    finally:
+        if temporary_handle is not None:
+            try:
+                _mark_for_delete(kernel32, temporary_handle)
+            except OSError:
+                pass
+            kernel32.CloseHandle(temporary_handle)
         for handle in reversed(directories):
             kernel32.CloseHandle(handle)
