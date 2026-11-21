@@ -6,7 +6,7 @@ import {
   type ODidOAuthConfig,
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
-import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
+import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
 import "./nexus-chat-panel.css";
 
@@ -73,6 +73,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [draft, setDraft] = useState("");
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
+  const [useAttachedTools, setUseAttachedTools] = useState(false);
+  const [inspectionRunning, setInspectionRunning] = useState(false);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
   const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
@@ -190,6 +192,11 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, sending]);
+
+  useEffect(() => {
+    setAttachActiveFile(false);
+    setUseAttachedTools(false);
+  }, [activeFile?.path, activeFile?.content]);
 
   async function signIn() {
     if (!config.auth) {
@@ -328,6 +335,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setDraft("");
     setConsent(false);
     setAttachActiveFile(false);
+    setUseAttachedTools(false);
     setChatError("");
     setProjectError("");
     setNotice("Signed out. The in-memory access token and conversation were cleared.");
@@ -353,6 +361,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setConsent(false);
     setChatError("");
     setSending(true);
+    setInspectionRunning(useAttachedTools && excerpt.length > 0);
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -362,6 +371,24 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         activeConversationId = created.conversation_id;
         setConversationId(activeConversationId);
         setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
+      }
+      if (useAttachedTools && excerpt.length > 0) {
+        const inspected = await sendNexusChatInspection({
+          apiBaseUrl: config.apiBaseUrl,
+          organizationId,
+          projectId,
+          accessToken: access.accessToken,
+          conversationId: activeConversationId,
+          messages: next.map(({ role, content: text }) => ({ role, content: text })),
+          workspaceFiles: excerpt,
+          cloudModelConsent: true,
+          signal: controller.signal,
+        });
+        setMessages((current) => [...current, {
+          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer,
+        }].slice(-20));
+        setNotice("Read-only inspection completed with " + inspected.tools_executed + " tool calls (" + (inspected.tool_names.join(", ") || "no tools requested") + "). Only the attached excerpt was available.");
+        return;
       }
       const assistantId = "stream-" + newMessageId();
       let assistantStarted = false;
@@ -390,13 +417,14 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     } catch (cause) {
       setMessages((current) => current.filter((message) => !message.id.startsWith("stream-")));
       if (controller.signal.aborted) {
-        setNotice("Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
+        setNotice(inspectionRunning ? "Inspection cancelled in the browser; server-side model work may finish." : "Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
       } else {
         setChatError(errorMessage(cause));
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setSending(false);
+      setInspectionRunning(false);
     }
   }
 
@@ -572,7 +600,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           </section>
         )}
         {conversationBusy && <div className="nexus-thinking" role="status">Loading saved conversations…</div>}
-        {sending && <div className="nexus-thinking" role="status">NEXUS is thinking…</div>}
+        {sending && <div className="nexus-thinking" role="status">{inspectionRunning ? "NEXUS is inspecting attached excerpts…" : "NEXUS is thinking…"}</div>}
         <div ref={transcriptEndRef} />
       </div>
 
@@ -581,8 +609,14 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           <>
             {activeFile && (
               <label className="nexus-attach-toggle">
-                <input type="checkbox" checked={attachActiveFile} onChange={(event) => setAttachActiveFile(event.target.checked)} />
+                <input type="checkbox" checked={attachActiveFile} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
                 Attach active file excerpt: {activeFile.path}
+              </label>
+            )}
+            {attachActiveFile && activeFile && (
+              <label className="nexus-attach-toggle nexus-tools-toggle">
+                <input type="checkbox" checked={useAttachedTools} onChange={(event) => setUseAttachedTools(event.target.checked)} />
+                Allow NEXUS read-only tools on this attached excerpt
               </label>
             )}
             {attachActiveFile && activeFile && activeFile.content.length > 8_000 && (
