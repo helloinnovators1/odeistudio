@@ -422,6 +422,7 @@ def test_conversation_create_list_and_get_are_project_and_identity_scoped(route_
     )
     assert listed.status_code == 200
     assert len(listed.json()["conversations"]) == 1
+    assert "messages" not in listed.json()["conversations"][0]
     loaded = client.get(
         f"/api/v1/organizations/org-1/projects/project-1/nexus/conversations/{conversation_id}"
     )
@@ -477,6 +478,7 @@ def test_nexus_chat_persists_user_and_assistant_turns_in_conversation(route_stat
     )
     assert response.status_code == 200, response.text
     assert response.json()["conversation_persisted"] is True
+    assert response.json()["conversation_id"] == item["conversation_id"]
     stored = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
     assert stored["messages"][1]["content"] == "I will use the saved context."
