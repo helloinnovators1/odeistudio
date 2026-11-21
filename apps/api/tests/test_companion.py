@@ -490,3 +490,33 @@ def test_companion_patch_preview_rejects_existing_empty_directory_as_new_file(tm
         assert response.status_code == 409
     finally:
         registry.close()
+
+
+def test_companion_patch_preview_validates_paths_and_hashes_before_io(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
+        traversal = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"../outside.txt": "content"},
+                "expected_base_hashes": {"../outside.txt": None},
+            },
+        )
+        assert traversal.status_code == 422
+
+        malformed_hash = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"main.py": "changed"},
+                "expected_base_hashes": {"main.py": "not-a-hash"},
+            },
+        )
+        assert malformed_hash.status_code == 422
+    finally:
+        registry.close()
