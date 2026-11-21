@@ -452,7 +452,7 @@ def test_companion_patch_preview_rejects_binary_and_oversized_payloads(tmp_path)
             f"/v1/workspaces/{workspace_id}/patch-proposals",
             headers=headers,
             json={
-                "changes": {"new.py": "bad\\u0000content"},
+                "changes": {"new.py": "bad\u0000content"},
                 "expected_base_hashes": {"new.py": None},
             },
         )
