@@ -34,7 +34,7 @@ principal_dependency = Depends(get_current_principal)
 
 
 class PatchProposalRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid")
     title: StrictStr = Field(min_length=1, max_length=160)
     base_files: dict[StrictStr, StrictStr] = Field(max_length=MAX_PATCH_FILES)
     changes: dict[StrictStr, StrictStr | None] = Field(min_length=1, max_length=MAX_PATCH_FILES)
@@ -100,7 +100,7 @@ class MongoPatchProposalStore:
             "project_id": project_id,
             "owner_issuer": owner_issuer,
             "owner_subject": owner_subject,
-            "title": redact_secrets(title)[:160],
+            "title": redact_secrets(title.strip())[:160],
             "files": files,
             "status": "pending",
             "version": 0,
