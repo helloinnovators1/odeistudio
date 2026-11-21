@@ -435,3 +435,54 @@ def test_companion_patch_preview_requires_valid_session(tmp_path) -> None:
         assert response.status_code == 401
     finally:
         registry.close()
+
+
+def test_companion_patch_preview_rejects_binary_and_oversized_payloads(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
+        binary = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"new.py": "bad\\u0000content"},
+                "expected_base_hashes": {"new.py": None},
+            },
+        )
+        assert binary.status_code == 422
+
+        too_large = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"new.py": "x" * 1_000_001},
+                "expected_base_hashes": {"new.py": None},
+            },
+        )
+        assert too_large.status_code == 422
+    finally:
+        registry.close()
+
+
+def test_companion_patch_preview_rejects_existing_empty_directory_as_new_file(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    (tmp_path / "project" / "empty-dir").mkdir()
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
+        response = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"empty-dir": "not a file"},
+                "expected_base_hashes": {"empty-dir": None},
+            },
+        )
+        assert response.status_code == 409
+    finally:
+        registry.close()
