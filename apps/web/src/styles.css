@@ -2,3 +2,16 @@
 .folder-row{color:#b9c4d1}.folder-row:hover{background:#26313d}.folder-row .file-glyph{color:#9de5c1}.file-list [role=treeitem]:focus-visible{outline:2px solid #9de5c1;outline-offset:-2px}
 
 .file-row:focus-visible{outline:2px solid #9de5c1;outline-offset:-2px}
+
+.editor-actionbar{height:30px;flex:0 0 30px;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;background:#171d26;border-bottom:1px solid #2b3440}
+.patch-preview-trigger{padding:5px 10px;border:1px solid #466553;border-radius:4px;background:#263b34;color:#d2e7dc;font-size:10px}
+.patch-preview-trigger:hover{background:#304b40}
+.patch-dialog{width:min(900px,100%);max-height:min(90vh,900px);overflow:auto}
+.patch-dialog>p{color:#9aa6b4;font-size:11px;line-height:1.6}
+.patch-dialog .field-label{display:block;margin:12px 0 6px}
+.patch-draft{width:100%;min-height:180px;resize:vertical;padding:10px;background:#10151d;border:1px solid #3a4553;border-radius:6px;color:#dce2e9;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+.patch-preview-actions{display:flex;align-items:center;gap:8px;margin:12px 0}
+.patch-preview-error{display:block;margin:8px 0}
+.patch-diff-wrap{margin-top:14px;border:1px solid #394452;border-radius:6px;overflow:hidden}
+.patch-diff-wrap>strong{display:block;padding:8px 10px;background:#202833;color:#b9c4d1;font-size:9px;letter-spacing:.1em}
+.patch-diff{max-height:300px;overflow:auto;margin:0;padding:12px;background:#0d1219;color:#dce2e9;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
