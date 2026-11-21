@@ -318,6 +318,7 @@ export default function App() {
   const chatPanel = (
     <NexusChatPanel
       onClose={() => setChatOpen(false)}
+      isOpen={chatOpen}
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
     />
   );
@@ -384,8 +385,6 @@ export default function App() {
           </>}
         </aside>
 
-        {chatOpen && chatSide === "left" && chatPanel}
-
         <section className="editor-column">
           <div className="editor-actionbar">
             {token && activeTab && <button className="patch-preview-trigger" onClick={openPatchPreview}>Preview patch</button>}
@@ -433,7 +432,7 @@ export default function App() {
           <footer className="statusbar"><span>{token ? "Companion connected" : "No local workspace"}</span><span>{activeTab ? languageForPath(activeTab.path) : "Plain Text"}</span><span>UTF-8</span><span>READ ONLY</span></footer>
         </section>
 
-        {chatOpen && chatSide === "right" && chatPanel}
+        {chatPanel}
       </div>
 
       {patchDialogOpen && activeTab && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPatchDialogOpen(false); }}>
