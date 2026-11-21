@@ -357,3 +357,18 @@ Feature branch: `feat/nexus-durable-conversations`. This increment is not merged
 - Automated tests have been added for owner/tenant isolation, optimistic versions, create/list/read/append/delete, durable chat turns, browser transport and the audit `started` lifecycle. They are not yet verified on this branch until CI completes.
 
 Not included in this increment: SSE/token streaming, guaranteed provider cancellation, tool invocation, chat-generated patch proposals, patch approval/application/rollback, isolated terminal/test execution, agent orchestration or production ODID/Mongo/model deployment configuration.
+
+
+## NEXUS task planning and human approval panel — in review (2026-11-21)
+
+Feature branch: `feat/nexus-task-planning-ui`. This increment is not merged or deployed.
+
+- Added a typed authenticated browser transport for task creation, retrieval, approval and cancellation.
+- Connected the NEXUS composer to create a bounded plan from the current task description and, only when the active-file attachment checkbox is selected, a bounded active-file excerpt.
+- The existing per-request cloud consent checkbox gates task planning as well as chat.
+- Displays the task plan, status, task ID and optimistic version in the panel.
+- Only the project owner can approve through the server-side task API. The UI handles the server's owner-only denial response.
+- Approval records intent only. No code is changed, no patch is applied, and no terminal command is executed. Task execution remains disabled.
+- Added browser transport tests. CI is required before merge.
+
+Still outstanding: repository tool invocation, chat-generated patch proposals, persistent proposal review, safe patch application/rollback, isolated command/test execution, task event live updates, agent orchestration and production staging verification.
