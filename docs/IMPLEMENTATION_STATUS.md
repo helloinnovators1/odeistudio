@@ -388,3 +388,18 @@ Feature branch: `feat/nexus-streaming-chat`. This increment is not merged or dep
 - Remaining prerequisites: approved ODID issuer/client/redirect/resource/scope values, real ODID staging verification, production API/Mongo/model configuration, encryption-at-rest/retention/backup controls and deployment. No production credentials are in source and none should be pasted into chat.
 
 This increment does not implement chat-triggered repository tools, patch creation/review/application/rollback, terminal/test execution, agent orchestration, cloud/background agents or MAC/MAD operations. The current chat agent remains read-only.
+
+
+## NEXUS task planning and human approval panel — in review (2026-11-21)
+
+Feature branch: `feat/nexus-task-planning-ui-main`. This increment is not merged or deployed.
+
+- Added a typed authenticated browser transport for task creation, retrieval, approval and cancellation.
+- Connected the NEXUS composer to create a bounded plan from the current task description and, only when the active-file attachment checkbox is selected, a bounded active-file excerpt.
+- The existing per-request cloud consent checkbox gates task planning as well as chat.
+- Displays the task plan, status, task ID and optimistic version in the panel.
+- Only the project owner can approve through the server-side task API. The UI handles the server's owner-only denial response.
+- Approval records intent only. No code is changed, no patch is applied, and no terminal command is executed. Task execution remains disabled.
+- Added browser transport tests. CI is required before merge.
+
+Still outstanding: repository tool invocation, chat-generated patch proposals, persistent proposal review, safe patch application/rollback, isolated command/test execution, task event live updates, agent orchestration and production staging verification.
