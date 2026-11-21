@@ -69,7 +69,7 @@ def _validate_path(path: str) -> tuple[str, ...]:
             or part.endswith((".", " "))
             or any(ord(character) < 32 or character in '<>:"|?*' for character in part)
             or device_name in _WINDOWS_RESERVED
-            or len(part.encode("utf-16-le")) // 2 > 255
+            or sum(2 if ord(character) > 0xFFFF else 1 for character in part) > 255
             or re.fullmatch(r"(?:com|lpt)[1-9]", device_name)
             or re.fullmatch(r"(?:com|lpt)[¹²³]", device_name)
         ):
