@@ -362,7 +362,9 @@ def test_companion_patch_preview_supports_root_create_and_delete(tmp_path) -> No
     client, registry, _pairing, code = _build_client(tmp_path)
     try:
         headers = _paired_headers(client, code)
-        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
         created = client.post(
             f"/v1/workspaces/{workspace_id}/patch-proposals",
             headers=headers,
