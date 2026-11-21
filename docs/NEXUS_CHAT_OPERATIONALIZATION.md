@@ -32,8 +32,8 @@ Apply is shown only for an approved one-file proposal when the paired companion 
 6. **Submit:** send the project-scoped request over HTTPS with bearer authorization, bounded payload, request correlation ID, no cookies, no caching and redirects disabled.
 7. **Process:** API validates token profile, tenant membership, project membership, consent, limits and audit availability before invoking the model. Model output is untrusted and cannot grant permissions.
 8. **Deliver:** stream typed events where supported; distinguish queued, started, text delta, tool activity, approval required, completed, failed and cancelled. A transport interruption must not be displayed as success.
-9. **Persist:** persist conversations only after a documented retention, encryption, tenant isolation, deletion/export and audit design is approved. Until then, keep chat stateless and clearly label that history is session-only.
-10. **Close the loop:** show the response, citations/file references where available, proposed actions, approvals and verifiable execution/test results. Never claim an action occurred without a successful service result.
+9. **Persist:** save conversations in MongoDB under verified issuer/subject, organization and project scope, with bounded message count/content and optimistic versions. Audit metadata excludes prompts and source text. Production retention, export/deletion policy, backup/recovery and encryption-at-rest configuration still require deployment verification.
+10. **Close the loop:** show the response, attached-file provenance, proposed actions and owner decisions. For Apply, require an approved one-file proposal, a fresh companion challenge and signed capability; report the companion's result and durability flag. Never claim rollback, test execution or deployment occurred unless a corresponding service actually succeeds.
 
 ## 4. Chat panel interaction contract
 
@@ -80,7 +80,7 @@ Apply is shown only for an approved one-file proposal when the paired companion 
 - **Data minimization:** default to no workspace context; send only selected bounded excerpts. No credentials, environment files, private keys or ignored sensitive paths.
 - **Prompt injection:** user content, history, repository files, tool output and model output are untrusted. System policy is not overridable by repository content.
 - **Tool policy:** expose a typed allowlist with per-tool schemas, path scoping, timeouts, output caps, rate limits and audit events. No arbitrary function names from model output.
-- **Writes:** no browser-side direct filesystem writes. Implement Windows handle-relative and POSIX descriptor-relative safe atomic replacement, race/path-swap protections, concurrency hashes, rollback and audit before enabling apply.
+- **Writes:** no browser-side direct filesystem writes. The merged companion apply path performs one-file Windows handle-relative/POSIX descriptor-relative atomic replacement with reparse/symlink protections, live base-hash verification, signed short-lived capability, one-use challenge and audit. Multi-file atomicity, durable rollback/recovery and local Windows 10 build 18362 acceptance are not implemented.
 - **Execution:** no shell in the browser or API process. Use isolated workers with resource, network, filesystem, process and time policies.
 - **Persistence:** no plaintext prompts, source code, diffs, access tokens or provider secrets in audit metadata. Conversation persistence requires encryption/key management, tenant-scoped access, retention and deletion semantics.
 - **Observability:** correlate requests and events without logging sensitive content. Redact secrets from errors and traces.
@@ -88,104 +88,99 @@ Apply is shown only for an approved one-file proposal when the paired companion 
 
 ## 6. API and event contracts
 
-The existing read-only endpoint remains the first interaction:
+The existing JSON endpoint remains available:
+
 `POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat`
 
-Current request contract: `messages`, optional bounded `workspace_files`, and strict `cloud_model_consent: true`. Current response is a single JSON answer with `read_only: true`, `tools_executed: 0`, and `conversation_persisted: false`.
+A separate SSE endpoint streams incremental assistant output and lifecycle events:
 
-Streaming must be a separately versioned/negotiated contract (SSE is the preferred initial transport) with:
-- `message.started`
-- `message.delta`
-- `message.completed`
-- `activity.started` / `activity.completed`
-- `approval.required`
-- `request.failed`
-- `request.cancelled`
+`POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/stream`
 
-Every event includes a request ID and monotonic sequence number. The server must enforce event ordering, bounded buffers, heartbeat/timeout behavior, disconnect cancellation policy and authorization on reconnect. Do not silently change the existing JSON endpoint into an SSE endpoint.
+The bounded read-only attached-excerpt tool mode is separate:
 
-Conversation/session APIs, if introduced, must use opaque server-generated IDs and tenant/project scoping. A client-provided conversation ID is never proof of ownership.
+`POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/inspect`
 
-## 7. Persistence model (future, gated)
+It permits only strict list/read/literal-search tools over one to five excerpts explicitly attached by the user. It does not expose arbitrary workspace roots, local file handles, writes, shell or network tools.
 
-Separate entities are required:
-- Conversation: tenant/project, owner identity (issuer + subject), lifecycle, retention class and timestamps.
-- Message: conversation, sequence, role, content reference, model metadata and safety metadata.
-- Request: idempotency key, status, cancellation, provider usage and correlation ID.
-- Activity: typed tool/agent events with bounded redacted metadata.
-- Proposal: exact base hashes, patch content reference, author, version and review status.
-- Approval: approver identity, proposal/version, decision and timestamp.
-- Execution: isolated environment identity, command/test reference, policy, exit status and artifacts.
+Conversation endpoints create/list/read/append/delete durable records scoped to organization, project and verified issuer/subject. Writes use optimistic versions and bounded history. Client-supplied IDs are lookups only and never prove ownership.
 
-Conversation/message content must be encrypted at rest with managed keys and must not be copied into audit events. Tenant filters must be applied in every query and backed by compound indexes. Define export, deletion, retention expiry, legal hold and key rotation before production persistence.
+Patch proposal APIs persist bounded proposals and diffs; project owners can approve/reject a specific version. The apply-capability endpoint issues a short-lived Ed25519 capability only for an approved proposal and fresh companion challenge. The local companion independently verifies the signature, issuer/audience/expiry, proposal/workspace/content binding, pairing session and one-use challenge before applying one file. API approval does not itself mutate a local file.
+
+SSE events include request/message lifecycle, incremental deltas, activity, completion, failure and cancellation. Event parsing is bounded and rejects malformed or oversized events. Browser cancellation stops waiting and requests server cancellation; upstream provider cancellation is best-effort and must not be represented as guaranteed.
+
+## 7. Persistence model — implemented foundation, production gates remain
+
+Implemented MongoDB conversation records include:
+- Opaque conversation ID, organization/project scope and owner issuer/subject.
+- Ordered user/assistant messages, bounded message count and aggregate UTF-8 content.
+- Optimistic version checks for append/delete and metadata-only list responses.
+- Secret redaction before persisted titles/messages and audit events for lifecycle operations.
+- Tenant/project/owner filters on every conversation lookup.
+
+Patch proposals are separately persisted with proposal ID, owner, project, version, base/result hashes, proposed replacement content and unified diff. Owner decisions record the deciding identity, decision time and proposal version. Local patch application uses a short-lived signed capability; the local companion remains the authority for actual file mutation.
+
+Production still requires an explicit retention/deletion/export policy, verified database encryption-at-rest and managed-key configuration, backup/restore tests, operational monitoring and incident recovery. Audit events must never contain prompts, full source content, diffs, bearer tokens or signing secrets. Do not infer production durability from a successful CI MongoDB replica-set test.
 
 ## 8. Delivery sequence and acceptance gates
 
-### Gate 0 — prerequisites
-- Confirm exact ODID public-client and access-token contract.
-- Confirm API issuer/audience/JWKS and browser CORS allowlist.
-- Confirm organization/project discovery and selection workflow.
-- Configure exact API base URL and registered redirect URI per environment.
-- No credentials committed to source or sent through chat.
+### Gate 0 — external production prerequisites (open)
+- Configure the real ODID public client, issuer/discovery, exact redirect URI, scopes/resource, access-token profile and refresh/revocation contract.
+- Configure API issuer/audience/JWKS/client allowlist and exact HTTPS CORS origins.
+- Provision production MongoDB replica-set topology and verify encryption, backup and restore.
+- Configure server-side model credentials and approved hosting.
+- Install the local companion and validate pairing/apply on the user's Windows 10 build 18362 machine. No local desktop scan or real browser-to-companion staging test has yet been performed.
 
-### Gate 1 — authenticated read-only chat
-- Implement PKCE login/callback/logout and in-memory access-token lifecycle.
-- Add trusted organization/project selection.
-- Connect composer to the existing typed transport.
-- Add consent, selected-file references, transcript UI, cancellation, retry and error states.
-- Add API/web tests for login state/PKCE, token expiry, project denial, consent denial, secret redaction, request bounds, cancellation and no token persistence.
-- Acceptance: an authorized user can ask a project-scoped question end-to-end; unauthorized or unconfigured users cannot submit.
+### Gate 1 — authenticated chat (code implemented; real-provider E2E open)
+- Provider-neutral PKCE login/callback, in-memory token handling, server-authorized organization/project selection, active composer, explicit consent, transcript and bounded request transport are implemented.
+- Acceptance still requires a real ODID staging login and an authorized user completing a project-scoped conversation with production-like issuer/JWKS/CORS settings.
 
-### Gate 2 — streaming and session history
-- Add a distinct streaming endpoint and typed event parser.
-- Add reconnect/cancellation/sequence tests.
-- Decide and implement encrypted conversation persistence, retention and deletion.
-- Acceptance: no lost/duplicated events across tested reconnects; no cross-tenant history access.
+### Gate 2 — streaming and durable history (code implemented; production data controls open)
+- Separate SSE response transport, incremental rendering, browser cancellation, durable owner-scoped conversation APIs and optimistic versioning are implemented.
+- Verify production retention, deletion/export, encryption-at-rest, backups and recovery before production use. Provider cancellation remains best-effort.
 
-### Gate 3 — project inspection and planning
-- Register bounded read-only search/read tools and project-context retrieval.
-- Connect task planning and task/event views.
-- Add citations/provenance for retrieved files.
-- Acceptance: tool calls are allowlisted, bounded, audited and project-scoped; prompt injection tests pass.
+### Gate 3 — inspection and planning (bounded implementation)
+- Strict list/read/literal-search tools operate only over explicitly attached file excerpts. Tenant/project authorization, secret redaction, tool-call bounds and audit metadata are enforced.
+- Project-scoped task planning and approval records exist; approval does not execute a task.
+- Whole-workspace companion-mediated repository tools, semantic indexing, automatic citations and task execution remain open.
 
-### Gate 4 — patch proposals and approval
-- Connect chat output to multi-file proposal creation and review UI.
-- Persist proposals only with approved encryption/key management.
-- Bind decisions to proposal ID and version.
-- Implement safe Windows/POSIX atomic apply and rollback only after threat-model review.
-- Acceptance: stale-base, path traversal, junction/symlink, race, partial-write, rollback and authorization tests pass.
+### Gate 4 — proposals, approval and local apply (single-file implementation)
+- Persisted patch proposals, diff review, project-owner approve/reject decisions, signed apply capabilities and challenge-bound one-file companion application are implemented.
+- Apply is gated by explicit local write opt-in, a paired companion with pinned public key, fresh challenge, approved proposal version and live base hash.
+- Multi-file transactional application, durable rollback/recovery journal and crash-recovery acceptance remain open.
 
-### Gate 5 — isolated execution
-- Add isolated command/test/diagnostic workers and streamed activity.
-- Enforce resource/network/filesystem policy, quotas and cancellation.
-- Acceptance: escape, exfiltration, resource exhaustion and cross-project tests pass.
+### Gate 5 — isolated execution (not implemented)
+- Build isolated command/test/diagnostic workers with resource, network, filesystem, process and time policies, quotas, streamed activity and cancellation.
+- Acceptance: escape, exfiltration, resource exhaustion, cross-project access and crash recovery tests pass.
 
-### Gate 6 — agent orchestration
-- Add agent assignment, independent workspaces/branches, task dependencies, checkpoints, recovery and human approval.
+### Gate 6 — agent orchestration (not implemented)
+- Add agent assignment, independent workspaces/branches, task dependencies, checkpoints, recovery, human approval and attribution.
 - Connect Agents Window, CLI and background/cloud agent services.
-- Acceptance: every delegated action is attributable, scoped, observable, cancellable and reviewable.
+- Acceptance: every delegated action is scoped, attributable, observable, cancellable and reviewable.
 
 ## 9. Current repository evidence
 
-Implemented:
-- NEXUS panel shell, left/right preference and Ctrl+I/Command+I toggle.
-- Project-scoped authenticated read-only API foundation.
-- Bounded chat transport with in-memory bearer token input, HTTPS/loopback validation, no cookies/cache, abort signal and response-contract validation.
-- Provider-neutral OAuth 2.0 Authorization Code + PKCE S256 browser client with issuer discovery validation, callback-origin/state validation, bounded token exchange and no access-token persistence. It is not wired to the app and has not been tested against ODID staging.
-- Secret redaction, explicit cloud consent, server-side membership checks and audit events.
-- Bounded selected workspace excerpt contract.
+Implemented on main:
+- Configurable ODID Authorization Code + PKCE browser foundation and callback; access token remains in memory. Real ODID issuer/client/redirect/resource/scope values and refresh/revocation behavior are not configured or staging-verified.
+- Server-authorized organization discovery and project selection, project-scoped authentication and membership checks.
+- Active NEXUS composer, explicit per-request cloud consent, message validation, send, transcript, error states and cancellation.
+- Separate SSE endpoint with incremental response rendering. Provider-side cancellation is best-effort.
+- Durable MongoDB conversations with owner/tenant/project isolation, bounded history, optimistic versions and audit events. Production retention and encryption-at-rest configuration remain external.
+- Bounded attached-excerpt inspection tools: list, read and literal search only over explicitly attached excerpts; no arbitrary workspace root or full-workspace access.
+- Task planning and owner approval records; approval does not execute tasks.
+- Persisted multi-file patch proposals and unified diff review, project-owner approve/reject decisions and short-lived signed apply-capability issuance.
+- One-file local companion apply, independently verifying the Ed25519 capability, challenge, pairing session, proposal/workspace/content binding and live base hash. POSIX and Windows paths use handle-relative atomic replacement; Windows uses FileRenameInformationEx POSIX semantics. The companion reports whether directory-metadata durability was confirmed.
+- CI on the merged PR #24 source head passed Windows/Ubuntu Python 3.10/3.12, MongoDB replica-set integration, web tests/build, CodeQL, secret scanning, pip-audit and npm audit.
 
-Not yet implemented or connected:
-- ODID production browser login integration: the generic PKCE helper exists, but approved ODID issuer/client/redirect/resource/scope configuration, callback route, runtime configuration and real issuer/JWKS verification are still absent.
-- Trusted organization discovery and project selector.
-- Composer-to-transport integration.
-- Streaming and cancellation endpoint.
-- Durable conversation history and retention controls.
-- Whole-project indexing/semantic retrieval.
-- Chat-invoked tools, patch workflow and approval.
-- Safe patch application/rollback.
-- Isolated command execution and diagnostics.
-- Agent delegation, CLI, cloud/background agent controls.
+Not implemented or not verified:
+- Actual ODID provider registration, token refresh/revocation, real issuer/JWKS staging verification and production environment configuration.
+- Whole-workspace NEXUS repository tools or background indexing; inspection is limited to attached excerpts.
+- Multi-file atomic patch transactions, durable rollback journal, crash recovery and apply across nested new-directory creation.
+- Isolated terminal, command execution, build/test execution, package installation and execution artifacts.
+- Agents Window orchestration, NEXUS CLI, cloud/background agents and MAC/MAD execution.
+- Local companion installation, desktop-folder scan, Windows 10 build 18362 validation and real browser-to-companion staging E2E.
+- Production deployment, production MongoDB, model-provider secrets and hosting/CORS configuration.
+
+No local tests or build were run from the user's Windows machine in this hosted repository session. GitHub Actions results verify the merged source head only; they do not establish local installation, ODID staging, production infrastructure or deployment.
 
 ## 10. Release rule
 
