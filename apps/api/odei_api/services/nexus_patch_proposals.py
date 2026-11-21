@@ -344,6 +344,12 @@ async def get_patch_proposal(
         and (item["owner_issuer"] != principal.issuer or item["owner_subject"] != principal.subject)
     ):
         raise HTTPException(status_code=404, detail={"code": "PATCH_PROPOSAL_NOT_FOUND", "message": "Patch proposal was not found."})
+    await _audit_proposal(
+        request, principal, organization_id, proposal_id,
+        "nexus.patch_proposal.read", "success",
+        project_id=project_id, file_count=len(item["files"]),
+        version=item["version"],
+    )
     return {
         **_proposal_summary(item),
         "files": item["files"],
