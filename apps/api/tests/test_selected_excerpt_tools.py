@@ -45,6 +45,7 @@ def test_selected_excerpt_tool_schemas_are_strict_and_do_not_accept_workspace_id
     schemas = SelectedExcerptTools.schemas()
     assert {item["name"] for item in schemas} == {
         "list_attached_excerpts", "read_attached_excerpt", "search_attached_excerpts",
+        "propose_attached_file_change",
     }
     assert all(item["strict"] for item in schemas)
     assert all("workspace_id" not in item["parameters"]["properties"] for item in schemas)
