@@ -1,4 +1,4 @@
-"""Read-only Windows file opens relative to already-open directory handles."""
+"""Safe Windows file operations relative to already-open directory handles."""
 from __future__ import annotations
 
 import ctypes
