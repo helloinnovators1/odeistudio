@@ -789,16 +789,16 @@ def test_windows_relative_rename_uses_nt_set_information_file(monkeypatch):
     )
 
     def fake_nt_set_information_file(handle, io_status, buffer, length, info_class):
-        info = ctypes.cast(buffer, ctypes.POINTER(windows._FileRenameInfo)).contents
+        info = ctypes.cast(buffer, ctypes.POINTER(windows._FileRenameInfoEx)).contents
         name = ctypes.string_at(
-            ctypes.addressof(buffer) + windows._FileRenameInfo.FileName.offset,
+            ctypes.addressof(buffer) + windows._FileRenameInfoEx.FileName.offset,
             info.FileNameLength,
         ).decode("utf-16-le")
         captured.update({
             "handle": handle,
             "root": info.RootDirectory,
             "name": name,
-            "replace": bool(info.ReplaceIfExists),
+            "flags": info.Flags,
             "length": length,
             "info_class": info_class,
         })
@@ -808,15 +808,15 @@ def test_windows_relative_rename_uses_nt_set_information_file(monkeypatch):
         windows, "_apis",
         lambda: (fake_kernel32, SimpleNamespace(NtSetInformationFile=fake_nt_set_information_file)),
     )
-    windows._rename_relative(fake_kernel32, 0x1234, 0x5678, "created.py", replace=False)
+    windows._rename_relative(fake_kernel32, 0x1234, 0x5678, "created.py", replace=True)
 
     assert captured == {
         "handle": 0x1234,
         "root": 0x9876,
         "name": "created.py",
-        "replace": False,
-        "length": windows._FileRenameInfo.FileName.offset + len("created.py".encode("utf-16-le")),
-        "info_class": 10,
+        "flags": windows.FILE_RENAME_POSIX_SEMANTICS | windows.FILE_RENAME_REPLACE_IF_EXISTS,
+        "length": ctypes.sizeof(windows._FileRenameInfoEx) + len("created.py".encode("utf-16-le")),
+        "info_class": windows.FILE_RENAME_INFORMATION_EX,
         "desired_access": windows.FILE_TRAVERSE | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE,
         "closed_root": 0x9876,
     }
