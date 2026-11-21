@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from fastapi.testclient import TestClient
 
 from odei_api.companion import PairingManager, create_companion_app
@@ -315,5 +317,121 @@ def test_companion_rejects_zero_origin_port(tmp_path) -> None:
                 workspace_id,
                 allowed_origins=["https://studio.example.test:0"],
             )
+    finally:
+        registry.close()
+
+
+def _paired_headers(client, code):
+    headers = {"Origin": ORIGIN}
+    paired = client.post("/v1/pair", headers=headers, json={"code": code})
+    assert paired.status_code == 200
+    return {**headers, "Authorization": f"Bearer {paired.json()['access_token']}"}
+
+
+def test_companion_builds_live_patch_preview_without_writing_files(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        original = "print('ODEI')"
+        response = client.post(
+            "/v1/workspaces/" + registry_id := client.get(
+                "/v1/workspaces", headers=headers
+            ).json()["workspaces"][0]["workspace_id"] + "/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"main.py": "print('NEXUS')"},
+                "expected_base_hashes": {
+                    "main.py": hashlib.sha256(original.encode("utf-8")).hexdigest()
+                },
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["mode"] == "preview_only"
+        assert payload["writes_performed"] is False
+        assert payload["files"][0]["operation"] == "update"
+        assert "-print('ODEI')" in payload["files"][0]["unified_diff"]
+        assert "+print('NEXUS')" in payload["files"][0]["unified_diff"]
+        assert registry.read_text(registry_id, "main.py") == original
+    finally:
+        registry.close()
+
+
+def test_companion_patch_preview_supports_root_create_and_delete(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        created = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"new.py": "print('new')"},
+                "expected_base_hashes": {"new.py": None},
+            },
+        )
+        assert created.status_code == 200
+        assert created.json()["files"][0]["operation"] == "create"
+        assert not (tmp_path / "project" / "new.py").exists()
+
+        original = "print('ODEI')"
+        deleted = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"main.py": None},
+                "expected_base_hashes": {
+                    "main.py": hashlib.sha256(original.encode("utf-8")).hexdigest()
+                },
+            },
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["files"][0]["operation"] == "delete"
+        assert registry.read_text(workspace_id, "main.py") == original
+    finally:
+        registry.close()
+
+
+def test_companion_patch_preview_rejects_stale_hash_and_nested_create(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        stale = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"main.py": "changed"},
+                "expected_base_hashes": {"main.py": "0" * 64},
+            },
+        )
+        assert stale.status_code == 409
+
+        nested = client.post(
+            f"/v1/workspaces/{workspace_id}/patch-proposals",
+            headers=headers,
+            json={
+                "changes": {"src/new.py": "content"},
+                "expected_base_hashes": {"src/new.py": None},
+            },
+        )
+        assert nested.status_code == 400
+    finally:
+        registry.close()
+
+
+def test_companion_patch_preview_requires_valid_session(tmp_path) -> None:
+    client, registry, _pairing, _code = _build_client(tmp_path)
+    try:
+        workspace_id = registry.list_files  # Keep the route test independent of private registry state.
+        response = client.post(
+            "/v1/workspaces/not-authorized/patch-proposals",
+            headers={"Origin": ORIGIN},
+            json={
+                "changes": {"new.py": "content"},
+                "expected_base_hashes": {"new.py": None},
+            },
+        )
+        assert response.status_code == 401
     finally:
         registry.close()
