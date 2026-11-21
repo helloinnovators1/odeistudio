@@ -79,7 +79,7 @@ class StreamingSecretRedactor:
         re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}"),
         re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
     )
-    _TOKEN_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-+/=")
+    _TOKEN_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-+/=:")
     _LOOKBEHIND = 160
 
     def __init__(self) -> None:
