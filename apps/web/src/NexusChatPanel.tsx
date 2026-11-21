@@ -141,6 +141,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     setProjects([]);
     setProjectId("");
     setMessages([]);
+    setConsent(false);
     try {
       const result = await listNexusProjects(config.apiBaseUrl, organizationId, access.accessToken);
       setProjects(result.projects);
@@ -185,6 +186,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     ].slice(-20);
     setMessages(next);
     setDraft("");
+    setConsent(false);
     setChatError("");
     setSending(true);
     const controller = new AbortController();
@@ -264,6 +266,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
               <select id="nexus-project-id" value={projectId} onChange={(event) => {
                 setProjectId(event.target.value);
                 setMessages([]);
+                setConsent(false);
                 setChatError("");
               }}>
                 <option value="">Choose an authorized project…</option>
