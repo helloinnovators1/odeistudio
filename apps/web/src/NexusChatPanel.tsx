@@ -204,18 +204,33 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     if (!access) return;
     const expireSession = (message: string, error = "") => {
       authGenerationRef.current += 1;
+      if (config.auth && access.refreshToken) {
+        void revokeODIDToken(config.auth, access.refreshToken, "refresh_token").catch(() => {
+          // Session state is cleared even if provider revocation is unavailable.
+        });
+      }
       setAccess(null);
       setAuthBusy(false);
       setAuthError(error);
       setOrganizations([]);
       setOrganizationId("");
+      setOrganizationError("");
       setProjects([]);
       setProjectId("");
+      setProjectError("");
       setMessages([]);
       setConversations([]);
       setConversationId("");
+      setDraft("");
+      setConsent(false);
+      setAttachActiveFile(false);
+      setUseAttachedTools(false);
+      setChatError("");
       setTaskPlan(null);
       setTaskError("");
+      setPatchProposals([]);
+      setSelectedPatch(null);
+      setPatchError("");
       setNotice(message);
     };
     const remaining = access.expiresAt - Date.now();
