@@ -11,6 +11,7 @@ import "./nexus-chat-panel.css";
 
 interface Props {
   onClose: () => void;
+  isOpen?: boolean;
   activeFile?: { path: string; content: string } | null;
 }
 
@@ -51,7 +52,7 @@ function newMessageId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
+export default function NexusChatPanel({ onClose, isOpen = true, activeFile = null }: Props) {
   const config = useMemo(environmentConfig, []);
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -261,7 +262,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
   const selectedProject = projects.find((item) => item.project_id === projectId);
 
   return (
-    <aside className="nexus-pane" aria-label="NEXUS AI chat panel">
+    <aside className={`nexus-pane${isOpen ? "" : " nexus-pane-hidden"}`} aria-label="NEXUS AI chat panel">
       <div className="pane-heading">
         <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
         <div className="nexus-header-actions">
