@@ -50,3 +50,18 @@ def test_streaming_secret_redactor_preserves_normal_text_and_redacts_jwt_split()
     assert result.startswith("This is safe output followed by ")
     assert "eyJabcdefghijk.abcdefghijk.abcdefghijk" not in result
     assert result.endswith(" and then more safe text.")
+
+
+
+def test_streaming_redactor_handles_long_mongodb_credentials_without_redacting_hosts():
+    redactor = StreamingSecretRedactor()
+    prefix = "mongodb://" + "service-user" + ":" + ("p" * 240)
+    first = redactor.feed("Use this URI " + prefix)
+    second = redactor.feed("@db.example.test:27017/odei")
+    result = first + second + redactor.finish()
+    assert ("p" * 240) not in result
+    assert "[REDACTED]" in result
+
+    ordinary = StreamingSecretRedactor()
+    safe = "Connect to mongodb://db.example.test:27017/odei"
+    assert ordinary.feed(safe) + ordinary.finish() == safe
