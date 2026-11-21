@@ -42,6 +42,7 @@ class AgentRunResult:
     model: str
     tool_calls: int
     tool_rounds: int
+    tool_names: tuple[str, ...] = ()
 
 
 def _field(item: Any, name: str, default: Any = None) -> Any:
@@ -57,6 +58,7 @@ def run_nexus_agent(
     task: str,
     workspace_tools: ReadOnlyWorkspaceTools,
     cloud_model_consent: bool = False,
+    prior_messages: list[dict[str, str]] | None = None,
 ) -> AgentRunResult:
     """Run bounded read-only tools after explicit cloud-model consent.
 
@@ -74,8 +76,31 @@ def run_nexus_agent(
         raise AgentRuntimeError("Explicit user consent is required before sending workspace context to a cloud model")
 
     tools = workspace_tools.schemas()
-    history: list[Any] = [{"role": "user", "content": redact_secrets(clean_task)}]
-    history_chars = len(clean_task)
+    history: list[Any] = []
+    history_chars = 0
+    if prior_messages is not None:
+        if not isinstance(prior_messages, list) or len(prior_messages) > 19:
+            raise ValueError("prior_messages must contain at most 19 entries")
+        for message in prior_messages:
+            if (
+                not isinstance(message, dict) or set(message) != {"role", "content"}
+                or message["role"] not in {"user", "assistant"}
+                or not isinstance(message["content"], str)
+                or not message["content"].strip()
+                or len(message["content"]) > MAX_AGENT_TASK_CHARS
+            ):
+                raise ValueError("prior_messages contains an invalid message")
+            history_chars += len(message["content"])
+            history.append({
+                "role": message["role"],
+                "content": redact_secrets(message["content"]),
+            })
+    if history and history[-1]["role"] != "assistant":
+        raise ValueError("prior_messages must end with an assistant turn")
+    history_chars += len(clean_task)
+    if history_chars > MAX_AGENT_HISTORY_CHARS:
+        raise ValueError("prior_messages exceeds the maximum context budget")
+    history.append({"role": "user", "content": redact_secrets(clean_task)})
     response = client.responses.create(
         model=model,
         instructions=AGENT_INSTRUCTIONS,
@@ -88,6 +113,7 @@ def run_nexus_agent(
     total_calls = 0
     rounds = 0
     seen_call_ids: set[str] = set()
+    invoked_tools: list[str] = []
 
     while True:
         output_items = _field(response, "output", []) or []
@@ -104,6 +130,7 @@ def run_nexus_agent(
                 model=model,
                 tool_calls=total_calls,
                 tool_rounds=rounds,
+                tool_names=tuple(dict.fromkeys(invoked_tools)),
             )
 
         if rounds >= MAX_AGENT_TURNS:
@@ -124,6 +151,7 @@ def run_nexus_agent(
                 raise AgentRuntimeError("Model returned oversized tool arguments")
             seen_call_ids.add(call_id)
             total_calls += 1
+            invoked_tools.append(name)
             try:
                 arguments = json.loads(raw_arguments)
                 if not isinstance(arguments, dict):
