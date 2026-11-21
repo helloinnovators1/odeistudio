@@ -1,4 +1,4 @@
-from odei_api.services.secret_redaction import redact_secrets
+from odei_api.services.secret_redaction import StreamingSecretRedactor, redact_secrets
 
 
 def test_redacts_known_provider_tokens_and_quoted_secret_assignments() -> None:
@@ -20,3 +20,33 @@ def test_redacts_jwts_private_keys_and_database_passwords() -> None:
     assert "secret-material" not in result
     assert "database-password" not in result
     assert "[REDACTED PRIVATE KEY]" in result
+
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "sk-proj-abcdefghijklmnopqrstuvwxyz123456",
+        "ghp_abcdefghijklmnopqrstuvwxyz123456",
+        "Bearer abcdefghijklmnopqrstuvwxyz012345",
+        "api_key=super_secret_token_12345",
+        "mongodb://service-user:super_secret_password@db.example.test/odei",
+        "-----BEGIN PRIVATE KEY-----\\nprivate-material\\n-----END PRIVATE KEY-----",
+    ],
+)
+def test_streaming_secret_redactor_handles_secrets_split_across_chunks(secret):
+    redactor = StreamingSecretRedactor()
+    chunks = [secret[:5], secret[5:17], secret[17:]]
+    result = "".join(redactor.feed(chunk) for chunk in chunks) + redactor.finish()
+    assert secret not in result
+    assert "[REDACTED" in result or "Bearer [REDACTED]" in result
+
+
+def test_streaming_secret_redactor_preserves_normal_text_and_redacts_jwt_split():
+    redactor = StreamingSecretRedactor()
+    first = redactor.feed("This is safe output followed by eyJabcdefghijk.abcdefghijk.")
+    second = redactor.feed("abcdefghijk and then more safe text.")
+    result = first + second + redactor.finish()
+    assert result.startswith("This is safe output followed by ")
+    assert "eyJabcdefghijk.abcdefghijk.abcdefghijk" not in result
+    assert result.endswith(" and then more safe text.")
