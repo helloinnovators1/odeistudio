@@ -333,3 +333,11 @@ Earlier entries in this file describe intermediate milestones and may say task H
 - This increment is committed to feature branch `feat/nexus-authenticated-chat-panel`; GitHub Actions must pass on the exact latest head before merge. No local tests/build or live ODID browser test was run in this hosted session.
 - Still not implemented: trusted organization discovery, ODID refresh/revocation and ID-token validation, streaming, durable/encrypted chat history, repository/model tool loop, chat-triggered persistent patch proposals, reviewer approval, safe patch application/rollback, isolated terminal/test execution, agent orchestration and production deployment.
 - Production authentication remains blocked until the Identity/API owners configure and verify the actual issuer, discovery, public client ID, exact callback URI, scopes, RFC 8707 resource/audience, access-token profile, API issuer/audience/JWKS/client allowlist, model credentials, MongoDB and exact CORS origins. No bearer tokens or secrets should be pasted into chat or committed.
+
+
+## Trusted organization discovery for NEXUS chat — 2026-11-21
+
+- Added authenticated `GET /api/v1/organizations` to return at most 100 active organization memberships filtered by verified issuer + subject. It rejects malformed/duplicate membership records and writes audit events for returned organizations.
+- Added the `listNexusOrganizations` browser transport with bearer-only, no-credentials/no-cache/redirect-rejecting requests and strict response validation.
+- Replaced manual organization ID entry in the NEXUS panel with a selector populated from the server-side membership endpoint. Project listing remains separately scoped and authorized by the API.
+- Added API route and browser transport tests. Latest-head CI is required before this increment is considered verified.
