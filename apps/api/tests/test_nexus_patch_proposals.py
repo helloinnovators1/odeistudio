@@ -258,7 +258,7 @@ def test_apply_capability_requires_approved_owner_decision_and_binds_workspace(p
     assert body["workspace_id"] == request["workspace_id"]
     assert body["proposal_version"] == 1
     assert body["application_enabled"] is False
-    assert "capability" not in str(audit.events)
+    assert "signed-capability" not in str(audit.events)
     assert audit.events[-1]["action"] == "nexus.patch_proposal.apply_capability"
 
 
