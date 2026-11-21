@@ -8,13 +8,13 @@ and select a server-defined, digest-pinned SandboxProfile.
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import math
 import os
 import re
 import stat
 import time
 import uuid
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -169,7 +169,7 @@ class ContainerSandbox:
         os.chmod(workspace, 0o777)
 
     @staticmethod
-    def _validate_arguments(arguments: Sequence[str]) -> tuple[str, ...]:
+    def _validate_arguments(arguments: collections.abc.Sequence[str]) -> tuple[str, ...]:
         if isinstance(arguments, (str, bytes)) or len(arguments) > _MAX_ARGUMENTS:
             raise ValueError("Execution arguments must be a bounded list of strings")
         result = tuple(arguments)
