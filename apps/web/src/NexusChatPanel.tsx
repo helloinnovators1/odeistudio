@@ -5,7 +5,7 @@ import {
   type ODidAccessToken,
   type ODidOAuthConfig,
 } from "./odid-auth";
-import { listNexusProjects, type NexusProject } from "./projects";
+import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { sendNexusChat, type NexusChatMessage } from "./nexus-chat";
 import "./nexus-chat-panel.css";
 
@@ -56,7 +56,10 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [organizations, setOrganizations] = useState<NexusOrganization[]>([]);
   const [organizationId, setOrganizationId] = useState("");
+  const [organizationBusy, setOrganizationBusy] = useState(false);
+  const [organizationError, setOrganizationError] = useState("");
   const [projects, setProjects] = useState<NexusProject[]>([]);
   const [projectId, setProjectId] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
@@ -91,6 +94,28 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
         setAuthBusy(false);
       });
   }, [config.auth]);
+
+  useEffect(() => {
+    if (!access || !config.apiBaseUrl) return;
+    let active = true;
+    setOrganizationBusy(true);
+    setOrganizationError("");
+    void listNexusOrganizations(config.apiBaseUrl, access.accessToken)
+      .then((result) => {
+        if (!active) return;
+        setOrganizations(result.organizations);
+        setNotice(result.organizations.length
+          ? "Choose an organization, then load its authorized projects."
+          : "This identity has no active organization memberships.");
+      })
+      .catch((cause: unknown) => {
+        if (active) setOrganizationError(errorMessage(cause));
+      })
+      .finally(() => {
+        if (active) setOrganizationBusy(false);
+      });
+    return () => { active = false; };
+  }, [access, config.apiBaseUrl]);
 
   useEffect(() => {
     if (!access) return;
@@ -157,6 +182,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     abortRef.current?.abort();
     abortRef.current = null;
     setAccess(null);
+    setOrganizations([]);
     setOrganizationId("");
     setProjects([]);
     setProjectId("");
@@ -252,13 +278,38 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
       {access && (
         <section className="nexus-project-context">
           <div className="nexus-auth-status"><span className="nexus-online-dot" /> Signed in · token held in memory</div>
-          <form onSubmit={(event) => void loadProjects(event)} className="nexus-org-form">
-            <label htmlFor="nexus-org-id">ORGANIZATION ID</label>
-            <input id="nexus-org-id" value={organizationId} onChange={(event) => setOrganizationId(event.target.value)} required maxLength={128} placeholder="Enter your organization ID" />
-            <button className="nexus-secondary-button" type="submit" disabled={projectBusy || !organizationId.trim()}>
-              {projectBusy ? "Loading…" : "Load projects"}
+          <div className="nexus-org-form">
+            <label htmlFor="nexus-org-id">ORGANIZATION</label>
+            <select id="nexus-org-id" value={organizationId} onChange={(event) => {
+              setOrganizationId(event.target.value);
+              setProjects([]);
+              setProjectId("");
+              setMessages([]);
+              setConsent(false);
+              setProjectError("");
+            }} disabled={organizationBusy || organizations.length === 0}>
+              <option value="">{organizationBusy ? "Loading memberships…" : "Choose an organization…"}</option>
+              {organizations.map((organization) => (
+                <option key={organization.organization_id} value={organization.organization_id}>
+                  {organization.organization_id} · {organization.role}
+                </option>
+              ))}
+            </select>
+            <button className="nexus-secondary-button" type="button" onClick={(event) => {
+              const form = event.currentTarget.form;
+              if (form) void loadProjects({ ...({ preventDefault: () => undefined } as FormEvent<HTMLFormElement>) });
+            }} disabled>
+              Load projects
             </button>
-          </form>
+          </div>
+          {organizationError && <p className="nexus-error" role="alert">{organizationError}</p>}
+          {organizationId && (
+            <button className="nexus-secondary-button nexus-load-projects" type="button"
+              onClick={() => void loadProjects({ preventDefault: () => undefined } as FormEvent<HTMLFormElement>)}
+              disabled={projectBusy}>
+              {projectBusy ? "Loading projects…" : "Load projects"}
+            </button>
+          )}
           {projectError && <p className="nexus-error" role="alert">{projectError}</p>}
           {projects.length > 0 && (
             <label className="nexus-project-select" htmlFor="nexus-project-id">
