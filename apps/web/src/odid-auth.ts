@@ -65,6 +65,15 @@ function parseHttpsUrl(value: string, label: string, allowLoopbackHttp = false):
 
 function validateConfig(config: ODidOAuthConfig): ODidOAuthConfig {
   if (!config || typeof config !== "object") throw new ODidOAuthError("ODID OAuth configuration is missing.");
+  if (
+    typeof config.issuer !== "string" || !config.issuer || config.issuer.trim() !== config.issuer
+    || typeof config.redirectUri !== "string" || !config.redirectUri
+    || config.redirectUri.trim() !== config.redirectUri
+    || typeof config.resource !== "string" || !config.resource
+    || config.resource.trim() !== config.resource
+  ) {
+    throw new ODidOAuthError("ODID issuer, redirect URI and API resource must be exact configured URLs.");
+  }
   const issuerUrl = parseHttpsUrl(config.issuer, "ODID issuer");
   if (issuerUrl.search) throw new ODidOAuthError("ODID issuer must not contain a query.");
   const redirect = parseHttpsUrl(config.redirectUri, "Registered redirect URI", true);
@@ -78,10 +87,10 @@ function validateConfig(config: ODidOAuthConfig): ODidOAuthConfig {
     throw new ODidOAuthError("ODID scopes must be a bounded list of valid scope names.");
   }
   return {
-    issuer: issuerUrl.toString().replace(/\/$/, ""),
+    issuer: config.issuer,
     clientId: config.clientId.trim(),
-    redirectUri: redirect.toString(),
-    resource: new URL(config.resource).toString(),
+    redirectUri: config.redirectUri,
+    resource: config.resource,
     scopes: [...new Set(config.scopes)],
   };
 }
