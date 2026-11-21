@@ -236,6 +236,7 @@ def test_apply_capability_requires_approved_owner_decision_and_binds_workspace(p
     request = {
         "expected_version": 0,
         "workspace_id": "workspace_1234567890123456",
+        "companion_challenge": "C" * 43,
         "confirm_apply": True,
     }
     pending = client.post(path, json=request)
@@ -283,6 +284,7 @@ def test_apply_capability_requires_project_owner_and_explicit_confirmation(patch
     response = client.post(path, json={
         "expected_version": 1,
         "workspace_id": "workspace_1234567890123456",
+        "companion_challenge": "C" * 43,
         "confirm_apply": True,
     })
     assert response.status_code == 403
@@ -301,6 +303,7 @@ def test_apply_capability_fails_closed_without_signing_configuration(patch_state
     response = client.post(path + "/apply-capability", json={
         "expected_version": 1,
         "workspace_id": "workspace_1234567890123456",
+        "companion_challenge": "C" * 43,
         "confirm_apply": True,
     })
     assert response.status_code == 503
