@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import MonacoEditor from "@monaco-editor/react";
+import NexusChatPanel from "./NexusChatPanel";
 import {
   connectToCompanion,
   disconnectFromCompanion,
@@ -42,7 +43,16 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("Connect the local companion to open a workspace.");
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(() => {
+    try {
+      const callback = new URL(import.meta.env.VITE_ODID_REDIRECT_URI);
+      return window.location.origin === callback.origin
+        && window.location.pathname === callback.pathname
+        && Boolean(window.location.search);
+    } catch {
+      return false;
+    }
+  });
   const [chatSide, setChatSide] = useState<ChatPanelSide>(() => readChatPanelSide());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
@@ -306,22 +316,11 @@ export default function App() {
   }
 
   const chatPanel = (
-    <aside className="nexus-pane" aria-label="NEXUS AI chat panel">
-      <div className="pane-heading">
-        <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
-        <button className="icon-button" aria-label="Close NEXUS chat" onClick={() => setChatOpen(false)}>×</button>
-      </div>
-      <div className="chat-empty">
-        <div className="nexus-mark">N</div>
-        <h2>Your coding agent</h2>
-        <p>The chat panel and its left/right preference are available. Authenticated conversation, repository-aware tool calls and streaming are not connected yet.</p>
-        <div className="capability-note">No code is sent to a cloud model from this panel.</div>
-      </div>
-      <div className="chat-composer">
-        <textarea aria-label="NEXUS message" placeholder="NEXUS chat transport is not connected…" disabled rows={3} />
-        <div><span>Read-only workspace</span><button disabled>Send</button></div>
-      </div>
-    </aside>
+    <NexusChatPanel
+      onClose={() => setChatOpen(false)}
+      isOpen={chatOpen}
+      activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
+    />
   );
 
   return (
@@ -386,8 +385,6 @@ export default function App() {
           </>}
         </aside>
 
-        {chatOpen && chatSide === "left" && chatPanel}
-
         <section className="editor-column">
           <div className="editor-actionbar">
             {token && activeTab && <button className="patch-preview-trigger" onClick={openPatchPreview}>Preview patch</button>}
@@ -435,7 +432,7 @@ export default function App() {
           <footer className="statusbar"><span>{token ? "Companion connected" : "No local workspace"}</span><span>{activeTab ? languageForPath(activeTab.path) : "Plain Text"}</span><span>UTF-8</span><span>READ ONLY</span></footer>
         </section>
 
-        {chatOpen && chatSide === "right" && chatPanel}
+        {chatPanel}
       </div>
 
       {patchDialogOpen && activeTab && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPatchDialogOpen(false); }}>

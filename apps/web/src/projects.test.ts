@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createNexusProject,
   listNexusProjects,
+  listNexusOrganizations,
   NexusProjectTransportError,
 } from "./projects";
 
@@ -103,4 +104,43 @@ describe("NEXUS project transport", () => {
     await expect(listNexusProjects("https://api.example.test", "org-a", "token", invalid))
       .rejects.toThrow("invalid project response");
   });
+  it("discovers only active organizations through the authenticated identity endpoint", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({
+      organizations: [
+        { organization_id: "org-a", role: "owner" },
+        { organization_id: "org-b", role: "member" },
+      ],
+      limit: 100,
+    }));
+    const result = await listNexusOrganizations(
+      "https://api.example.test/", "ephemeral-token", fetcher,
+    );
+    expect(result.organizations.map((item) => item.organization_id)).toEqual(["org-a", "org-b"]);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("https://api.example.test/api/v1/organizations");
+    expect(init?.method).toBe("GET");
+    expect(init?.credentials).toBe("omit");
+    expect(init?.cache).toBe("no-store");
+    expect(init?.redirect).toBe("error");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer ephemeral-token");
+  });
+
+  it("rejects malformed and duplicate organization discovery results", async () => {
+    const malformed = vi.fn<typeof fetch>().mockResolvedValue(response({
+      organizations: [{ organization_id: "org-a", role: "" }],
+      limit: 100,
+    }));
+    await expect(listNexusOrganizations("https://api.example.test", "token", malformed))
+      .rejects.toThrow("unexpected organization-list contract");
+    const duplicate = vi.fn<typeof fetch>().mockResolvedValue(response({
+      organizations: [
+        { organization_id: "org-a", role: "owner" },
+        { organization_id: "org-a", role: "member" },
+      ],
+      limit: 100,
+    }));
+    await expect(listNexusOrganizations("https://api.example.test", "token", duplicate))
+      .rejects.toThrow("duplicate organization identities");
+  });
+
 });

@@ -144,6 +144,50 @@ def _project_response(project: dict) -> dict:
     }
 
 
+@router.get(f"{settings.api_prefix}/organizations", tags=["organizations"])
+async def list_organizations(
+    request: Request,
+    principal: Principal = principal_dependency,
+) -> dict:
+    """List only organizations with an active server-side membership for this identity."""
+    database = _database(request)
+    try:
+        cursor = database["organization_memberships"].find({
+            "identity_issuer": principal.issuer,
+            "identity_subject": principal.subject,
+            "status": "active",
+        }, {"_id": 0, "organization_id": 1, "role": 1}).sort("organization_id", 1).limit(100)
+        rows = await cursor.to_list(length=100)
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "MEMBERSHIP_STORE_UNAVAILABLE",
+            "message": "Organization discovery is temporarily unavailable.",
+        }) from exc
+
+    organizations = []
+    seen: set[str] = set()
+    for row in rows:
+        organization_id = row.get("organization_id")
+        role = row.get("role")
+        if (
+            not isinstance(organization_id, str) or not organization_id.strip()
+            or organization_id != organization_id.strip() or len(organization_id) > 128
+            or not isinstance(role, str) or not role.strip()
+            or organization_id in seen
+        ):
+            raise HTTPException(status_code=503, detail={
+                "code": "MEMBERSHIP_RECORD_INVALID",
+                "message": "Organization membership data is not valid.",
+            })
+        seen.add(organization_id)
+        await _audit(
+            request, principal, organization_id, "organization.list",
+            "organization", organization_id, "success", {"role": role},
+        )
+        organizations.append({"organization_id": organization_id, "role": role})
+    return {"organizations": organizations, "limit": 100}
+
+
 @router.post(f"{settings.api_prefix}/organizations/{{organization_id}}/projects",
              status_code=201, tags=["projects"])
 async def create_project(

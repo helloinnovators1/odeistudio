@@ -1,6 +1,6 @@
 # NEXUS Chat Panel Operationalisation
 
-**Status:** implementation contract and delivery gates. The current panel is a UI shell; the authenticated API and browser transports exist, but neither identity acquisition nor chat submission is connected to the composer. A provider-neutral OAuth 2.0 PKCE client now exists as an unconnected integration foundation. This document defines the complete operational target without representing planned capabilities as shipped.
+**Status:** the NEXUS panel now has an interactive ODID PKCE sign-in/callback path, tenant-scoped project listing, per-request cloud consent and a functional synchronous read-only composer. Production use remains gated on real ODID/API configuration and staging validation. Streaming, durable history, tools, patch application, isolated execution and agents remain future work.
 
 ## 1. Product responsibility
 
@@ -190,3 +190,23 @@ Not yet implemented or connected:
 ## 10. Release rule
 
 A capability is “implemented” only when its code, authorization boundary, tests, documentation and CI evidence exist. A design, UI control, mock response or provider configuration placeholder does not count. Do not merge to `main`, deploy, or enable destructive capabilities without the applicable review and release authorization.
+
+
+## Delivered interactive read-only chat slice — 2026-11-21
+
+The current web implementation now includes:
+- ODID authorization-code + PKCE sign-in and callback handling through the provider-neutral client.
+- In-memory access-token lifecycle with expiry clearing and UI sign-out. No bearer token is stored in localStorage, sessionStorage, cookies or URL parameters.
+- User-entered organization ID and server-authorized project selection. Organization discovery is not yet available.
+- Active-file excerpt attachment only after an explicit checkbox selection; no automatic full-workspace upload.
+- An unchecked, per-request cloud-model consent checkbox. Sending is disabled until consent, a selected project and a non-empty bounded message exist.
+- A working synchronous send/response transcript, Enter-to-send, Shift+Enter, request abort and session-only history.
+- Strict browser CORS allowlist configuration through `CORS_ALLOWED_ORIGINS`; origins must be explicit HTTPS origins, with HTTP allowed only for loopback development.
+
+This slice still uses the existing JSON chat endpoint. It does not stream, persist conversations, invoke repository tools, generate or apply patches, execute commands/tests, or orchestrate agents. The backend remains read-only and stateless. The user must provide approved environment-specific public ODID values and the API owner must configure matching issuer/audience/JWKS/client allowlist, MongoDB, model credentials and exact CORS origins. Do not enable production use until an actual ODID staging/browser end-to-end test passes.
+
+
+### Organization discovery delivered — 2026-11-21
+
+- Added authenticated `GET /api/v1/organizations` to discover only active organization memberships for the verified identity. The response is bounded to 100, malformed/duplicate membership data fails closed, and returned membership reads are audited.
+- Added a typed browser transport and organization selector. The user now selects from server-discovered memberships rather than manually typing an organization ID. Project selection remains a separate server-authorized step.

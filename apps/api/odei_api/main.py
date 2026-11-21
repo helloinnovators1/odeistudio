@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from pymongo.errors import PyMongoError
 from starlette.concurrency import run_in_threadpool
 
-from odei_api.config import get_settings
+from odei_api.config import get_settings, parse_cors_origins
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.mongo_client import create_mongo_client
 from odei_api.security.auth import (
@@ -96,7 +96,7 @@ app.include_router(projects_router)
 # Wildcard CORS with credentials is deliberately not enabled.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[],
+    allow_origins=parse_cors_origins(settings.cors_allowed_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],

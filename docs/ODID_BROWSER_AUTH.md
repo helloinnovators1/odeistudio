@@ -1,6 +1,6 @@
 # ODID Browser Authentication Client
 
-**Status:** provider-neutral PKCE client implemented and under CI verification; not yet wired into the Studio application. Production authentication remains blocked until the ODID service owner supplies and verifies the real public-client contract.
+**Status:** provider-neutral PKCE client merged into main and wired into the NEXUS panel's sign-in/callback flow. Production authentication remains gated on the real ODID public-client contract, API token profile, API CORS allowlist and live staging verification.
 
 ## What this increment provides
 
@@ -20,7 +20,7 @@ The only browser storage used is sessionStorage for the short-lived state/verifi
 
 ## Explicit limitations
 
-This is a generic OAuth 2.0 public-client adapter, not proof that ODID implements the required contract. It is not connected to `App.tsx`, the project selector or NEXUS composer. It does not persist tokens, refresh sessions, validate an ID token, implement logout/revocation, or establish organization/project permissions. The API remains the authorization authority and validates its own access-token profile on every protected request.
+This is a generic OAuth 2.0 public-client adapter, not proof that ODID implements the required contract. The Studio now calls this client from `NexusChatPanel.tsx`, handles the registered callback route, keeps the access token in React memory, and clears the callback query from browser history. The panel uses it to load the authenticated user's projects and unlock the read-only composer. It does not persist tokens, refresh sessions, validate an ID token, or implement provider logout/revocation. The UI logout clears in-memory state only. The panel now discovers active organization memberships through a new authenticated server endpoint; project authorization is enforced by the existing server-side project-list and chat APIs. The API remains the authorization authority and validates its own access-token profile on every protected request.
 
 The API currently requires a signed RS256 access token with explicit `typ=at+jwt` or `application/at+jwt`, issuer, audience, expiry, subject, issued-at, token ID and allowlisted client ID. A successful OAuth token response alone does not prove that the returned token satisfies this profile. The first authenticated API request must be accepted by the backend verifier and membership checks.
 
@@ -41,8 +41,8 @@ Do not invent these values, commit credentials, or ask users to paste bearer tok
 ## Integration sequence
 
 1. Supply approved public issuer/client/redirect/resource/scope configuration through environment-specific public runtime configuration.
-2. Add a dedicated callback route that calls `completeODIDLogin(window.location.href, config)`, removes authorization parameters from browser history, and keeps the returned access token in React memory only.
-3. On successful login, call `/api/v1/auth/me` and the organization membership endpoint; the API must verify the token. Resolve organizations from a trusted server-side discovery API before showing project selection.
+2. The NEXUS panel now handles the configured callback path, calls `completeODIDLogin(window.location.href, config)`, removes authorization parameters from browser history, and keeps the returned access token in React memory only.
+3. The panel calls the existing organization-scoped project-list endpoint with the bearer token; that endpoint verifies the token and active organization membership server-side. The panel discovers organizations through the authenticated `GET /api/v1/organizations` endpoint, then loads the selected organization's authorized projects.
 4. Call the tenant-scoped project-list transport and require explicit project selection.
 5. Connect the NEXUS composer only after a verified principal, active organization, authorized project and affirmative per-request cloud-model consent exist.
 6. Clear in-memory token and all pending PKCE state on logout, expiry, identity change or authorization failure. Re-authenticate rather than storing refresh/access tokens in browser storage.
@@ -51,3 +51,20 @@ Do not invent these values, commit credentials, or ask users to paste bearer tok
 ## Verification
 
 Vitest coverage exercises discovery issuer matching, PKCE S256 request parameters, state mismatch, callback-origin mismatch, transaction expiry/consumption, token response validation, bounded response bodies and the absence of token persistence. CI on the current pull request is the verification gate; no local browser or ODID staging test has been performed in this hosted session.
+
+
+## Studio integration update — 2026-11-21
+
+- Added the authenticated NEXUS panel component and connected it to the IDE shell. The panel performs ODID authorization-code + PKCE login, processes the registered callback, strips callback query parameters from browser history and holds the access token only in component memory.
+- Added the project-list flow using the existing tenant-scoped project transport. Since there is no organization-discovery endpoint, the user enters an organization ID; the API remains authoritative and returns only projects the verified identity may access.
+- Added a functional composer with Enter-to-send, Shift+Enter newline, explicit unchecked per-request cloud-model consent, optional user-selected active-file excerpt, bounded transcript, in-memory session-only history, abort/cancel, expiry clearing, sign-out and safe error states.
+- Added public browser environment template values in `apps/web/.env.example`. Added strict explicit-origin CORS configuration through `CORS_ALLOWED_ORIGINS`; wildcard, non-loopback HTTP, credentials, paths, query and fragments are rejected.
+- This is an interactive authenticated read-only chat integration, not a production ODID deployment. No issuer, client ID, redirect, resource, scopes, API audience, JWKS URL, allowed-client ID, CORS origin, database or model credentials have been configured here. No real identity provider or browser staging test has been run.
+- No streaming, durable conversation persistence, model tool calls, chat-triggered patch proposals, patch approval/application, isolated command/test execution or agent orchestration is included in this increment. The transcript is lost on reload and capped to the latest 20 messages.
+
+
+### Organization discovery update
+
+- Added `GET /api/v1/organizations`, which filters active memberships by the verified issuer and subject, bounds results to 100, validates membership records and audits each returned organization.
+- Added the typed browser transport and panel organization selector. The client does not accept organization IDs or roles as authorization evidence; all membership checks remain server-side.
+- Organization discovery returns identifiers and roles only. Organization names/branding and invitations remain outside this endpoint.
