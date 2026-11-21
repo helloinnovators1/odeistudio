@@ -611,6 +611,7 @@ export async function sendNexusChatInspection(
     typeof payload.tools_executed !== "number" || !Number.isInteger(payload.tools_executed) ||
     payload.tools_executed < 0 || payload.tools_executed > 12 ||
     !Array.isArray(payload.tool_names) ||
+    payload.tool_names.length > payload.tools_executed ||
     payload.tool_names.some((name) => typeof name !== "string" || !allowedTools.has(name)) ||
     payload.conversation_persisted !== true || payload.conversation_id !== conversationId
   ) {
