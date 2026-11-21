@@ -535,5 +535,5 @@ async def nexus_project_chat(
         "read_only": True,
         "tools_executed": 0,
         "conversation_persisted": payload.conversation_id is not None,
-        "conversation_id": payload.conversation_id,
+        **({"conversation_id": payload.conversation_id} if payload.conversation_id is not None else {}),
     }
