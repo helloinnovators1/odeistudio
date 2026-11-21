@@ -56,6 +56,8 @@ def _validate_path(path: str) -> tuple[str, ...]:
         raise PatchProposalError("Patch paths must be non-empty relative paths")
     if path.startswith(("/", "\\\\")) or "\x00" in path or "\\" in path:
         raise PatchProposalError("Absolute, NUL and backslash paths are not allowed")
+    if path != unicodedata.normalize("NFC", path):
+        raise PatchProposalError("Paths must use Unicode NFC normalization")
     parts = tuple(path.split("/"))
     if any(part in {"", ".", ".."} for part in parts):
         raise PatchProposalError("Path traversal and empty path components are not allowed")
