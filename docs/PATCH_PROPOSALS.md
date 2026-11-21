@@ -56,3 +56,10 @@ The NEXUS chat inspection route can now capture a generated replacement for an e
 The browser panel lists proposals, displays unified diffs, and exposes approve/reject controls only when the server confirms the authenticated identity is the project owner. Decisions use optimistic versions. The response and UI always state `application_enabled: false`.
 
 Approval remains a review decision, not permission for the browser or API to write local files. Do not add an apply button until the local companion can independently verify a short-lived, single-use approval capability, re-read every target using retained safe handles, compare fresh base hashes, stage atomic writes, and roll back on failure.
+
+
+## Signed apply-capability foundation
+
+PR #22 adds an owner-only API route that issues a short-lived Ed25519 capability only for a proposal already approved at the expected version. The capability binds organization, project, workspace ID, proposal ID/version and a canonical SHA-256 digest of exact file operations and replacement bytes. Signing fails closed unless the server-side issuer, key ID and private key are configured together. The API response still says `application_enabled: false`.
+
+This is not local application. The companion has not yet been wired to pin the matching public key, verify and consume the capability, re-read live files, stage writes, roll back or recover interrupted operations. Do not configure signing keys or expose an Apply button until that companion work is merged and validated.
