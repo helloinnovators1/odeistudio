@@ -118,6 +118,27 @@ describe("ODID OAuth PKCE client", () => {
     expect(storage.values.size).toBe(0);
   });
 
+  it("preserves exact issuer, redirect and API resource identifiers", async () => {
+    const exactConfig = {
+      ...config,
+      issuer: "https://identity.example.test/",
+      redirectUri: "https://studio.example.test/callback",
+      resource: "https://api.example.test",
+    };
+    const exactDiscovery = {
+      ...discovery,
+      issuer: exactConfig.issuer,
+      authorization_endpoint: "https://identity.example.test/authorize",
+    };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(exactDiscovery));
+    const url = new URL(await beginODIDLogin(exactConfig, {
+      storage, cryptoProvider: fakeCrypto(), fetcher,
+    }));
+    expect(url.searchParams.get("redirect_uri")).toBe(exactConfig.redirectUri);
+    expect(url.searchParams.get("resource")).toBe(exactConfig.resource);
+    expect(fetcher.mock.calls[0][0]).toBe("https://identity.example.test/.well-known/openid-configuration");
+  });
+
   it("rejects issuer mismatch and providers without PKCE S256", async () => {
     const wrongIssuer = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
       ...discovery, issuer: "https://attacker.example.test",
