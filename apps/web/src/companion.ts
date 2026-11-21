@@ -65,9 +65,12 @@ export async function previewWorkspacePatch(
       const base = baseContents[file.path];
       const replacement = changes[file.path];
       const expectedOperation = base === null ? "create" : replacement === null ? "delete" : "update";
+      const resultHashIsValid = replacement === null
+        ? file.result_sha256 === null
+        : typeof file.result_sha256 === "string" && /^[0-9a-f]{64}$/.test(file.result_sha256);
       return file.operation === expectedOperation &&
         file.base_sha256 === (base === null ? null : expectedBaseHashes[file.path]) &&
-        file.result_sha256 === (replacement === null ? null : /^[0-9a-f]{64}$/.test(file.result_sha256 ?? "")) &&
+        resultHashIsValid &&
         file.content === replacement &&
         typeof file.unified_diff === "string";
     });
