@@ -1,3 +1,32 @@
+## Current verified implementation snapshot — 2026-11-21
+
+This snapshot supersedes earlier milestone notes below where they describe capabilities as still disabled or not yet implemented.
+
+| NEXUS capability | Current repository state |
+|---|---|
+| ODID browser PKCE client and callback integration | Implemented as configurable browser foundation; real issuer/client registration and staging verification still required |
+| Authenticated identity and organization discovery | Browser flow and server-authorized organization/project selection integrated; production ODID configuration remains external |
+| Active composer and send interaction | Implemented |
+| Incremental AI streaming and browser cancellation | Implemented; provider-side cancellation is best-effort |
+| Durable project-scoped conversations | Implemented with owner isolation, bounded history and optimistic versions |
+| Task planning and owner approval | Implemented; approval records intent and does not execute |
+| Attached-file NEXUS inspection tools | Implemented for explicitly attached excerpts only; not whole-repository access |
+| Chat-generated file-change proposals | Implemented in PR #21 branch; pending exact-head CI and review |
+| Persistent proposal history and diff review | Implemented on main |
+| Project-owner approve/reject decisions | Implemented on main; version checked; decision does not apply files |
+| Local file application and rollback | Not implemented |
+| Isolated terminal/test execution | Not implemented |
+| Agents Window, CLI, cloud/background agents, MAC/MAD | Not implemented beyond documented foundations |
+| Production deployment and real ODID staging | Not completed |
+
+Merged chat-related increments: [PR #14](https://github.com/helloinnovators1/odeistudio/pull/14), [PR #18](https://github.com/helloinnovators1/odeistudio/pull/18), and [PR #19](https://github.com/helloinnovators1/odeistudio/pull/19). Their reported required checks passed. The current generated-proposal increment is [PR #21](https://github.com/helloinnovators1/odeistudio/pull/21); it is not merged or deployed.
+
+Important external gates: actual ODID issuer/discovery, public browser client ID, registered redirect URI, scopes/resource and access-token profile; production API issuer/audience/JWKS/client allowlist; MongoDB replica-set deployment; model credentials; approved hosting and CORS origins. Do not paste secrets or tokens into chat. The local companion has not been installed/run on the user's Windows 10 build 18362 machine, no desktop folders have been scanned, and no real browser-to-local-companion staging test has been completed.
+
+Approval is not application. All patch proposal APIs and UI controls keep `application_enabled=false`; the local workspace remains read-only until a signed single-use approval capability, independent companion verification, fresh handle-relative base-hash checks, atomic writes, rollback and recovery are implemented and tested.
+
+---
+
 ## ODID browser PKCE client foundation — 2026-11-21
 
 - Added `apps/web/src/odid-auth.ts`: provider-neutral OAuth 2.0 Authorization Code + PKCE S256 client. It validates issuer discovery, requires S256, binds the registered callback origin/path and state, bounds discovery/token response streams, uses the RFC 8707 resource parameter, and returns only a bounded bearer access token to caller memory.
