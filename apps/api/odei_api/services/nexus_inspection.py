@@ -11,6 +11,7 @@ from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.agent_runtime import AgentRuntimeError, run_nexus_agent
+from odei_api.services.conversation_store import ConversationStoreError
 from odei_api.services.nexus_tasks import (
     NexusChatRequest,
     _append_nexus_chat_audit,
@@ -141,6 +142,8 @@ async def inspect_attached_project_excerpts(
         )
         if saved is None:
             raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "The conversation changed while NEXUS was inspecting files. Reload history before continuing."})
+    except ConversationStoreError as exc:
+        raise HTTPException(status_code=422, detail={"code": "CONVERSATION_LIMIT_REACHED", "message": "The saved conversation has reached its storage limit. Start a new conversation."}) from exc
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "CONVERSATION_STORE_UNAVAILABLE", "message": "NEXUS could not persist its inspection response."}) from exc
 
