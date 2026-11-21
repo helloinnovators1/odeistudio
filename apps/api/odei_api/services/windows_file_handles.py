@@ -166,7 +166,12 @@ def _open_child(kernel32, ntdll, parent, name: str, *, directory: bool, allow_wr
     if directory:
         access |= FILE_LIST_DIRECTORY | FILE_TRAVERSE
         if allow_write:
-            access |= FILE_ADD_FILE | FILE_DELETE_CHILD
+            # Creating a staged child requires FILE_ADD_FILE. DELETE_CHILD is
+            # not required: replacement/deletion is authorized on the exact
+            # target handle with DELETE access. Requesting DELETE_CHILD here
+            # needlessly rejects folders whose ACL grants create/modify but
+            # not delete-child on the directory (notably Windows user folders).
+            access |= FILE_ADD_FILE
         options |= FILE_DIRECTORY_FILE
     else:
         access |= FILE_READ_DATA
@@ -278,7 +283,10 @@ def open_directory_handle(path: str | Path, *, allow_patch_apply: bool = False):
     kernel32, _ = _apis()
     desired_access = FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE
     if allow_patch_apply:
-        desired_access |= FILE_ADD_FILE | FILE_DELETE_CHILD
+        # FILE_ADD_FILE is sufficient for staging a new child. The operation
+        # obtains DELETE on the exact target file when replacing/deleting it;
+        # requiring FILE_DELETE_CHILD on the selected directory is excessive.
+        desired_access |= FILE_ADD_FILE
     handle = kernel32.CreateFileW(
         str(path),
         desired_access,
