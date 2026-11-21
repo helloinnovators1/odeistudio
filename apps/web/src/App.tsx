@@ -367,7 +367,7 @@ export default function App() {
       <div className="ide-menubar">
         <span>File</span><span>Edit</span><span>Selection</span><span>View</span><span>Go</span><span>Run</span><span>Terminal</span><span>Help</span>
         <span className="menubar-spacer" />
-        <span className="access-pill">{canApplyPatches ? "LOCAL · APPROVAL GATED" : "LOCAL · READ ONLY"}</span>
+        <span className="access-pill">{canApplyPatches && workspace ? "LOCAL · APPROVAL GATED" : "LOCAL · READ ONLY"}</span>
       </div>
 
       {!token && (
@@ -458,7 +458,7 @@ export default function App() {
               {bottomPanel === "terminal" && "Terminal execution is disabled. Commands will not run in the browser; an isolated execution service is still required."}
             </div>
           </section>
-          <footer className="statusbar"><span>{token ? "Companion connected" : "No local workspace"}</span><span>{activeTab ? languageForPath(activeTab.path) : "Plain Text"}</span><span>UTF-8</span><span>{canApplyPatches ? "APPROVAL-GATED WRITE" : "READ ONLY"}</span></footer>
+          <footer className="statusbar"><span>{token ? "Companion connected" : "No local workspace"}</span><span>{activeTab ? languageForPath(activeTab.path) : "Plain Text"}</span><span>UTF-8</span><span>{canApplyPatches && workspace ? "APPROVAL-GATED WRITE" : "READ ONLY"}</span></footer>
         </section>
 
         {chatPanel}
