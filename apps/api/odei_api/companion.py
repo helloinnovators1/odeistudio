@@ -35,7 +35,11 @@ from odei_api.services.patch_proposals import (
     build_patch_proposal,
     validate_patch_path,
 )
-from odei_api.services.workspace_handles import WorkspaceHandleError, WorkspaceHandleRegistry, WorkspaceNotFound
+from odei_api.services.workspace_handles import (
+    WorkspaceHandleError,
+    WorkspaceHandleRegistry,
+    WorkspaceNotFound,
+)
 
 DEFAULT_PORT = 8765
 DEFAULT_PAIRING_TTL_SECONDS = 300
