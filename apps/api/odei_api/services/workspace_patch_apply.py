@@ -157,12 +157,19 @@ def _apply_posix(root_fd: int, item: dict[str, Any], parsed) -> dict[str, str | 
                     raise WorkspacePatchApplyError("The file changed immediately before replacement")
                 os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
             temp_name = None
-        os.fsync(parent_fd)
+        try:
+            os.fsync(parent_fd)
+            durability_confirmed = True
+        except OSError:
+            # The namespace operation already committed atomically. Do not
+            # report it as unapplied when only directory durability is unknown.
+            durability_confirmed = False
         return {
             "path": item["path"],
             "operation": operation,
             "result_sha256": result_hash or "",
             "applied": True,
+            "durability_confirmed": durability_confirmed,
         }
     except WorkspacePatchApplyError:
         raise
