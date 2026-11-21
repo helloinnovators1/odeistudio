@@ -176,3 +176,23 @@ async def test_conversation_delete_is_owner_scoped():
     }
     assert await store.delete_for_owner(**common, owner_subject="mallory") is False
     assert await store.delete_for_owner(**common, owner_subject="alice") is True
+
+
+@pytest.mark.asyncio
+async def test_conversation_store_redacts_secret_like_titles_and_messages():
+    collection = Collection()
+    store = MongoConversationStore(collection)
+    created = await store.create(
+        organization_id="org-a", project_id="project-a",
+        owner_issuer="https://id.example/", owner_subject="alice",
+        title="api_key=super_secret_token_12345",
+    )
+    saved = await store.append(
+        organization_id="org-a", project_id="project-a",
+        owner_issuer="https://id.example/", owner_subject="alice",
+        conversation_id=created["conversation_id"], role="user",
+        content="Please inspect api_key=super_secret_token_12345",
+        expected_version=0,
+    )
+    assert "super_secret_token_12345" not in saved["title"]
+    assert "super_secret_token_12345" not in saved["messages"][0]["content"]
