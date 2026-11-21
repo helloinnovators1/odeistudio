@@ -85,10 +85,10 @@ class Database:
         self.collections = {
             "organization_memberships": Collection([{
                 "organization_id": "org-1", "identity_issuer": "https://identity.example/",
-                "identity_subject": "owner", "status": "active",
+                "identity_subject": "owner", "status": "active", "role": "owner",
             }, {
                 "organization_id": "org-1", "identity_issuer": "https://identity.example/",
-                "identity_subject": "member", "status": "active",
+                "identity_subject": "member", "status": "active", "role": "member",
             }]),
             "projects": Collection(),
             "project_memberships": Collection(),
@@ -96,6 +96,55 @@ class Database:
 
     def __getitem__(self, key):
         return self.collections[key]
+
+
+def test_authenticated_identity_can_discover_only_active_organizations():
+    previous = {
+        key: getattr(app.state, key, None)
+        for key in ("mongo_database", "mongo_client", "audit_event_store")
+    }
+    database, audit = Database(), Audit()
+    database["organization_memberships"].rows.extend([
+        {
+            "organization_id": "org-2",
+            "identity_issuer": "https://identity.example/",
+            "identity_subject": "owner",
+            "status": "active",
+            "role": "member",
+        },
+        {
+            "organization_id": "org-secret",
+            "identity_issuer": "https://identity.example/",
+            "identity_subject": "someone-else",
+            "status": "active",
+            "role": "owner",
+        },
+        {
+            "organization_id": "org-disabled",
+            "identity_issuer": "https://identity.example/",
+            "identity_subject": "owner",
+            "status": "inactive",
+            "role": "owner",
+        },
+    ])
+    app.state.mongo_database = database
+    app.state.audit_event_store = audit
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="owner", issuer="https://identity.example/",
+    )
+    try:
+        response = TestClient(app).get("/api/v1/organizations")
+        assert response.status_code == 200, response.text
+        assert response.json()["organizations"] == [
+            {"organization_id": "org-1", "role": "owner"},
+            {"organization_id": "org-2", "role": "member"},
+        ]
+        assert response.json()["limit"] == 100
+        assert [event["action"] for event in audit.events] == ["organization.list", "organization.list"]
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        for key, value in previous.items():
+            setattr(app.state, key, value)
 
 
 def test_project_create_list_and_membership_lifecycle():
