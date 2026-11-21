@@ -5,7 +5,7 @@ image, runtime flags, environment variables, or host paths. A trusted worker
 must create a fresh workspace directory beneath its configured workspace root
 and select a server-defined, digest-pinned SandboxProfile.
 """
-import asyncio
+import asyncio  # noqa: I001
 import dataclasses
 import math
 import os
