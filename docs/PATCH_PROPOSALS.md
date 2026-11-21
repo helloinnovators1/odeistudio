@@ -58,8 +58,12 @@ The browser panel lists proposals, displays unified diffs, and exposes approve/r
 Approval remains a review decision, not permission for the browser or API to write local files. Do not add an apply button until the local companion can independently verify a short-lived, single-use approval capability, re-read every target using retained safe handles, compare fresh base hashes, stage atomic writes, and roll back on failure.
 
 
-## Signed apply-capability foundation
+## Signed local apply — in review
 
-PR #22 adds an owner-only API route that issues a short-lived Ed25519 capability only for a proposal already approved at the expected version. The capability binds organization, project, workspace ID, proposal ID/version and a canonical SHA-256 digest of exact file operations and replacement bytes. Signing fails closed unless the server-side issuer, key ID and private key are configured together. The API response still says `application_enabled: false`.
+PR #22 adds an owner-only API route that issues a short-lived Ed25519 capability only for a proposal already approved at the expected version. The capability binds organization, project, workspace ID, proposal ID/version, a canonical SHA-256 digest of exact file operations and replacement bytes, and a fresh companion-issued challenge. Signing fails closed unless the server-side issuer, key ID and private key are configured together.
 
-This is not local application. The companion has not yet been wired to pin the matching public key, verify and consume the capability, re-read live files, stage writes, roll back or recover interrupted operations. Do not configure signing keys or expose an Apply button until that companion work is merged and validated.
+PR #24 adds the loopback companion's challenge endpoint and apply endpoint. The companion binds a 60-second challenge to the current pairing session and selected workspace, consumes it once, independently verifies the Ed25519 signature against pinned public keys, validates the exact patch digest and resource claims, and rejects replay. The Studio requests the challenge, obtains an owner-authorized capability and sends the exact approved one-file operation to the selected companion workspace. It reloads the file from disk after success.
+
+The first application path is deliberately single-file. It uses same-directory staging and atomic replacement/create on POSIX, and relative NT file opens plus handle-based rename/delete on Windows. Base hashes are rechecked immediately before the operation. Multi-file application is disabled; the UI directs users to split proposals into one-file changes.
+
+**Still outstanding:** durable rollback and recovery journals, crash-recovery, multi-file transactional application, and real user-machine validation on Windows 10 build 18362. Do not treat this in-review code as deployed or production-ready.

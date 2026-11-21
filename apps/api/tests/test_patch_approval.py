@@ -15,6 +15,7 @@ from odei_api.services.patch_approval import (
     PatchCapabilityReplay,
     canonical_patch_digest,
     issue_patch_apply_capability,
+    validate_patch_approval_public_keys,
     verify_patch_apply_capability,
 )
 from odei_api.services.patch_proposals import sha256_text
@@ -190,3 +191,10 @@ def test_capability_expiry_is_enforced():
             proposal_id="proposal-1", proposal_version=2, files=files,
             challenge=CHALLENGE, replay_cache=CapabilityReplayCache(),
         )
+
+
+def test_pinned_public_key_map_is_validated_before_companion_writes():
+    _, public_keys, _ = _fixture()
+    validate_patch_approval_public_keys(public_keys)
+    with pytest.raises(PatchApprovalNotConfigured):
+        validate_patch_approval_public_keys({"untrusted": "not-a-valid-key"})

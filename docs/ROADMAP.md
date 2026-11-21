@@ -2,6 +2,18 @@
 
 This roadmap is ordered by dependencies. Status is updated only from repository artifacts and completed test evidence. A checked item means the described artifact or test exists; it does not imply production readiness. A design document alone does not count as an implemented capability.
 
+## Current verified delivery position — 2026-11-21
+
+This update supersedes older historical checklist statements below where they describe NEXUS capabilities as not yet integrated.
+
+- **NEXUS chat:** browser PKCE sign-in/callback foundation, authorized organization/project discovery, explicit cloud consent, streamed chat/cancellation, durable owner-scoped conversations, attached-excerpt inspection, review-only patch proposals, owner decisions and bounded task planning are integrated in the current implementation branch.
+- **Local apply:** signed, challenge-bound, one-file companion apply is implemented in PR #24 but remains unmerged and undeployed. Windows directory access was narrowed to the minimum required rights in commit `61d07de`; a Windows-specific access-mask regression test was added in `af39133`. Current-head API CI and security scanning runs are pending; do not mark the Windows issue resolved until the Windows matrix passes.
+- **External release gates:** actual ODID issuer/client/redirect/resource/scope registration and token refresh/revocation contract; production API issuer/JWKS/CORS configuration; MongoDB replica-set deployment; model-provider credentials; local companion installation and end-to-end validation on Windows 10 build 18362.
+- **Execution engine:** no isolated terminal, command runner, build/test execution, package installation, artifact lifecycle or crash-safe execution journal is implemented. These remain the next engineering phase after NEXUS apply acceptance.
+- **MAC/MAD:** requirements and architecture documentation exist; central secret/environment/provider governance and operational dashboards/metrics are not implemented.
+- **Release discipline:** passing checks on a PR head do not constitute production deployment. Merge and deploy only after required checks, security review, Windows device acceptance, external configuration and smoke tests.
+
+
 ## Phase 0 — Repository and security baseline
 
 - [x] Verify repository access and default branch.

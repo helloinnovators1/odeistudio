@@ -1,15 +1,18 @@
-"""Read-only loopback companion for explicitly selected local workspaces."""
+"""Loopback companion for selected workspaces; writes require signed owner approval."""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import hmac
+import json
+import logging
 import os
 import secrets
 import sys
+import threading
 import time
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -17,6 +20,14 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, model_validator
 from starlette.concurrency import run_in_threadpool
 
+from odei_api.services.patch_approval import (
+    CapabilityReplayCache,
+    PatchApprovalError,
+    PatchApprovalNotConfigured,
+    PatchCapabilityReplay,
+    validate_patch_approval_public_keys,
+    verify_patch_apply_capability,
+)
 from odei_api.services.patch_proposals import (
     MAX_FILE_BYTES,
     MAX_PATCH_FILES,
@@ -25,7 +36,13 @@ from odei_api.services.patch_proposals import (
     build_patch_proposal,
     validate_patch_path,
 )
-from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+from odei_api.services.workspace_handles import (
+    WorkspaceHandleError,
+    WorkspaceHandleRegistry,
+    WorkspaceNotFound,
+)
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8765
 DEFAULT_PAIRING_TTL_SECONDS = 300
@@ -74,6 +91,78 @@ class PatchProposalRequest(BaseModel):
         if total_bytes > MAX_TOTAL_BYTES:
             raise ValueError("Aggregate replacement content exceeds the 5 MB limit")
         return self
+
+
+class ApplyPatchFile(BaseModel):
+    """Exact one-file operation authorized by a signed patch capability."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: StrictStr = Field(min_length=1, max_length=1024)
+    operation: StrictStr = Field(pattern="^(create|update|delete)$")
+    base_sha256: StrictStr | None = None
+    result_sha256: StrictStr | None = None
+    content: StrictStr | None = Field(default=None, max_length=1_000_000)
+
+
+class ApplyPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: StrictStr = Field(min_length=1, max_length=128)
+    project_id: StrictStr = Field(min_length=1, max_length=128)
+    proposal_id: StrictStr = Field(min_length=1, max_length=128)
+    proposal_version: int = Field(ge=0)
+    companion_challenge: StrictStr = Field(min_length=32, max_length=128)
+    capability: StrictStr = Field(min_length=1, max_length=8192)
+    files: list[ApplyPatchFile] = Field(min_length=1, max_length=1)
+
+
+class ApplyChallengeManager:
+    """Short-lived, session-bound challenges invalidated on companion restart."""
+
+    def __init__(self, *, ttl_seconds: int = 60, clock: Callable[[], float] = time.monotonic):
+        self.ttl_seconds = ttl_seconds
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._challenges: dict[str, tuple[float, str, str]] = {}
+
+    def issue(self, workspace_id: str, session_token: str) -> str:
+        challenge = secrets.token_urlsafe(32)
+        digest = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
+        session_digest = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
+        with self._lock:
+            now = self._clock()
+            for key, value in list(self._challenges.items()):
+                if value[0] <= now:
+                    self._challenges.pop(key, None)
+            if len(self._challenges) >= 128:
+                oldest = next(iter(self._challenges))
+                self._challenges.pop(oldest, None)
+            self._challenges[digest] = (
+                now + self.ttl_seconds, workspace_id, session_digest,
+            )
+        return challenge
+
+    def consume(self, challenge: str, workspace_id: str, session_token: str) -> bool:
+        if not isinstance(challenge, str) or not 32 <= len(challenge) <= 128:
+            return False
+        digest = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
+        session_digest = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
+        with self._lock:
+            record = self._challenges.get(digest)
+            if record is None:
+                return False
+            expires_at, expected_workspace, expected_session = record
+            if self._clock() >= expires_at:
+                self._challenges.pop(digest, None)
+                return False
+            if (
+                not hmac.compare_digest(expected_workspace, workspace_id)
+                or not hmac.compare_digest(expected_session, session_digest)
+            ):
+                return False
+            self._challenges.pop(digest, None)
+            return True
 
 
 class PairingManager:
@@ -190,6 +279,8 @@ def create_companion_app(
     allowed_origins: Iterable[str],
     pairing_manager: PairingManager | None = None,
     port: int = DEFAULT_PORT,
+    patch_approval_issuer: str | None = None,
+    patch_approval_public_keys: Mapping[str, str] | None = None,
 ) -> FastAPI:
     """Create a loopback-only companion API with exact Origin and Host checks."""
     if not 1 <= port <= 65535:
@@ -203,6 +294,30 @@ def create_companion_app(
         raise ValueError("At least one selected workspace is required")
     allowed_workspace_ids = frozenset(selected_workspace_ids)
     pairing = pairing_manager or PairingManager()
+    if (patch_approval_issuer is None) != (patch_approval_public_keys is None):
+        raise ValueError("Patch approval issuer and pinned public keys must be configured together")
+    if patch_approval_issuer is not None:
+        issuer_parts = urlsplit(patch_approval_issuer)
+        if (
+            issuer_parts.scheme != "https" or not issuer_parts.netloc
+            or issuer_parts.username or issuer_parts.password
+            or issuer_parts.query or issuer_parts.fragment
+            or issuer_parts.path not in {"", "/"}
+            or not patch_approval_public_keys
+            or len(patch_approval_public_keys) > 16
+            or any(
+                not isinstance(key_id, str) or not key_id or len(key_id) > 64
+                or not isinstance(value, str) or not value or len(value) > 256
+                for key_id, value in patch_approval_public_keys.items()
+            )
+        ):
+            raise ValueError("Patch approval issuer or pinned public keys are invalid")
+        try:
+            validate_patch_approval_public_keys(patch_approval_public_keys)
+        except PatchApprovalError as exc:
+            raise ValueError("Patch approval public keys are invalid") from exc
+    apply_challenges = ApplyChallengeManager()
+    capability_replays = CapabilityReplayCache()
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     app = FastAPI(
@@ -270,7 +385,7 @@ def create_companion_app(
             "access_token": token,
             "token_type": "Bearer",
             "expires_in": pairing.token_ttl_seconds,
-            "permissions": ["workspace:read"],
+            "permissions": ["workspace:read"] + (["patch:apply"] if patch_approval_issuer else []),
         }
 
     def require_selected_workspace(workspace_id: str) -> None:
@@ -290,9 +405,88 @@ def create_companion_app(
         require_bearer(request)
         return {
             "workspaces": [
-                {"workspace_id": item, "name": registry.display_name(item), "access": "read-only"}
+                {"workspace_id": item, "name": registry.display_name(item), "access": "approval-gated" if patch_approval_issuer and registry.can_apply_patch(item) else "read-only"}
                 for item in selected_workspace_ids
             ]
+        }
+
+    @app.post("/v1/workspaces/{workspace_id}/apply-challenge")
+    async def issue_apply_challenge(workspace_id: str, request: Request):
+        session_token = require_bearer(request)
+        require_selected_workspace(workspace_id)
+        if patch_approval_issuer is None or patch_approval_public_keys is None:
+            raise HTTPException(status_code=503, detail="Signed patch application is not configured")
+        try:
+            if not registry.can_apply_patch(workspace_id):
+                raise HTTPException(status_code=409, detail="The selected workspace is read-only")
+        except WorkspaceNotFound as exc:
+            raise HTTPException(status_code=404, detail="The selected workspace is no longer available") from exc
+        challenge = apply_challenges.issue(workspace_id, session_token)
+        return {
+            "workspace_id": workspace_id,
+            "challenge": challenge,
+            "expires_in": apply_challenges.ttl_seconds,
+        }
+
+    @app.post("/v1/workspaces/{workspace_id}/apply-patch")
+    async def apply_approved_workspace_patch(
+        workspace_id: str, payload: ApplyPatchRequest, request: Request
+    ):
+        session_token = require_bearer(request)
+        require_selected_workspace(workspace_id)
+        if patch_approval_issuer is None or patch_approval_public_keys is None:
+            raise HTTPException(status_code=503, detail="Signed patch application is not configured")
+        if not apply_challenges.consume(
+            payload.companion_challenge, workspace_id, session_token
+        ):
+            raise HTTPException(status_code=401, detail="Companion apply challenge is invalid, expired or already used")
+        file_item = payload.files[0].model_dump()
+        try:
+            verify_patch_apply_capability(
+                payload.capability,
+                public_keys=patch_approval_public_keys,
+                issuer=patch_approval_issuer,
+                organization_id=payload.organization_id,
+                project_id=payload.project_id,
+                workspace_id=workspace_id,
+                proposal_id=payload.proposal_id,
+                proposal_version=payload.proposal_version,
+                files=[file_item],
+                challenge=payload.companion_challenge,
+                replay_cache=capability_replays,
+            )
+        except PatchApprovalNotConfigured as exc:
+            raise HTTPException(status_code=503, detail="Patch approval verification is not configured") from exc
+        except PatchCapabilityReplay as exc:
+            raise HTTPException(status_code=409, detail="Patch approval capability has expired or was already used") from exc
+        except PatchApprovalError as exc:
+            raise HTTPException(status_code=403, detail="Patch approval capability is invalid") from exc
+        try:
+            applied = await run_in_threadpool(
+                registry.apply_patch, workspace_id, file_item
+            )
+        except WorkspaceNotFound as exc:
+            raise HTTPException(status_code=404, detail="The selected workspace is no longer available") from exc
+        except WorkspaceHandleError as exc:
+            raise HTTPException(status_code=409, detail="The selected workspace is not enabled for patch application") from exc
+        except (ValueError, OSError) as exc:
+            cause = exc.__cause__
+            logger.warning(
+                "Approved local patch operation failed safely (%s; cause=%s; winerror=%s; errno=%s; stage=%s; cause_detail=%s)",
+                type(exc).__name__,
+                type(cause).__name__ if cause is not None else "none",
+                getattr(cause, "winerror", getattr(exc, "winerror", None)),
+                getattr(cause, "errno", getattr(exc, "errno", None)),
+                str(exc)[:120],
+                str(cause)[:200] if cause is not None else "none",
+            )
+            raise HTTPException(status_code=409, detail="The approved patch could not be applied to the current workspace state") from exc
+        return {
+            "workspace_id": workspace_id,
+            "proposal_id": payload.proposal_id,
+            "proposal_version": payload.proposal_version,
+            "applied": True,
+            "files": [applied],
         }
 
     @app.get("/v1/workspaces/{workspace_id}/files")
@@ -491,6 +685,33 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
+    approval_issuer = os.getenv("ODEI_PATCH_APPROVAL_ISSUER", "").strip() or None
+    public_keys_value = os.getenv("ODEI_PATCH_APPROVAL_PUBLIC_KEYS", "").strip()
+    approval_public_keys = None
+    if bool(approval_issuer) != bool(public_keys_value):
+        print(
+            "Set both ODEI_PATCH_APPROVAL_ISSUER and ODEI_PATCH_APPROVAL_PUBLIC_KEYS, or leave both unset.",
+            file=sys.stderr,
+        )
+        return 2
+    if public_keys_value:
+        try:
+            parsed_keys = json.loads(public_keys_value)
+            if (
+                not isinstance(parsed_keys, dict)
+                or not parsed_keys
+                or any(
+                    not isinstance(key_id, str) or not key_id
+                    or not isinstance(value, str) or not value
+                    for key_id, value in parsed_keys.items()
+                )
+            ):
+                raise ValueError("Pinned public keys must be a non-empty JSON object of key IDs and base64 values")
+            approval_public_keys = parsed_keys
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(f"Invalid ODEI_PATCH_APPROVAL_PUBLIC_KEYS: {exc}", file=sys.stderr)
+            return 2
+
     selected_paths: list[str] = []
     while True:
         try:
@@ -524,9 +745,16 @@ def main() -> int:
             allowed_origins=origins,
             pairing_manager=pairing,
             port=args.port,
+            patch_approval_issuer=approval_issuer,
+            patch_approval_public_keys=approval_public_keys,
         )
         print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
-        print(f"{len(workspace_ids)} selected folder(s) are held by OS handles; access is read-only.")
+        print(f"{len(workspace_ids)} selected folder(s) are held by OS handles.")
+        print(
+            "Signed one-file patch application is configured; writable roots advertise approval-gated access."
+            if approval_issuer else
+            "Access is read-only; signed patch application is not configured."
+        )
         print("Enter this one-time pairing code in the ODEI Studio web app:")
         print(code)
         print("The code expires in five minutes. Do not share it with anyone.")

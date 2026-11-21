@@ -14,16 +14,16 @@ This snapshot supersedes earlier milestone notes below where they describe capab
 | Chat-generated file-change proposals | Merged in PR #21; persisted, redacted and owner-reviewable |
 | Persistent proposal history and diff review | Implemented on main |
 | Project-owner approve/reject decisions | Implemented on main; version checked; decision does not apply files |
-| Local file application and rollback | Not implemented; signed capability issuance foundation in PR #22, companion verification and atomic writes still outstanding |
+| Local file application and rollback | Single-file signed companion apply path in PR #24, based on signed capability issuance merged in PR #22; not merged or deployed. Multi-file apply, rollback and recovery remain outstanding |
 | Isolated terminal/test execution | Not implemented |
 | Agents Window, CLI, cloud/background agents, MAC/MAD | Not implemented beyond documented foundations |
 | Production deployment and real ODID staging | Not completed |
 
-Merged chat-related increments: [PR #14](https://github.com/helloinnovators1/odeistudio/pull/14), [PR #18](https://github.com/helloinnovators1/odeistudio/pull/18), and [PR #19](https://github.com/helloinnovators1/odeistudio/pull/19). Their reported required checks passed. Generated proposals and owner review are merged in [PR #21](https://github.com/helloinnovators1/odeistudio/pull/21). Signed apply-capability issuance is being developed in [PR #22](https://github.com/helloinnovators1/odeistudio/pull/22); it is not merged or deployed.
+Merged chat-related increments: [PR #14](https://github.com/helloinnovators1/odeistudio/pull/14), [PR #18](https://github.com/helloinnovators1/odeistudio/pull/18), and [PR #19](https://github.com/helloinnovators1/odeistudio/pull/19). Their reported required checks passed. Generated proposals and owner review are merged in [PR #21](https://github.com/helloinnovators1/odeistudio/pull/21). Signed apply-capability issuance was merged in [PR #22](https://github.com/helloinnovators1/odeistudio/pull/22). The challenge-bound companion verification and one-file atomic apply path is in [PR #24](https://github.com/helloinnovators1/odeistudio/pull/24); PR #22 is merged; PR #24 is not merged or deployed.
 
 Important external gates: actual ODID issuer/discovery, public browser client ID, registered redirect URI, scopes/resource and access-token profile; production API issuer/audience/JWKS/client allowlist; MongoDB replica-set deployment; model credentials; approved hosting and CORS origins. Do not paste secrets or tokens into chat. The local companion has not been installed/run on the user's Windows 10 build 18362 machine, no desktop folders have been scanned, and no real browser-to-local-companion staging test has been completed.
 
-Approval is not application. All patch proposal APIs and UI controls keep `application_enabled=false`; the local workspace remains read-only until a signed single-use approval capability, independent companion verification, fresh handle-relative base-hash checks, atomic writes, rollback and recovery are implemented and tested.
+Approval is not blanket write access. PR #22 adds an owner-only short-lived signed capability bound to a proposal, workspace, content digest and fresh companion challenge. PR #24 adds independent local verification and a single-file handle-relative atomic apply path. The browser only exposes Apply for an approved one-file proposal when the paired companion advertises `patch:apply`. This local apply path remains in review; multi-file transactions, durable rollback/recovery and local Windows 10 build 18362 validation are still outstanding.
 
 ---
 
