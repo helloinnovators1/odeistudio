@@ -325,7 +325,11 @@ async def list_patch_proposals(
         "nexus.patch_proposal.list", "success",
         project_id=project_id, proposal_count=len(items),
     )
-    return {"proposals": [_proposal_summary(item) for item in items], "limit": 30}
+    return {
+        "proposals": [_proposal_summary(item) for item in items],
+        "limit": 30,
+        "can_decide": _is_project_owner(project, principal),
+    }
 
 
 @router.get(
@@ -358,6 +362,7 @@ async def get_patch_proposal(
     return {
         **_proposal_summary(item),
         "files": item["files"],
+        "can_decide": _is_project_owner(project, principal),
         "application_enabled": False,
     }
 
