@@ -187,6 +187,10 @@ No local tests or build were run from the user's Windows machine in this hosted 
 A capability is “implemented” only when its code, authorization boundary, tests, documentation and CI evidence exist. A design, UI control, mock response or provider configuration placeholder does not count. Do not merge to `main`, deploy, or enable destructive capabilities without the applicable review and release authorization.
 
 
+## Historical implementation notes
+
+The dated milestone entries below are retained as an audit trail of earlier development snapshots. Their point-in-time statements such as “not implemented”, “in review” or “composer disabled” are superseded by the current verified repository evidence in sections 1–9 above. Use the current status and acceptance gates above as the source of truth.
+
 ## Delivered interactive read-only chat slice — 2026-11-21
 
 The current web implementation now includes:
