@@ -237,7 +237,7 @@ async def create_patch_proposal(
     """Persist a validated diff preview; never apply it to local files."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
-    project, store = await _project_and_store(request, organization_id, project_id, principal)
+    _, store = await _project_and_store(request, organization_id, project_id, principal)
     try:
         for path, expected_hash in payload.expected_base_hashes.items():
             if expected_hash is None and "/" in path:
