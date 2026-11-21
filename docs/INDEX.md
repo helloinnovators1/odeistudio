@@ -49,4 +49,4 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 
 - [NEXUS Task Planning and Approval](NEXUS_TASKS.md) — task planning, ownership, approval semantics and execution boundaries.
 
-- [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization contract for future local apply; application remains disabled.
+- [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization and verification contract for the merged one-file local companion apply path, plus rollback and production release limits.
