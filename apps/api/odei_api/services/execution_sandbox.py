@@ -5,8 +5,6 @@ image, runtime flags, environment variables, or host paths. A trusted worker
 must create a fresh workspace directory beneath its configured workspace root
 and select a server-defined, digest-pinned SandboxProfile.
 """
-from __future__ import annotations
-
 import asyncio
 import dataclasses
 import math
