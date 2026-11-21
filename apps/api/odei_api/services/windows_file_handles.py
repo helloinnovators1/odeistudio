@@ -105,6 +105,11 @@ def _apis():
         wintypes.ULONG, ctypes.c_void_p, wintypes.ULONG,
     ]
     ntdll.NtCreateFile.restype = ctypes.c_long
+    ntdll.NtSetInformationFile.argtypes = [
+        wintypes.HANDLE, ctypes.POINTER(_IoStatusBlock), wintypes.LPVOID,
+        wintypes.ULONG, wintypes.ULONG,
+    ]
+    ntdll.NtSetInformationFile.restype = ctypes.c_long
     ntdll.RtlNtStatusToDosError.argtypes = [ctypes.c_long]
     ntdll.RtlNtStatusToDosError.restype = wintypes.ULONG
     return kernel32, ntdll
@@ -599,19 +604,35 @@ def _write_handle(kernel32, handle, data: bytes) -> None:
 
 
 def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> None:
+    """Rename relative to a held directory handle without resolving an absolute path.
+
+    SetFileInformationByHandle(FileRenameInfo) rejects a non-NULL RootDirectory
+    on supported Windows filesystems with ERROR_INVALID_PARAMETER. Use the
+    native NtSetInformationFile(FileRenameInformation=10) interface instead;
+    it preserves the directory-handle-relative operation and avoids a
+    path-based fallback that could escape the selected workspace.
+    """
+    _ = kernel32  # Retained in the signature for compatibility with callers.
     encoded_name = name.encode("utf-16-le")
     offset = _FileRenameInfo.FileName.offset
-    buffer_size = ctypes.sizeof(_FileRenameInfo) + len(encoded_name)
+    buffer_size = offset + len(encoded_name)
     buffer = ctypes.create_string_buffer(buffer_size)
     info = ctypes.cast(buffer, ctypes.POINTER(_FileRenameInfo)).contents
     info.ReplaceIfExists = bool(replace)
     info.RootDirectory = parent
     info.FileNameLength = len(encoded_name)
     ctypes.memmove(ctypes.addressof(buffer) + offset, encoded_name, len(encoded_name))
-    if not kernel32.SetFileInformationByHandle(
-        handle, 3, buffer, len(buffer)
-    ):
-        raise ctypes.WinError(ctypes.get_last_error())
+    _kernel32, ntdll = _apis()
+    io_status = _IoStatusBlock()
+    status = ntdll.NtSetInformationFile(
+        handle,
+        ctypes.byref(io_status),
+        buffer,
+        len(buffer),
+        10,  # FileRenameInformation
+    )
+    if status < 0:
+        raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
 
 
 def _mark_for_delete(kernel32, handle) -> None:
