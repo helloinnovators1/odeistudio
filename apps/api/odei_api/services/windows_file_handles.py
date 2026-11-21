@@ -450,6 +450,20 @@ class _FileRenameInfo(ctypes.Structure):
     ]
 
 
+class _FileRenameInfoEx(ctypes.Structure):
+    _fields_ = [
+        ("Flags", wintypes.DWORD),
+        ("RootDirectory", wintypes.HANDLE),
+        ("FileNameLength", wintypes.DWORD),
+        ("FileName", wintypes.WCHAR * 1),
+    ]
+
+
+FILE_RENAME_REPLACE_IF_EXISTS = 0x00000001
+FILE_RENAME_POSIX_SEMANTICS = 0x00000002
+FILE_RENAME_INFORMATION_EX = 65
+
+
 class _FileDispositionInfo(ctypes.Structure):
     _fields_ = [("DeleteFile", ctypes.c_ubyte)]
 
@@ -615,20 +629,19 @@ def _write_handle(kernel32, handle, data: bytes) -> None:
 def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> None:
     """Rename relative to a least-privilege duplicate of the held parent handle.
 
-    SetFileInformationByHandle(FileRenameInfo) rejects a non-NULL RootDirectory
-    on supported Windows filesystems with ERROR_INVALID_PARAMETER. Use the
-    native NtSetInformationFile(FileRenameInformation=10) interface instead.
-    Windows documents that RootDirectory should be opened with only traverse
-    and read-attributes rights so the kernel's relative target open does not
-    conflict with the directory handle's access. Duplicate the retained parent
-    handle with that reduced access and never resolve an absolute path.
+    The POSIX rename flag permits replacing a destination that has open handles;
+    those handles continue to refer to the old file. This is required because
+    the caller deliberately holds the hash-checked target open to deny concurrent
+    writes while the staged file is installed.
     """
     encoded_name = name.encode("utf-16-le")
-    offset = _FileRenameInfo.FileName.offset
-    buffer_size = offset + len(encoded_name)
+    offset = _FileRenameInfoEx.FileName.offset
+    buffer_size = ctypes.sizeof(_FileRenameInfoEx) + len(encoded_name)
     buffer = ctypes.create_string_buffer(buffer_size)
-    info = ctypes.cast(buffer, ctypes.POINTER(_FileRenameInfo)).contents
-    info.ReplaceIfExists = bool(replace)
+    info = ctypes.cast(buffer, ctypes.POINTER(_FileRenameInfoEx)).contents
+    info.Flags = FILE_RENAME_POSIX_SEMANTICS | (
+        FILE_RENAME_REPLACE_IF_EXISTS if replace else 0
+    )
     info.FileNameLength = len(encoded_name)
     ctypes.memmove(ctypes.addressof(buffer) + offset, encoded_name, len(encoded_name))
     _kernel32, ntdll = _apis()
@@ -649,16 +662,15 @@ def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> N
             ctypes.byref(io_status),
             buffer,
             len(buffer),
-            10,  # FileRenameInformation
+            FILE_RENAME_INFORMATION_EX,
         )
         if status < 0:
             error = ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
             raise OSError(
-                f"NtSetInformationFile rename failed with NTSTATUS 0x{status & 0xFFFFFFFF:08x}: {error}"
+                f"NtSetInformationFileEx rename failed with NTSTATUS 0x{status & 0xFFFFFFFF:08x}: {error}"
             ) from error
     finally:
         kernel32.CloseHandle(rename_root)
-
 
 def _mark_for_delete(kernel32, handle) -> None:
     info = _FileDispositionInfo(DeleteFile=True)
