@@ -67,11 +67,13 @@ describe("NEXUS task transport", () => {
 
   it("cancels tasks and maps owner-only approval failures safely", async () => {
     const cancelFetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(task("cancelled")), { status: 200 }));
+    const controller = new AbortController();
     const cancelled = await cancelNexusTask(
       base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken,
-      "task-one", 1, cancelFetcher,
+      "task-one", 1, cancelFetcher, controller.signal,
     );
     expect(cancelled.status).toBe("cancelled");
+    expect(cancelFetcher.mock.calls[0][1]?.signal).toBe(controller.signal);
     const forbidden = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       detail: { code: "PROJECT_OWNER_APPROVAL_REQUIRED", message: "internal details" },
     }), { status: 403 }));
