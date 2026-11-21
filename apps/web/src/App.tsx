@@ -43,7 +43,16 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("Connect the local companion to open a workspace.");
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(() => {
+    try {
+      const callback = new URL(import.meta.env.VITE_ODID_REDIRECT_URI);
+      return window.location.origin === callback.origin
+        && window.location.pathname === callback.pathname
+        && Boolean(window.location.search);
+    } catch {
+      return false;
+    }
+  });
   const [chatSide, setChatSide] = useState<ChatPanelSide>(() => readChatPanelSide());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
