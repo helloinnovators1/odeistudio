@@ -404,7 +404,7 @@ export async function completeODIDLogin(
 export async function refreshODIDAccessToken(
   rawConfig: ODidOAuthConfig,
   currentRefreshToken: string,
-  options: { fetcher?: Fetcher; now?: number } = {},
+  options: { fetcher?: Fetcher; now?: number; signal?: AbortSignal } = {},
 ): Promise<ODidAccessToken> {
   const config = validateConfig(rawConfig);
   if (
@@ -429,6 +429,7 @@ export async function refreshODIDAccessToken(
       credentials: "omit",
       cache: "no-store",
       redirect: "error",
+      signal: options.signal,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
