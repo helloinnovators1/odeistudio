@@ -383,7 +383,7 @@ export async function sendNexusChatStream(
     }
     totalCharacters += message.content.length;
   }
-  if (request.messages.at(-1)?.role !== "user") throw new TypeError("The final conversation message must be from the user.");
+  if (request.messages[request.messages.length - 1]?.role !== "user") throw new TypeError("The final conversation message must be from the user.");
   const workspaceFiles = request.workspaceFiles ?? [];
   if (!Array.isArray(workspaceFiles) || workspaceFiles.length > 5) throw new TypeError("At most five workspace excerpts may be sent.");
   for (const file of workspaceFiles) {
