@@ -140,6 +140,13 @@ def test_patch_proposal_is_persisted_redacted_and_owner_approved(patch_state):
     assert body["files"][0]["operation"] == "update"
     assert "print('new')" in body["files"][0]["content"]
 
+    listed = client.get(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals"
+    )
+    assert listed.status_code == 200
+    assert listed.json()["can_decide"] is True
+    assert listed.json()["proposals"][0]["proposal_id"] == body["proposal_id"]
+
     detail = client.get(
         f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{body['proposal_id']}"
     )
