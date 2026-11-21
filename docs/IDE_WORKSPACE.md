@@ -9,7 +9,8 @@
 - Workspace source: the loopback-only `odei-companion` API. The user explicitly selects roots in the local companion and pairs with a one-time code.
 - Explorer: builds a nested, collapsible directory/file tree from the already-authorized companion relative-path listing. Folders sort before files; filtering reveals matching paths and their ancestors; keyboard navigation supports Arrow Up/Down, Arrow Left/Right, Home and End. Tree construction rejects malformed relative paths and performs no additional filesystem access. Filesystem watching is not implemented.
 - Tabs: multiple read-only files can be opened, activated and closed.
-- Bottom panel: output/status messages, an honest no-LSP Problems surface and a disabled terminal explanation.\n- Patch preview: an explicit editor action opens a proposed-content dialog and requests a live, SHA-256-checked unified diff from the local companion. It is preview-only; no local files are changed.
+- Bottom panel: output/status messages, an honest no-LSP Problems surface and a disabled terminal explanation.
+- Patch preview: an explicit editor action opens a proposed-content dialog and requests a live, SHA-256-checked unified diff from the local companion. It is preview-only; no local files are changed.
 - NEXUS panel: UI shell only. It does not send prompts, invoke the cloud planning API, stream responses or run tools.
 
 ## NEXUS chat panel position
@@ -34,7 +35,8 @@
 | Authenticated chat and streaming | Not connected |
 | Whole-codebase indexing / semantic retrieval | Not implemented |
 | Agent orchestration / agents window | Not implemented in this shell |
-| Live patch proposal and diff preview | Implemented for the active file; local companion re-reads the base and checks SHA-256; no writes |\n| Proposal persistence, reviewer approval/rejection, safe apply and rollback | Not implemented |
+| Live patch proposal and diff preview | Implemented for the active file; local companion re-reads the base and checks SHA-256; no writes |
+| Proposal persistence, reviewer approval/rejection, safe apply and rollback | Not implemented |
 | File writes, rename, delete, save | Disabled; companion remains read-only |
 | Terminal / shell / command execution | Disabled |
 | LSP diagnostics and test runner | Not connected |
