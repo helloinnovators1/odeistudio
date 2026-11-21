@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import MonacoEditor from "@monaco-editor/react";
+import NexusChatPanel from "./NexusChatPanel";
 import {
   connectToCompanion,
   disconnectFromCompanion,
@@ -306,22 +307,10 @@ export default function App() {
   }
 
   const chatPanel = (
-    <aside className="nexus-pane" aria-label="NEXUS AI chat panel">
-      <div className="pane-heading">
-        <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
-        <button className="icon-button" aria-label="Close NEXUS chat" onClick={() => setChatOpen(false)}>×</button>
-      </div>
-      <div className="chat-empty">
-        <div className="nexus-mark">N</div>
-        <h2>Your coding agent</h2>
-        <p>The chat panel and its left/right preference are available. Authenticated conversation, repository-aware tool calls and streaming are not connected yet.</p>
-        <div className="capability-note">No code is sent to a cloud model from this panel.</div>
-      </div>
-      <div className="chat-composer">
-        <textarea aria-label="NEXUS message" placeholder="NEXUS chat transport is not connected…" disabled rows={3} />
-        <div><span>Read-only workspace</span><button disabled>Send</button></div>
-      </div>
-    </aside>
+    <NexusChatPanel
+      onClose={() => setChatOpen(false)}
+      activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
+    />
   );
 
   return (
