@@ -633,6 +633,7 @@ def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
         )
         assert response.status_code == 200, response.text
         assert response.json()["applied"] is True
+        assert isinstance(response.json()["files"][0]["durability_confirmed"], bool)
         assert registry.read_text(workspace_id, "main.py") == replacement
         replay = client.post(
             f"/v1/workspaces/{workspace_id}/apply-patch",
@@ -706,6 +707,7 @@ def test_workspace_handle_applies_root_create_and_delete_atomically(tmp_path):
             "content": created_content,
         })
         assert created["applied"] is True
+        assert isinstance(created["durability_confirmed"], bool)
         assert registry.read_text(workspace_id, "created.py") == created_content
 
         deleted = registry.apply_patch(workspace_id, {
