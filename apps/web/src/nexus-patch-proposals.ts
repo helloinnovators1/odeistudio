@@ -108,7 +108,7 @@ async function request(
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const token = accessToken.trim();
-  if (!token || token.length > 16_384 || /[\\r\\n]/.test(token)) {
+  if (!token || token.length > 16_384 || /[\r\n]/.test(token)) {
     throw new TypeError("A valid in-memory access token is required.");
   }
   const response = await fetcher(
