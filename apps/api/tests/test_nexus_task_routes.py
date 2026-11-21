@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 from types import SimpleNamespace
 
 import pytest
@@ -41,6 +42,54 @@ class Audit:
 
     async def append(self, **event):
         self.events.append(event)
+
+
+class ConversationStore:
+    def __init__(self):
+        self.documents = {}
+
+    async def create(self, *, organization_id, project_id, owner_issuer, owner_subject, title):
+        now = datetime.now(timezone.utc)
+        document = {
+            "conversation_id": uuid4().hex, "organization_id": organization_id,
+            "project_id": project_id, "owner_issuer": owner_issuer,
+            "owner_subject": owner_subject, "title": title, "messages": [],
+            "version": 0, "created_at": now, "updated_at": now,
+        }
+        self.documents[document["conversation_id"]] = document
+        return document
+
+    async def list_for_owner(self, *, organization_id, project_id, owner_issuer, owner_subject, limit=30):
+        return [
+            item for item in self.documents.values()
+            if item["organization_id"] == organization_id
+            and item["project_id"] == project_id
+            and item["owner_issuer"] == owner_issuer
+            and item["owner_subject"] == owner_subject
+        ][:limit]
+
+    async def get_for_owner(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id):
+        item = self.documents.get(conversation_id)
+        if not item or item["organization_id"] != organization_id or item["project_id"] != project_id or item["owner_issuer"] != owner_issuer or item["owner_subject"] != owner_subject:
+            return None
+        return item
+
+    async def append(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id, role, content, expected_version=None):
+        item = await self.get_for_owner(
+            organization_id=organization_id, project_id=project_id,
+            owner_issuer=owner_issuer, owner_subject=owner_subject,
+            conversation_id=conversation_id,
+        )
+        if item is None or (expected_version is not None and item["version"] != expected_version):
+            return None
+        message = {
+            "message_id": uuid4().hex, "role": role, "content": content,
+            "created_at": datetime.now(timezone.utc),
+        }
+        item["messages"].append(message)
+        item["version"] += 1
+        item["updated_at"] = message["created_at"]
+        return item
 
 
 class TaskStore:
@@ -91,18 +140,20 @@ class TaskStore:
 def route_state():
     previous = {
         key: getattr(app.state, key, None)
-        for key in ("mongo_database", "audit_event_store", "task_store")
+        for key in ("mongo_database", "audit_event_store", "task_store", "conversation_store")
     }
     database, audit = Database(), Audit()
     tasks = TaskStore(audit)
     app.state.mongo_database = database
     app.state.audit_event_store = audit
     app.state.task_store = tasks
+    conversations = ConversationStore()
+    app.state.conversation_store = conversations
     app.dependency_overrides[get_current_principal] = lambda: Principal(
         subject="user-1", issuer="https://identity.example/",
     )
     try:
-        yield database, audit, tasks
+        yield database, audit, tasks, conversations
     finally:
         app.dependency_overrides.pop(get_current_principal, None)
         for key, value in previous.items():
@@ -119,7 +170,7 @@ def test_project_task_requires_cloud_consent(route_state):
 
 
 def test_project_task_requires_active_project_access(route_state, monkeypatch):
-    database, audit, _ = route_state
+    database, audit, _, _ = route_state
     database.collections["projects"].document = None
     response = TestClient(app).post(
         "/api/v1/organizations/org-1/projects/project-1/tasks",
@@ -134,7 +185,7 @@ def test_project_task_requires_active_project_access(route_state, monkeypatch):
 
 
 def test_project_task_is_persisted_for_approval_and_audited(route_state, monkeypatch):
-    _, audit, tasks = route_state
+    _, audit, tasks, _ = route_state
     monkeypatch.setattr("odei_api.services.nexus_tasks.get_openai_client", lambda: (object(), "model"))
     monkeypatch.setattr(
         "odei_api.services.nexus_tasks.create_task_plan",
@@ -175,7 +226,7 @@ def test_approval_records_approval_without_starting_execution(route_state, monke
 
 
 def test_stale_approval_version_returns_conflict(route_state):
-    _, _, tasks = route_state
+    _, _, tasks, _ = route_state
     task = TaskRecord(
         id="task-1", organization_id="org-1", project_id="project-1",
         owner_id=identity_owner_key("https://identity.example/", "user-1"), goal="Add tests", plan="Inspect and test",
@@ -191,7 +242,7 @@ def test_stale_approval_version_returns_conflict(route_state):
 
   
 def test_project_member_cannot_approve_another_users_task(route_state):
-    database, audit, tasks = route_state
+    database, audit, tasks, _ = route_state
     database.collections["projects"].document = {
         "organization_id": "org-1", "project_id": "project-1",
         "status": "active", "owner_issuer": "https://identity.example/",
@@ -295,7 +346,7 @@ def test_project_nexus_chat_requires_explicit_cloud_consent(route_state):
 
 
 def test_project_nexus_chat_is_authorized_read_only_and_audited(route_state, monkeypatch):
-    _, audit, _ = route_state
+    _, audit, _, _ = route_state
 
     class Responses:
         def create(self, **kwargs):
@@ -343,3 +394,79 @@ def test_project_nexus_chat_requires_authorized_project(route_state):
     assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
     assert audit.events[-1]["action"] == "nexus.project.access"
     assert audit.events[-1]["outcome"] == "denied"
+
+
+
+def test_conversation_create_list_and_get_are_project_and_identity_scoped(route_state):
+    _, audit, _, conversations = route_state
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Architecture discussion"},
+    )
+    assert created.status_code == 200, created.text
+    conversation_id = created.json()["conversation_id"]
+    listed = client.get(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations"
+    )
+    assert listed.status_code == 200
+    assert len(listed.json()["conversations"]) == 1
+    loaded = client.get(
+        f"/api/v1/organizations/org-1/projects/project-1/nexus/conversations/{conversation_id}"
+    )
+    assert loaded.status_code == 200
+    assert loaded.json()["title"] == "Architecture discussion"
+    assert [event["action"] for event in audit.events] == [
+        "nexus.conversation.create", "nexus.conversation.list", "nexus.conversation.read",
+    ]
+    assert len(conversations.documents) == 1
+
+
+def test_conversation_history_cannot_be_read_by_another_identity(route_state):
+    _, audit, _, _ = route_state
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Private conversation"},
+    ).json()
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="other-user", issuer="https://identity.example/",
+    )
+    response = client.get(
+        f"/api/v1/organizations/org-1/projects/project-1/nexus/conversations/{created['conversation_id']}"
+    )
+    assert response.status_code == 404
+    assert audit.events[-1]["outcome"] == "denied"
+
+
+def test_nexus_chat_persists_user_and_assistant_turns_in_conversation(route_state, monkeypatch):
+    _, audit, _, conversations = route_state
+    created = conversations.documents
+    item = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Persistent chat"},
+    ).json()
+
+    class Responses:
+        def create(self, **kwargs):
+            assert kwargs["store"] is False
+            assert kwargs["input"][-1]["content"] == "Remember this conversation"
+            return SimpleNamespace(output_text="I will use the saved context.")
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_tasks.get_openai_client",
+        lambda: (SimpleNamespace(responses=Responses()), "test-model"),
+    )
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat",
+        json={
+            "messages": [{"role": "user", "content": "Remember this conversation"}],
+            "conversation_id": item["conversation_id"],
+            "cloud_model_consent": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["conversation_persisted"] is True
+    stored = conversations.documents[item["conversation_id"]]
+    assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
+    assert stored["messages"][1]["content"] == "I will use the saved context."
