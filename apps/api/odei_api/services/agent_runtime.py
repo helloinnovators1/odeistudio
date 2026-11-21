@@ -87,7 +87,7 @@ def run_nexus_agent(
                 or message["role"] not in {"user", "assistant"}
                 or not isinstance(message["content"], str)
                 or not message["content"].strip()
-                or len(message["content"]) > MAX_AGENT_TASK_CHARS
+                or len(message["content"]) > MAX_AGENT_OUTPUT_CHARS
             ):
                 raise ValueError("prior_messages contains an invalid message")
             history_chars += len(message["content"])
