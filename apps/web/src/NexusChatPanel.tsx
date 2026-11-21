@@ -209,6 +209,10 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
   async function loadProjects() {
     if (!access || !config.apiBaseUrl) return;
+    abortRef.current?.abort();
+    taskAbortRef.current?.abort();
+    setTaskPlan(null);
+    setTaskError("");
     setProjectBusy(true);
     setProjectError("");
     setProjects([]);
@@ -424,6 +428,10 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           <div className="nexus-org-form">
             <label htmlFor="nexus-org-id">ORGANIZATION</label>
             <select id="nexus-org-id" value={organizationId} onChange={(event) => {
+              abortRef.current?.abort();
+              taskAbortRef.current?.abort();
+              setTaskPlan(null);
+              setTaskError("");
               setOrganizationId(event.target.value);
               setProjects([]);
               setProjectId("");
@@ -454,6 +462,10 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             <label className="nexus-project-select" htmlFor="nexus-project-id">
               <span>PROJECT</span>
               <select id="nexus-project-id" value={projectId} onChange={(event) => {
+                abortRef.current?.abort();
+                taskAbortRef.current?.abort();
+                setTaskPlan(null);
+                setTaskError("");
                 setProjectId(event.target.value);
                 setTaskPlan(null);
                 setTaskError("");
