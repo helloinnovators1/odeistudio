@@ -19,6 +19,8 @@ from odei_api.services.patch_approval import (
 )
 from odei_api.services.patch_proposals import sha256_text
 
+CHALLENGE = "C" * 43
+
 
 def _b64(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
@@ -65,6 +67,7 @@ def test_capability_binds_exact_workspace_proposal_version_and_patch_and_is_one_
         proposal_id="proposal-1",
         proposal_version=2,
         files=files,
+        challenge=CHALLENGE,
         now=now,
     )
     assert expires_at == now + 60
@@ -91,6 +94,7 @@ def test_capability_binds_exact_workspace_proposal_version_and_patch_and_is_one_
             organization_id="org-1", project_id="project-1",
             workspace_id="workspace_1234567890123456",
             proposal_id="proposal-1", proposal_version=2, files=files,
+            challenge=CHALLENGE,
             replay_cache=replay,
         )
 
@@ -113,6 +117,7 @@ def test_capability_rejects_changed_content_and_wrong_workspace():
             organization_id="org-1", project_id="project-1",
             workspace_id="workspace_1234567890123456",
             proposal_id="proposal-1", proposal_version=2, files=changed,
+            challenge=CHALLENGE,
             replay_cache=replay,
         )
     with pytest.raises(InvalidPatchCapability):
@@ -162,6 +167,7 @@ def test_capability_expiry_is_enforced():
         organization_id="org-1", project_id="project-1",
         workspace_id="workspace_1234567890123456",
         proposal_id="proposal-1", proposal_version=2, files=files,
+        challenge=CHALLENGE,
         now=expired_at,
     )
     with pytest.raises(InvalidPatchCapability):
