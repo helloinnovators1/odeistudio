@@ -644,7 +644,7 @@ def test_nexus_inspection_uses_only_attached_excerpt_tools_and_persists_result(r
 
 
 def test_nexus_inspection_persists_model_generated_patch_for_owner_review(route_state, monkeypatch):
-    _, audit, _, conversations = route_state
+    _, audit, _, _conversations = route_state
     client = TestClient(app)
     item = client.post(
         "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
