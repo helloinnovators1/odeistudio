@@ -688,7 +688,9 @@ def test_nexus_inspection_persists_model_generated_patch_for_owner_review(route_
     assert stored["files"][0]["content"] == replacement
     assert stored["files"][0]["base_sha256"]
     assert "hello from ODEI" in stored["files"][0]["unified_diff"]
-    assert all(event["action"] in {"nexus.chat", "nexus.patch_proposal.create"} for event in audit.events)
+    proposal_events = [event for event in audit.events if event["action"] == "nexus.patch_proposal.create"]
+    assert [event["outcome"] for event in proposal_events] == ["started", "success"]
+    assert all("prompt" not in event["metadata"] and "source" not in event["metadata"] for event in proposal_events)
 
 
 def test_nexus_inspection_rejects_unattached_or_unsafe_paths_before_model_call(route_state, monkeypatch):
