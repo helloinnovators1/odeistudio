@@ -13,6 +13,7 @@ import {
   type CompanionWorkspace,
 } from "./companion";
 import { formatBytes } from "./file-utils";
+import type { NexusPatchProposalFile } from "./nexus-patch-proposals";
 import { filterWorkspaceFiles } from "./workspace-filter";
 import { buildWorkspaceTree, type WorkspaceTreeNode } from "./workspace-tree";
 import {
@@ -32,6 +33,7 @@ interface OpenTab {
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [canApplyPatches, setCanApplyPatches] = useState(false);
   const [code, setCode] = useState("");
   const [workspaces, setWorkspaces] = useState<CompanionWorkspace[]>([]);
   const [workspace, setWorkspace] = useState("");
@@ -117,6 +119,7 @@ export default function App() {
         throw cause;
       }
       setToken(session.access_token);
+      setCanApplyPatches(session.permissions.includes("patch:apply"));
       setWorkspaces(selectedWorkspaces);
       setCode("");
       setMessage("Paired. Select a folder that you explicitly chose in the companion.");
@@ -211,6 +214,7 @@ export default function App() {
       }
     }
     setToken(null);
+    setCanApplyPatches(false);
     setConnected(false);
     setWorkspaces([]);
     setWorkspace("");
@@ -315,11 +319,36 @@ export default function App() {
     writeChatPanelSide(side);
   }
 
+  async function reloadAfterPatch(file: NexusPatchProposalFile) {
+    if (!token || !workspace) return;
+    const updatedFiles = await listWorkspaceFiles(token, workspace);
+    setFiles(updatedFiles);
+    if (file.operation === "delete") {
+      setTabs((current) => current.filter((tab) => tab.path !== file.path));
+      setActivePath((current) => current === file.path ? "" : current);
+      setMessage("Approved file deletion applied and Explorer refreshed.");
+      return;
+    }
+    const content = await readWorkspaceFile(token, workspace, file.path);
+    setTabs((current) => {
+      const exists = current.some((tab) => tab.path === file.path);
+      return exists
+        ? current.map((tab) => tab.path === file.path ? { ...tab, content } : tab)
+        : [...current, { path: file.path, content }];
+    });
+    setActivePath(file.path);
+    setMessage("Approved file change applied and editor reloaded from disk.");
+  }
+
   const chatPanel = (
     <NexusChatPanel
       onClose={() => setChatOpen(false)}
       isOpen={chatOpen}
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
+      companionToken={token}
+      companionWorkspaceId={workspace}
+      companionCanApply={canApplyPatches}
+      onPatchApplied={reloadAfterPatch}
     />
   );
 
