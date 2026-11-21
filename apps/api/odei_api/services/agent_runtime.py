@@ -150,12 +150,12 @@ def run_nexus_agent(
                 raise AgentRuntimeError("Model returned oversized tool arguments")
             seen_call_ids.add(call_id)
             total_calls += 1
-            invoked_tools.append(name)
             try:
                 arguments = json.loads(raw_arguments)
                 if not isinstance(arguments, dict):
                     raise ToolExecutionError("Tool arguments must be a JSON object")
                 result = workspace_tools.execute(name, arguments)
+                invoked_tools.append(name)
             except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:
                 result = json.dumps({"error": redact_secrets(str(exc)[:500])})
             outputs.append({
