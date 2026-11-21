@@ -2,7 +2,7 @@
 
 ## Purpose and current boundary
 
-The patch proposal service validates bounded, multi-file text changes and produces immutable review data with unified diffs and SHA-256 content identities. It is deliberately read-only: it does not open workspace paths, persist proposals, apply edits, execute commands, or approve changes.
+The pure patch proposal validator validates bounded, multi-file text changes and produces immutable review data with unified diffs and SHA-256 content identities. It does not open workspace paths or apply edits. A separate authenticated API layer persists proposal records and records project-owner review decisions; it still does not apply edits or execute commands.
 
 Callers must obtain the base snapshot through the existing authenticated, tenant/project-authorized workspace boundary. Never pass arbitrary client-supplied file contents as proof of the current workspace state. The base snapshot must be fresh, bounded, and derived from the selected workspace.
 
@@ -39,3 +39,12 @@ The React workspace now exposes a `Preview patch` action for the active file. Th
 6. Run isolated tests and diagnostics only after the separately designed sandboxed execution service is available.
 
 The current module implements only validation and diff generation. Persistence, IDE review, approval, safe application, rollback, execution and test orchestration remain unimplemented.
+
+
+## Chat-generated proposals and owner decisions
+
+The NEXUS chat inspection route can now capture a generated replacement for an explicitly attached file through the `propose_attached_file_change` tool. It stores the original base snapshot only in request memory, redacts the replacement, computes the base/result hashes, validates the diff, and persists the proposal in the tenant/project-scoped MongoDB store. Audit events record proposal creation and owner decisions without copying source content or diffs into audit metadata.
+
+The browser panel lists proposals, displays unified diffs, and exposes approve/reject controls only when the server confirms the authenticated identity is the project owner. Decisions use optimistic versions. The response and UI always state `application_enabled: false`.
+
+Approval remains a review decision, not permission for the browser or API to write local files. Do not add an apply button until the local companion can independently verify a short-lived, single-use approval capability, re-read every target using retained safe handles, compare fresh base hashes, stage atomic writes, and roll back on failure.
