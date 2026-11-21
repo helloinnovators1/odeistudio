@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pymongo.errors import PyMongoError
@@ -12,6 +13,9 @@ from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.agent_runtime import AgentRuntimeError, run_nexus_agent
 from odei_api.services.conversation_store import ConversationStoreError
+from odei_api.services.nexus_patch_proposals import _audit_proposal
+from odei_api.services.patch_proposals import PatchProposalError, build_patch_proposal, sha256_text
+from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.nexus_tasks import (
     NexusChatRequest,
     _append_nexus_chat_audit,
@@ -56,7 +60,7 @@ async def inspect_attached_project_excerpts(
         raise HTTPException(status_code=422, detail={"code": "INVALID_ATTACHED_EXCERPT", "message": str(exc)}) from exc
 
     try:
-        await _authorize_project(request, organization_id, project_id, principal)
+        project = await _authorize_project(request, organization_id, project_id, principal)
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "PROJECT_STORE_UNAVAILABLE", "message": "Project authorization storage is temporarily unavailable."}) from exc
 
@@ -133,6 +137,62 @@ async def inspect_attached_project_excerpts(
         )
         raise HTTPException(status_code=502, detail={"code": "NEXUS_INSPECTION_UNAVAILABLE", "message": "NEXUS inspection is temporarily unavailable."}) from exc
 
+    patch_proposal = None
+    proposed_changes = tools.proposed_changes
+    if proposed_changes:
+        proposal_store = getattr(request.app.state, "patch_proposal_store", None)
+        if proposal_store is None:
+            raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is not configured."})
+        try:
+            base_files = tools.proposal_base_files
+            expected_hashes = {path: sha256_text(content) for path, content in base_files.items()}
+            proposal = build_patch_proposal(base_files, proposed_changes, expected_hashes)
+        except PatchProposalError as exc:
+            raise HTTPException(status_code=422, detail={"code": "INVALID_GENERATED_PATCH", "message": "NEXUS generated a change that did not pass patch validation."}) from exc
+        proposal_id = uuid4().hex
+        title = redact_secrets(payload.messages[-1]["content"].strip())[:160] or "NEXUS proposed change"
+        proposal_files = [
+            {
+                "path": item.path,
+                "operation": item.operation,
+                "base_sha256": item.base_sha256,
+                "result_sha256": item.result_sha256,
+                "content": redact_secrets(item.content) if item.content is not None else None,
+                "unified_diff": redact_secrets(item.unified_diff),
+            }
+            for item in proposal.files
+        ]
+        await _audit_proposal(
+            request, principal, organization_id, proposal_id,
+            "nexus.patch_proposal.create", "started",
+            project_id=project_id, file_count=len(proposal_files),
+        )
+        try:
+            created_proposal = await proposal_store.create(
+                organization_id=organization_id, project_id=project_id,
+                owner_issuer=principal.issuer, owner_subject=principal.subject,
+                title=title, files=proposal_files, proposal_id=proposal_id,
+            )
+        except PyMongoError as exc:
+            raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "NEXUS could not persist the generated patch proposal."}) from exc
+        await _audit_proposal(
+            request, principal, organization_id, proposal_id,
+            "nexus.patch_proposal.create", "success",
+            project_id=project_id, file_count=len(proposal_files), version=0,
+        )
+        patch_proposal = {
+            "proposal_id": created_proposal["proposal_id"],
+            "title": created_proposal["title"],
+            "status": created_proposal["status"],
+            "version": created_proposal["version"],
+            "file_count": len(proposal_files),
+            "can_decide": (
+                project.get("owner_issuer") == principal.issuer
+                and project.get("owner_subject") == principal.subject
+            ),
+            "application_enabled": False,
+        }
+
     try:
         saved = await store.append(
             organization_id=organization_id, project_id=project_id,
@@ -161,4 +221,5 @@ async def inspect_attached_project_excerpts(
         "tool_names": list(result.tool_names),
         "conversation_persisted": True,
         "conversation_id": conversation_id,
+        "patch_proposal": patch_proposal,
     }
