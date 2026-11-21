@@ -220,10 +220,13 @@ def verify_patch_apply_capability(
         or claims.get("iat", current + 1) > current + 5
     ):
         raise InvalidPatchCapability("Capability is bound to a different or invalid request")
-    digest = canonical_patch_digest(
-        workspace_id=workspace_id, proposal_id=proposal_id,
-        proposal_version=proposal_version, files=files,
-    )
+    try:
+        digest = canonical_patch_digest(
+            workspace_id=workspace_id, proposal_id=proposal_id,
+            proposal_version=proposal_version, files=files,
+        )
+    except PatchApprovalError as exc:
+        raise InvalidPatchCapability("Patch payload is invalid") from exc
     if not isinstance(claims.get("patch_sha256"), str) or not hmac.compare_digest(claims["patch_sha256"], digest):
         raise InvalidPatchCapability("Capability does not authorize this patch payload")
     if not replay_cache.consume(claims.get("jti", ""), int(claims.get("exp", 0))):
