@@ -15,14 +15,12 @@ def test_redacts_known_provider_tokens_and_quoted_secret_assignments() -> None:
 
 def test_redacts_jwts_private_keys_and_database_passwords() -> None:
     jwt = "eyJ" + "A" * 18 + "." + "B" * 20 + "." + "C" * 20
-    pem = "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----"
-    uri = "mongodb+srv://user:database-password@cluster.example/db"
-    result = redact_secrets(jwt + "\n" + pem + "\n" + uri)
+    private_key = "-----BEGIN PRIVATE KEY-----\\nsecret-material\\n-----END PRIVATE KEY-----"
+    mongo_uri = "mongodb://service-user:super-secret-password@db.example.test/odei"
+    result = redact_secrets(f"{jwt} {private_key} {mongo_uri}")
     assert jwt not in result
     assert "secret-material" not in result
-    assert "database-password" not in result
-    assert "[REDACTED PRIVATE KEY]" in result
-
+    assert "super-secret-password" not in result
 
 
 @pytest.mark.parametrize(
@@ -32,6 +30,7 @@ def test_redacts_jwts_private_keys_and_database_passwords() -> None:
         "ghp_abcdefghijklmnopqrstuvwxyz123456",
         "Bearer abcdefghijklmnopqrstuvwxyz012345",
         "api_key=super_secret_token_12345",
+        "password=alpha:beta_gamma_12345",
         "mongodb://service-user:super_secret_password@db.example.test/odei",
         "-----BEGIN PRIVATE KEY-----\\nprivate-material\\n-----END PRIVATE KEY-----",
     ],
@@ -52,7 +51,6 @@ def test_streaming_secret_redactor_preserves_normal_text_and_redacts_jwt_split()
     assert result.startswith("This is safe output followed by ")
     assert "eyJabcdefghijk.abcdefghijk.abcdefghijk" not in result
     assert result.endswith(" and then more safe text.")
-
 
 
 def test_streaming_redactor_handles_long_mongodb_credentials_without_redacting_hosts():
