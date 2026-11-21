@@ -401,7 +401,14 @@ async def generate_chat_patch_proposal(
         )
         if conversation is None:
             raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Conversation was not found."})
-        prior_messages = conversation["messages"][-8:]
+        prior_messages = []
+        prior_characters = 0
+        for item in reversed(conversation["messages"][-8:]):
+            if prior_characters + len(item["content"]) > 16_000:
+                break
+            prior_messages.append({"role": item["role"], "content": item["content"]})
+            prior_characters += len(item["content"])
+        prior_messages.reverse()
         user_turn = await conversations.append(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
