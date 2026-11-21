@@ -10,8 +10,8 @@ import hashlib
 import hmac
 import re
 import unicodedata
-from dataclasses import dataclass
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 MAX_PATCH_FILES = 20
 MAX_FILE_BYTES = 1_000_000
