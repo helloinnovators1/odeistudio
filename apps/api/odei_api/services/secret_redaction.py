@@ -69,7 +69,7 @@ class StreamingSecretRedactor:
         r"db[_-]?password|password|passwd|secret|credential)\b[\"']?\s*[:=]\s*"
     )
     _BEARER = re.compile(r"(?i)\bBearer\s+")
-    _MONGO = re.compile(r"(?i)mongodb(?:\+srv)?://[^:/@\s]+:")
+    _MONGO = re.compile(r"(?i)mongodb(?:\+srv)?://[^:/@\s]+:[^/@\s]+@")
     _TOKENS = (
         re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
         re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}"),
@@ -132,9 +132,7 @@ class StreamingSecretRedactor:
                 if ending:
                     secret_end = ending.end()
             elif marker.casefold().startswith("mongodb"):
-                at = self._buffer.find("@", end)
-                if at >= 0:
-                    secret_end = at + 1
+                secret_end = end
             elif marker.casefold().startswith("bearer"):
                 token_end = self._token_end(self._buffer, end, self._TOKEN_CHARS)
                 if token_end < len(self._buffer):
