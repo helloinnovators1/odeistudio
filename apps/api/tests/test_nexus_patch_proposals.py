@@ -226,7 +226,7 @@ def test_patch_proposal_decision_requires_project_owner(patch_state, monkeypatch
 
 
 def test_apply_capability_requires_approved_owner_decision_and_binds_workspace(patch_state, monkeypatch):
-    _, audit, store = patch_state
+    _, audit, _ = patch_state
     client = TestClient(app)
     created = client.post(
         "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
