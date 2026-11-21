@@ -14,9 +14,9 @@ import re
 import stat
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 
 _IMAGE_DIGEST = re.compile(r"^[A-Za-z0-9._/:@-]+@sha256:[0-9a-f]{64}$")
