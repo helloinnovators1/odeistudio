@@ -47,7 +47,7 @@ The next integration layer must provide:
 
 The branch `feat/nexus-isolated-execution-engine` adds `services/execution_sandbox.py`, a shell-free OCI command builder and runner with digest-pinned profiles, network isolation, non-root execution, read-only root filesystem, capability drop, no-new-privileges, resource limits, bounded output, workspace containment checks, link/special-file rejection and cleanup attempts. Unit/contract tests are added for the security arguments, workspace validation and runner result handling.
 
-This is an execution-backend foundation only. It is not yet connected to authenticated NEXUS task approval, durable execution-run records, snapshot creation/storage, a worker queue, API routes, cancellation events, artifact retrieval or MAD metrics. No production command execution is enabled by this branch.
+This is an execution-backend foundation only. The API CI run on commit `76594ba` passed on Ubuntu and Windows with Python 3.10 and 3.12 (256 passed, 8 skipped in each environment); MongoDB replica-set integration and web tests/build also passed. Secret scanning and dependency audits passed; CodeQL was still running at the last check. It is not yet connected to an authenticated profile registry, NEXUS task approval, durable execution-run records, snapshot creation/storage, a worker queue, API routes, cancellation events, artifact retrieval or MAD metrics. No production command execution is enabled by this branch.
 
 ## Acceptance gates
 
