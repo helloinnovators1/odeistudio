@@ -368,6 +368,7 @@ async def create_patch_proposal(
         "files": created["files"],
         "total_content_bytes": proposal.total_content_bytes,
         "total_diff_bytes": proposal.total_diff_bytes,
+        "can_approve": _is_project_owner(project, principal),
         "application_enabled": False,
     }
 
@@ -558,6 +559,7 @@ async def get_patch_proposal(
     return {
         **_proposal_summary(item),
         "files": item["files"],
+        "can_approve": _is_project_owner(project, principal),
         "application_enabled": False,
     }
 
