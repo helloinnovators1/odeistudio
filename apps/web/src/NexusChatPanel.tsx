@@ -7,6 +7,7 @@ import {
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
+import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -74,8 +75,12 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [attachActiveFile, setAttachActiveFile] = useState(false);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
+  const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskError, setTaskError] = useState("");
   const [notice, setNotice] = useState("Sign in and select an authorized project to start.");
   const abortRef = useRef<AbortController | null>(null);
+  const taskAbortRef = useRef<AbortController | null>(null);
   const callbackHandled = useRef(false);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -165,6 +170,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setMessages([]);
       setConversations([]);
       setConversationId("");
+      setTaskPlan(null);
+      setTaskError("");
       setNotice("Your sign-in expired. Sign in again.");
       return;
     }
@@ -209,6 +216,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setMessages([]);
     setConversations([]);
     setConversationId("");
+    setTaskPlan(null);
+    setTaskError("");
     setConsent(false);
     try {
       const result = await listNexusProjects(config.apiBaseUrl, organizationId, access.accessToken);
@@ -221,9 +230,79 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     }
   }
 
+  async function planTask() {
+    const goal = draft.trim();
+    if (!access || !projectId || !consent || !goal || taskBusy || sending || !config.apiBaseUrl) return;
+    if (goal.length > 8_000) {
+      setTaskError("Task descriptions are limited to 8,000 characters.");
+      return;
+    }
+    const projectContext = attachActiveFile && activeFile
+      ? "Selected file: " + activeFile.path + "\n" + activeFile.content.slice(0, 8_000)
+      : "";
+    const controller = new AbortController();
+    taskAbortRef.current = controller;
+    setTaskBusy(true);
+    setTaskError("");
+    setChatError("");
+    try {
+      const task = await createNexusTask(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken,
+        goal, projectContext, controller.signal,
+      );
+      setTaskPlan(task);
+      setDraft("");
+      setConsent(false);
+      setNotice("NEXUS created an approval-ready plan. No files or commands have been changed.");
+    } catch (cause) {
+      if (!controller.signal.aborted) setTaskError(errorMessage(cause));
+    } finally {
+      if (taskAbortRef.current === controller) taskAbortRef.current = null;
+      setTaskBusy(false);
+    }
+  }
+
+  async function approveTaskPlan() {
+    if (!access || !taskPlan || !config.apiBaseUrl || taskBusy) return;
+    setTaskBusy(true);
+    setTaskError("");
+    try {
+      const updated = await approveNexusTask(
+        config.apiBaseUrl, organizationId, projectId,
+        access.accessToken, taskPlan.task_id, taskPlan.version,
+      );
+      setTaskPlan(updated);
+      setNotice("Project owner approval recorded. Execution is not enabled; no files or commands were changed.");
+    } catch (cause) {
+      setTaskError(errorMessage(cause));
+    } finally {
+      setTaskBusy(false);
+    }
+  }
+
+  async function cancelTaskPlan() {
+    if (!access || !taskPlan || !config.apiBaseUrl || taskBusy) return;
+    setTaskBusy(true);
+    setTaskError("");
+    try {
+      const updated = await cancelNexusTask(
+        config.apiBaseUrl, organizationId, projectId,
+        access.accessToken, taskPlan.task_id, taskPlan.version,
+      );
+      setTaskPlan(updated);
+      setNotice("Task cancelled.");
+    } catch (cause) {
+      setTaskError(errorMessage(cause));
+    } finally {
+      setTaskBusy(false);
+    }
+  }
+
   function signOut() {
     abortRef.current?.abort();
     abortRef.current = null;
+    taskAbortRef.current?.abort();
+    taskAbortRef.current = null;
     setAccess(null);
     setOrganizations([]);
     setOrganizationId("");
@@ -232,6 +311,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setMessages([]);
     setConversations([]);
     setConversationId("");
+    setTaskPlan(null);
+    setTaskError("");
     setDraft("");
     setConsent(false);
     setAttachActiveFile(false);
