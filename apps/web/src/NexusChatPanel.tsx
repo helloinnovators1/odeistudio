@@ -780,7 +780,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               <div>
                 <span>Read-only · durable project history</span>
                 {sending
-                  ? <button type="button" onClick={() => abortRef.current?.abort()}>Stop</button>
+                  ? <button type="button" onClick={() => abortRef.current?.abort()}>{inspectionRunning ? "Cancel inspection" : "Stop"}</button>
                   : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy || taskBusy}>Send</button>}
                 <button type="button" className="nexus-secondary-button" onClick={() => void planTask()}
                   disabled={!draft.trim() || !consent || conversationBusy || sending || taskBusy}>
