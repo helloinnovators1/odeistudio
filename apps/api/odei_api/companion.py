@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 import sys
@@ -40,6 +41,8 @@ from odei_api.services.workspace_handles import (
     WorkspaceHandleRegistry,
     WorkspaceNotFound,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PORT = 8765
 DEFAULT_PAIRING_TTL_SECONDS = 300
@@ -467,6 +470,10 @@ def create_companion_app(
         except WorkspaceHandleError as exc:
             raise HTTPException(status_code=409, detail="The selected workspace is not enabled for patch application") from exc
         except (ValueError, OSError) as exc:
+            logger.warning(
+                "Approved local patch operation failed safely (%s, winerror=%s)",
+                type(exc).__name__, getattr(exc, "winerror", None),
+            )
             raise HTTPException(status_code=409, detail="The approved patch could not be applied to the current workspace state") from exc
         return {
             "workspace_id": workspace_id,
