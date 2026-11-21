@@ -238,14 +238,6 @@ async def create_patch_proposal(
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
     project, store = await _project_and_store(request, organization_id, project_id, principal)
-    if not _is_project_owner(project, principal):
-        membership = await request.app.state.mongo_database["project_memberships"].find_one({
-            "organization_id": organization_id, "project_id": project_id,
-            "identity_issuer": principal.issuer, "identity_subject": principal.subject,
-            "status": "active",
-        })
-        if membership is None or membership.get("role") not in {"owner", "maintainer", "developer"}:
-            raise HTTPException(status_code=403, detail={"code": "PATCH_PROPOSAL_FORBIDDEN", "message": "An active project maintainer or developer role is required to create a patch proposal."})
     try:
         for path, expected_hash in payload.expected_base_hashes.items():
             if expected_hash is None and "/" in path:
