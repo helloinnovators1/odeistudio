@@ -105,6 +105,9 @@ class MongoConversationStore:
             raise ConversationStoreError("Conversation message role is invalid")
         if not isinstance(content, str) or not content.strip() or len(content) > MAX_CONVERSATION_MESSAGE_CHARS:
             raise ConversationStoreError("Conversation message must contain 1 to 16,000 characters")
+        content = redact_secrets(content.strip())
+        if not content:
+            raise ConversationStoreError("Conversation message is empty after secret redaction")
         if expected_version is not None and expected_version < 0:
             raise ConversationStoreError("Conversation version is invalid")
         query: dict[str, Any] = {
