@@ -57,6 +57,19 @@ def _decode_key(value: str) -> bytes:
         raise PatchApprovalError("Key material is invalid") from exc
 
 
+def validate_patch_approval_public_keys(public_keys: Mapping[str, str]) -> None:
+    """Validate the pinned Ed25519 public-key map before enabling companion writes."""
+    if not isinstance(public_keys, Mapping) or not 1 <= len(public_keys) <= 16:
+        raise PatchApprovalNotConfigured("Pinned patch approval public keys are missing or invalid")
+    for key_id, encoded_key in public_keys.items():
+        if not isinstance(key_id, str) or not key_id or len(key_id) > 64:
+            raise PatchApprovalNotConfigured("Pinned patch approval key ID is invalid")
+        try:
+            Ed25519PublicKey.from_public_bytes(_decode_key(encoded_key))
+        except (PatchApprovalError, ValueError, TypeError) as exc:
+            raise PatchApprovalNotConfigured("Pinned patch approval public key is invalid") from exc
+
+
 def canonical_patch_digest(*, workspace_id: str, proposal_id: str, proposal_version: int, files: list[dict[str, Any]]) -> str:
     """Digest the exact file operations and replacement bytes authorized for apply."""
     if not isinstance(workspace_id, str) or not _WORKSPACE_ID.fullmatch(workspace_id):
