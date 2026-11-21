@@ -478,8 +478,14 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           <>
             {activeFile && (
               <label className="nexus-attach-toggle">
-                <input type="checkbox" checked={attachActiveFile} onChange={(event) => setAttachActiveFile(event.target.checked)} />
+                <input type="checkbox" checked={attachActiveFile} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
                 Attach active file excerpt: {activeFile.path}
+              </label>
+            )}
+            {attachActiveFile && activeFile && (
+              <label className="nexus-attach-toggle nexus-tools-toggle">
+                <input type="checkbox" checked={useAttachedTools} onChange={(event) => setUseAttachedTools(event.target.checked)} />
+                Allow NEXUS read-only tools on this attached excerpt
               </label>
             )}
             {attachActiveFile && activeFile && activeFile.content.length > 8_000 && (
