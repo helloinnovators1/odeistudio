@@ -351,8 +351,8 @@ export async function completeODIDLogin(
   const tokenType = payload.token_type;
   const expiresIn = payload.expires_in;
   if (
-    typeof accessToken !== "string" || !accessToken.trim()
-    || accessToken.length > MAX_ACCESS_TOKEN_CHARS || /[\u0000-\u001f\u007f]/.test(accessToken)
+    typeof accessToken !== "string" || !/^[A-Za-z0-9\-._~+/]+=*$/.test(accessToken)
+    || accessToken.length > MAX_ACCESS_TOKEN_CHARS
     || typeof tokenType !== "string" || tokenType.toLowerCase() !== "bearer"
     || !Number.isInteger(expiresIn) || (expiresIn as number) < 1
     || (expiresIn as number) > MAX_TOKEN_LIFETIME_SECONDS
