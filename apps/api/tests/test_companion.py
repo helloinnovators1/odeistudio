@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import ctypes
 import hashlib
+import os
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -768,6 +769,7 @@ def test_companion_rejects_invalid_pinned_public_keys_at_startup(tmp_path):
         registry.close()
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows native file API regression")
 def test_windows_relative_rename_uses_nt_set_information_file(monkeypatch):
     from types import SimpleNamespace
 
