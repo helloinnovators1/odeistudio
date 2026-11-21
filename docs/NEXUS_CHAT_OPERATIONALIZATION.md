@@ -204,3 +204,9 @@ The current web implementation now includes:
 - Strict browser CORS allowlist configuration through `CORS_ALLOWED_ORIGINS`; origins must be explicit HTTPS origins, with HTTP allowed only for loopback development.
 
 This slice still uses the existing JSON chat endpoint. It does not stream, persist conversations, invoke repository tools, generate or apply patches, execute commands/tests, or orchestrate agents. The backend remains read-only and stateless. The user must provide approved environment-specific public ODID values and the API owner must configure matching issuer/audience/JWKS/client allowlist, MongoDB, model credentials and exact CORS origins. Do not enable production use until an actual ODID staging/browser end-to-end test passes.
+
+
+### Organization discovery delivered — 2026-11-21
+
+- Added authenticated `GET /api/v1/organizations` to discover only active organization memberships for the verified identity. The response is bounded to 100, malformed/duplicate membership data fails closed, and returned membership reads are audited.
+- Added a typed browser transport and organization selector. The user now selects from server-discovered memberships rather than manually typing an organization ID. Project selection remains a separate server-authorized step.
