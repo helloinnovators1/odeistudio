@@ -16,7 +16,7 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from odei_api.config import Settings
-from odei_api.services.patch_proposals import MAX_PATCH_FILES, MAX_TOTAL_BYTES, PatchProposalError, sha256_text, validate_patch_path
+from odei_api.services.patch_proposals import MAX_FILE_BYTES, MAX_PATCH_FILES, MAX_TOTAL_BYTES, PatchProposalError, sha256_text, validate_patch_path
 
 CAPABILITY_AUDIENCE = "odei-local-companion"
 MAX_CAPABILITY_TTL_SECONDS = 300
@@ -97,6 +97,8 @@ def canonical_patch_digest(*, workspace_id: str, proposal_id: str, proposal_vers
                 actual_hash = sha256_text(content)
             except (UnicodeEncodeError, PatchProposalError) as exc:
                 raise PatchApprovalError("Patch content must be valid UTF-8 text") from exc
+            if len(encoded) > MAX_FILE_BYTES:
+                raise PatchApprovalError("A patch file exceeds the per-file size limit")
             total_bytes += len(encoded)
             if total_bytes > MAX_TOTAL_BYTES:
                 raise PatchApprovalError("Patch content exceeds the aggregate size limit")
@@ -211,6 +213,9 @@ def verify_patch_apply_capability(
         or claims.get("workspace_id") != workspace_id
         or claims.get("proposal_id") != proposal_id
         or claims.get("proposal_version") != proposal_version
+        or not isinstance(claims.get("sub"), str) or not claims.get("sub")
+        or not isinstance(claims.get("actor_issuer"), str) or not claims.get("actor_issuer")
+        or claims.get("exp", 0) <= claims.get("iat", 0)
         or claims.get("exp", 0) - claims.get("iat", 0) > MAX_CAPABILITY_TTL_SECONDS
         or claims.get("iat", current + 1) > current + 5
     ):
