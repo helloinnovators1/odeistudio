@@ -94,7 +94,7 @@ export async function sendNexusChat(
     }
     totalCharacters += message.content.length;
   }
-  if (request.messages.at(-1)?.role !== "user") {
+  if (request.messages[request.messages.length - 1]?.role !== "user") {
     throw new TypeError("The final conversation message must be from the user.");
   }
   const workspaceFiles = request.workspaceFiles ?? [];
