@@ -74,6 +74,7 @@ def test_capability_binds_exact_workspace_proposal_version_and_patch_and_is_one_
     assert digest == canonical_patch_digest(
         workspace_id="workspace_1234567890123456",
         proposal_id="proposal-1", proposal_version=2, files=files,
+        challenge=CHALLENGE,
     )
     replay = CapabilityReplayCache()
     claims = verify_patch_apply_capability(
@@ -83,7 +84,7 @@ def test_capability_binds_exact_workspace_proposal_version_and_patch_and_is_one_
         organization_id="org-1", project_id="project-1",
         workspace_id="workspace_1234567890123456",
         proposal_id="proposal-1", proposal_version=2, files=files,
-        replay_cache=replay,
+        challenge=CHALLENGE, replay_cache=replay,
     )
     assert claims["sub"] == "user-123"
     with pytest.raises(PatchCapabilityReplay):
@@ -138,7 +139,7 @@ def test_capability_rejects_untrusted_keys_and_invalid_workspace_or_file_hash():
             organization_id="org-1", project_id="project-1",
             workspace_id="workspace_1234567890123456",
             proposal_id="proposal-1", proposal_version=2, files=files,
-            replay_cache=CapabilityReplayCache(),
+            challenge=CHALLENGE, replay_cache=CapabilityReplayCache(),
         )
     with pytest.raises(PatchApprovalError):
         canonical_patch_digest(
@@ -176,5 +177,5 @@ def test_capability_expiry_is_enforced():
             organization_id="org-1", project_id="project-1",
             workspace_id="workspace_1234567890123456",
             proposal_id="proposal-1", proposal_version=2, files=files,
-            replay_cache=CapabilityReplayCache(),
+            challenge=CHALLENGE, replay_cache=CapabilityReplayCache(),
         )
