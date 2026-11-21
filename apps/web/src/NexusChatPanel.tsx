@@ -412,7 +412,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           : item
       ));
       setNotice(decision === "approve"
-        ? "Project owner approval recorded. The local file is unchanged; application is not enabled."
+        ? "Project owner approval recorded. The file is unchanged until the approved one-file apply action is run through a trusted companion."
         : "Patch proposal rejected. The local file is unchanged.");
     } catch (cause) {
       setPatchError(errorMessage(cause));
@@ -451,8 +451,13 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           file,
         },
       );
-      await onPatchApplied?.(file);
-      setNotice("Approved patch applied to the selected local workspace. The file was reloaded from disk.");
+      setNotice("Approved patch applied. Refreshing the selected workspace from disk…");
+      try {
+        await onPatchApplied?.(file);
+        setNotice("Approved patch applied to the selected local workspace. The file was reloaded from disk.");
+      } catch (refreshError) {
+        setPatchError("The patch was applied, but the workspace refresh failed. Reconnect or reload the selected folder before retrying: " + errorMessage(refreshError));
+      }
     } catch (cause) {
       setPatchError(errorMessage(cause));
     } finally {
@@ -705,7 +710,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           <div className="nexus-empty-state">
             <div className="nexus-mark">N</div>
             <h2>Your coding agent</h2>
-            <p>{selectedProject ? "Ask a question about your project. NEXUS is currently read-only." : notice}</p>
+            <p>{selectedProject ? "Ask a question about your project. NEXUS can inspect attached excerpts and propose changes; local writes require owner approval and a trusted companion." : notice}</p>
           </div>
         )}
         {messages.map((message) => (
