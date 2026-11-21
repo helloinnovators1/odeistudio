@@ -11,7 +11,7 @@ from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutio
 MAX_AGENT_TASK_CHARS = 8_000
 MAX_AGENT_TURNS = 6
 MAX_AGENT_TOOL_CALLS = 12
-MAX_AGENT_OUTPUT_CHARS = 20_000
+MAX_AGENT_OUTPUT_CHARS = 16_000
 MAX_AGENT_OUTPUT_TOKENS = 4_000
 MAX_AGENT_HISTORY_CHARS = 80_000
 MAX_TOOL_ARGUMENT_CHARS = 4_000
@@ -42,6 +42,7 @@ class AgentRunResult:
     model: str
     tool_calls: int
     tool_rounds: int
+    tool_names: tuple[str, ...] = ()
 
 
 def _field(item: Any, name: str, default: Any = None) -> Any:
@@ -57,6 +58,7 @@ def run_nexus_agent(
     task: str,
     workspace_tools: ReadOnlyWorkspaceTools,
     cloud_model_consent: bool = False,
+    prior_messages: list[dict[str, str]] | None = None,
 ) -> AgentRunResult:
     """Run bounded read-only tools after explicit cloud-model consent.
 
@@ -74,12 +76,34 @@ def run_nexus_agent(
         raise AgentRuntimeError("Explicit user consent is required before sending workspace context to a cloud model")
 
     tools = workspace_tools.schemas()
-    history: list[Any] = [{"role": "user", "content": redact_secrets(clean_task)}]
-    history_chars = len(clean_task)
+    history: list[Any] = []
+    history_chars = 0
+    if prior_messages is not None:
+        if not isinstance(prior_messages, list) or len(prior_messages) > 19:
+            raise ValueError("prior_messages must contain at most 19 entries")
+        for message in prior_messages:
+            if (
+                not isinstance(message, dict) or set(message) != {"role", "content"}
+                or not isinstance(message["role"], str)
+                or message["role"] not in {"user", "assistant"}
+                or not isinstance(message["content"], str)
+                or not message["content"].strip()
+                or len(message["content"]) > MAX_AGENT_OUTPUT_CHARS
+            ):
+                raise ValueError("prior_messages contains an invalid message")
+            history_chars += len(message["content"])
+            history.append({
+                "role": message["role"],
+                "content": redact_secrets(message["content"]),
+            })
+    history_chars += len(clean_task)
+    if history_chars > MAX_AGENT_HISTORY_CHARS:
+        raise ValueError("prior_messages exceeds the maximum context budget")
+    history.append({"role": "user", "content": redact_secrets(clean_task)})
     response = client.responses.create(
         model=model,
         instructions=AGENT_INSTRUCTIONS,
-        input=history,
+        input=list(history),
         tools=tools,
         tool_choice="auto",
         max_output_tokens=MAX_AGENT_OUTPUT_TOKENS,
@@ -88,6 +112,7 @@ def run_nexus_agent(
     total_calls = 0
     rounds = 0
     seen_call_ids: set[str] = set()
+    invoked_tools: list[str] = []
 
     while True:
         output_items = _field(response, "output", []) or []
@@ -104,6 +129,7 @@ def run_nexus_agent(
                 model=model,
                 tool_calls=total_calls,
                 tool_rounds=rounds,
+                tool_names=tuple(dict.fromkeys(invoked_tools)),
             )
 
         if rounds >= MAX_AGENT_TURNS:
@@ -129,6 +155,7 @@ def run_nexus_agent(
                 if not isinstance(arguments, dict):
                     raise ToolExecutionError("Tool arguments must be a JSON object")
                 result = workspace_tools.execute(name, arguments)
+                invoked_tools.append(name)
             except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:
                 result = json.dumps({"error": redact_secrets(str(exc)[:500])})
             outputs.append({
