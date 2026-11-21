@@ -421,6 +421,45 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     }
   }
 
+  async function applyApprovedPatch() {
+    if (
+      !access || !config.apiBaseUrl || !selectedPatch ||
+      selectedPatch.status !== "approved" || !selectedPatch.can_decide ||
+      !companionToken || !companionWorkspaceId || !companionCanApply ||
+      selectedPatch.files.length !== 1 || patchBusy
+    ) return;
+    setPatchBusy(true);
+    setPatchError("");
+    try {
+      const challenge = await createWorkspaceApplyChallenge(
+        companionToken, companionWorkspaceId,
+      );
+      const capability = await createNexusPatchApplyCapability(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken,
+        selectedPatch.proposal_id, selectedPatch.version,
+        companionWorkspaceId, challenge.challenge,
+      );
+      const file = selectedPatch.files[0];
+      await applyApprovedWorkspacePatch(
+        companionToken, companionWorkspaceId,
+        {
+          organizationId, projectId,
+          proposalId: selectedPatch.proposal_id,
+          proposalVersion: selectedPatch.version,
+          challenge: challenge.challenge,
+          capability: capability.capability,
+          file,
+        },
+      );
+      await onPatchApplied?.(file);
+      setNotice("Approved patch applied to the selected local workspace. The file was reloaded from disk.");
+    } catch (cause) {
+      setPatchError(errorMessage(cause));
+    } finally {
+      setPatchBusy(false);
+    }
+  }
+
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
