@@ -576,7 +576,7 @@ def _open_relative_file_for_replace(kernel32, ntdll, parent, name: str):
     handle = wintypes.HANDLE()
     status = ntdll.NtCreateFile(
         ctypes.byref(handle),
-        FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        FILE_READ_DATA | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
         ctypes.byref(object_attributes),
         ctypes.byref(io_status),
         None,
