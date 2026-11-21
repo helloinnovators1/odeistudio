@@ -265,7 +265,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     try {
       let activeConversationId = conversationId;
       if (!activeConversationId) {
-        const created = await createNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, content.slice(0, 120) || "NEXUS conversation");
+        const created = await createNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, content.slice(0, 120) || "NEXUS conversation", fetch, controller.signal);
         activeConversationId = created.conversation_id;
         setConversationId(activeConversationId);
         setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
