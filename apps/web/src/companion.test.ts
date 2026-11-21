@@ -113,10 +113,14 @@ describe("signed companion patch application", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       workspace_id: "workspace-1", challenge, expires_in: 60,
     }), { status: 200 }));
-    const result = await createWorkspaceApplyChallenge("local-session", "workspace-1");
+    const result = await createWorkspaceApplyChallenge(
+      "local-session", "workspace-1", fetchMock,
+    );
     expect(result.challenge).toBe(challenge);
-    const request = fetchMock.mock.calls[0]?.[0] as Request | undefined;
-    expect(request).toBeUndefined();
+    const request = fetchMock.mock.calls[0][0] as Request;
+    expect(request.method).toBe("POST");
+    expect(request.url).toContain("/v1/workspaces/workspace-1/apply-challenge");
+    expect(request.headers.get("Authorization")).toBe("Bearer local-session");
   });
 
   it("sends only the signed single-file approval to the selected workspace", async () => {
