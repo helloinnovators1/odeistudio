@@ -319,11 +319,36 @@ export default function App() {
     writeChatPanelSide(side);
   }
 
+  async function reloadAfterPatch(file: NexusPatchProposalFile) {
+    if (!token || !workspace) return;
+    const updatedFiles = await listWorkspaceFiles(token, workspace);
+    setFiles(updatedFiles);
+    if (file.operation === "delete") {
+      setTabs((current) => current.filter((tab) => tab.path !== file.path));
+      setActivePath((current) => current === file.path ? "" : current);
+      setMessage("Approved file deletion applied and Explorer refreshed.");
+      return;
+    }
+    const content = await readWorkspaceFile(token, workspace, file.path);
+    setTabs((current) => {
+      const exists = current.some((tab) => tab.path === file.path);
+      return exists
+        ? current.map((tab) => tab.path === file.path ? { ...tab, content } : tab)
+        : [...current, { path: file.path, content }];
+    });
+    setActivePath(file.path);
+    setMessage("Approved file change applied and editor reloaded from disk.");
+  }
+
   const chatPanel = (
     <NexusChatPanel
       onClose={() => setChatOpen(false)}
       isOpen={chatOpen}
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
+      companionToken={token}
+      companionWorkspaceId={workspace}
+      companionCanApply={canApplyPatches}
+      onPatchApplied={reloadAfterPatch}
     />
   );
 
