@@ -488,6 +488,9 @@ export async function sendNexusChatStream(
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > 65_536 && !buffer.includes("\n\n")) {
+        throw new NexusChatTransportError("NEXUS returned an oversized stream event.", response.status);
+      }
       let boundary = buffer.indexOf("\n\n");
       while (boundary >= 0) {
         dispatch(buffer.slice(0, boundary).replace(/\r$/, ""));
