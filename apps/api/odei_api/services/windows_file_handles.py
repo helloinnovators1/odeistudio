@@ -15,6 +15,7 @@ class UnsafeWindowsPath(OSError):
 
 
 FILE_LIST_DIRECTORY = 0x0001
+FILE_TRAVERSE = 0x0020
 FILE_READ_DATA = 0x0001
 FILE_WRITE_DATA = 0x0002
 FILE_ADD_FILE = 0x0002
@@ -155,7 +156,7 @@ def _open_child(kernel32, ntdll, parent, name: str, *, directory: bool, allow_wr
     access = FILE_READ_ATTRIBUTES | SYNCHRONIZE
     options = FILE_SYNCHRONOUS_IO_NONALERT | 0x00200000
     if directory:
-        access |= FILE_LIST_DIRECTORY
+        access |= FILE_LIST_DIRECTORY | FILE_TRAVERSE
         if allow_write:
             access |= FILE_ADD_FILE | FILE_DELETE_CHILD
         options |= FILE_DIRECTORY_FILE
@@ -194,7 +195,7 @@ def open_readonly_file(root: str | Path, parts: tuple[str, ...]) -> tuple[int, o
     kernel32, ntdll = _apis()
     root_handle = kernel32.CreateFileW(
         str(root),
-        FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         None, OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
@@ -267,7 +268,7 @@ def open_directory_handle(path: str | Path, *, allow_patch_apply: bool = False):
     if os.name != "nt":
         raise OSError("Native Windows handles are only available on Windows")
     kernel32, _ = _apis()
-    desired_access = FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE
+    desired_access = FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE
     if allow_patch_apply:
         desired_access |= FILE_ADD_FILE | FILE_DELETE_CHILD
     handle = kernel32.CreateFileW(
