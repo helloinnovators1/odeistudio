@@ -48,3 +48,34 @@ def test_selected_excerpt_tool_schemas_are_strict_and_do_not_accept_workspace_id
     }
     assert all(item["strict"] for item in schemas)
     assert all("workspace_id" not in item["parameters"]["properties"] for item in schemas)
+
+
+def test_selected_excerpt_tools_capture_review_only_replacement_without_mutating_base():
+    original = "def greet():\\n    return 'hello'\\n"
+    tools = SelectedExcerptTools([{"path": "src/greet.py", "content": original}])
+    captured = json.loads(tools.execute(
+        "propose_attached_file_change",
+        {"path": "src/greet.py", "content": "def greet():\\n    return 'hello, ODEI'\\n"},
+    ))
+    assert captured["proposal_captured"] is True
+    assert captured["mode"] == "review_only"
+    assert captured["writes_performed"] is False
+    assert tools.proposal_base_files == {"src/greet.py": original}
+    assert tools.proposed_changes == {"src/greet.py": "def greet():\\n    return 'hello, ODEI'\\n"}
+    assert tools.execute("read_attached_excerpt", {"path": "src/greet.py"})
+    assert tools.proposal_base_files["src/greet.py"] == original
+
+
+def test_selected_excerpt_tools_cannot_propose_unattached_or_duplicate_paths():
+    tools = SelectedExcerptTools([{"path": "src/greet.py", "content": "print('hello')"}])
+    with pytest.raises(SelectedExcerptToolError, match="Only an explicitly attached"):
+        tools.execute("propose_attached_file_change", {
+            "path": "src/other.py", "content": "print('changed')",
+        })
+    tools.execute("propose_attached_file_change", {
+        "path": "src/greet.py", "content": "print('changed')",
+    })
+    with pytest.raises(SelectedExcerptToolError, match="already exists"):
+        tools.execute("propose_attached_file_change", {
+            "path": "src/greet.py", "content": "print('changed again')",
+        })
