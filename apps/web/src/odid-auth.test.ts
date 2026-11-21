@@ -3,6 +3,8 @@ import {
   beginODIDLogin,
   clearODIDLoginTransaction,
   completeODIDLogin,
+  refreshODIDAccessToken,
+  revokeODIDToken,
   ODidOAuthError,
   type ODidOAuthConfig,
 } from "./odid-auth";
@@ -18,6 +20,7 @@ const discovery = {
   issuer: config.issuer,
   authorization_endpoint: "https://identity.example.test/authorize",
   token_endpoint: "https://identity.example.test/token",
+  revocation_endpoint: "https://identity.example.test/revoke",
   code_challenge_methods_supported: ["S256"],
 };
 
@@ -91,8 +94,8 @@ describe("ODID OAuth PKCE client", () => {
       .mockResolvedValueOnce(jsonResponse(discovery))
       .mockResolvedValueOnce(jsonResponse(discovery))
       .mockResolvedValueOnce(jsonResponse({
-        access_token: "ephemeral-access-token", token_type: "Bearer", expires_in: 900,
-        scope: "studio.read projects.read",
+        access_token: "ephemeral-access-token", refresh_token: "ephemeral-refresh-token",
+        token_type: "Bearer", expires_in: 900, scope: "studio.read projects.read",
       }));
     const authorizationUrl = await beginODIDLogin(config, {
       storage, cryptoProvider: fakeCrypto(), fetcher: discoveryFetcher, now: 2_000,
@@ -107,6 +110,7 @@ describe("ODID OAuth PKCE client", () => {
       accessToken: "ephemeral-access-token",
       expiresAt: 903_000,
       scope: "studio.read projects.read",
+      refreshToken: "ephemeral-refresh-token",
     });
     const exchange = discoveryFetcher.mock.calls[2][1];
     const body = new URLSearchParams(String(exchange?.body));
@@ -226,6 +230,81 @@ describe("ODID OAuth PKCE client", () => {
       `https://studio.example.test/auth/callback?code=code&state=${state}`,
       config, { storage, fetcher, now: 2_000 },
     )).rejects.toThrow("token response is oversized");
+  });
+
+
+
+  it("refreshes with the rotating refresh token and retains the replacement in memory", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(discovery))
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: "new-access-token",
+        refresh_token: "rotated-refresh-token",
+        token_type: "Bearer",
+        expires_in: 600,
+        scope: "studio.read projects.read",
+      }));
+    const result = await refreshODIDAccessToken(config, "old-refresh-token", {
+      fetcher, now: 10_000,
+    });
+    expect(result).toEqual({
+      accessToken: "new-access-token",
+      refreshToken: "rotated-refresh-token",
+      expiresAt: 610_000,
+      scope: "studio.read projects.read",
+    });
+    const request = fetcher.mock.calls[1][1];
+    const body = new URLSearchParams(String(request?.body));
+    expect(fetcher.mock.calls[1][0]).toBe("https://identity.example.test/token");
+    expect(body.get("grant_type")).toBe("refresh_token");
+    expect(body.get("refresh_token")).toBe("old-refresh-token");
+    expect(body.get("client_id")).toBe(config.clientId);
+    expect(body.get("resource")).toBe(config.resource);
+    expect(body.has("client_secret")).toBe(false);
+    expect(request).toMatchObject({ credentials: "omit", cache: "no-store", redirect: "error" });
+  });
+
+  it("retains the previous refresh token when the provider does not rotate it", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(discovery))
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: "new-access-token", token_type: "Bearer", expires_in: 300,
+      }));
+    const result = await refreshODIDAccessToken(config, "stable-refresh-token", {
+      fetcher, now: 1_000,
+    });
+    expect(result.refreshToken).toBe("stable-refresh-token");
+  });
+
+  it("rejects invalid refresh tokens before making a network request", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(refreshODIDAccessToken(config, "bad refresh token", { fetcher }))
+      .rejects.toThrow("refresh token is invalid");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("revokes refresh tokens through the discovered HTTPS endpoint without putting them in a URL", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(discovery))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(revokeODIDToken(config, "refresh-token-value", "refresh_token", { fetcher }))
+      .resolves.toBe(true);
+    expect(fetcher.mock.calls[1][0]).toBe("https://identity.example.test/revoke");
+    const request = fetcher.mock.calls[1][1];
+    const body = new URLSearchParams(String(request?.body));
+    expect(body.get("token")).toBe("refresh-token-value");
+    expect(body.get("token_type_hint")).toBe("refresh_token");
+    expect(body.get("client_id")).toBe(config.clientId);
+    expect(request).toMatchObject({ credentials: "omit", cache: "no-store", redirect: "error" });
+  });
+
+  it("clears locally when the provider has no revocation endpoint", async () => {
+    const metadata = { ...discovery };
+    delete metadata.revocation_endpoint;
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(metadata));
+    await expect(revokeODIDToken(config, "refresh-token-value", "refresh_token", { fetcher }))
+      .resolves.toBe(false);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("clears a pending login transaction", async () => {
