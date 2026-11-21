@@ -25,7 +25,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Implement read-only project file listing, bounded reads and literal search with .gitignore, path, symlink/reparse-point, binary and size controls.
 - [x] Implement native Windows handle-relative opens and FileIdBothDirectoryInfo enumeration; retain selected root handles, reject reparse points and test path-swap/junction cases.
 - [x] Implement POSIX descriptor-relative traversal and reads with no-follow/non-blocking controls.
-- [x] Implement read-only local companion prototype with native folder selection, loopback-only binding, exact Origin/Host checks, one-time pairing, short-lived read-only sessions, multiple roots and revocation.
+- [x] Implement read-only local companion prototype with native folder selection, loopback-only binding, exact Origin/Host checks, one-time pairing, short-lived read-only sessions, multiple roots and revocation. Add live-handle, hash-checked patch preview for root-level create and existing-file update/delete; no writes or persistence.
 - [x] Implement initial Chrome browser pairing UI, explicit loopback permission/request flow, multi-root navigation and read-only preview; bearer tokens remain in memory only.
 - [ ] Complete ODID user/tenant binding, explicit consent/audit lifecycle, signed Windows installer and validation on Windows 10 build 18362.
 - [x] Implement durable tenant-scoped task records and separate append-only task events with transactional state/event writes (MongoDB replica-set/sharded transaction support required).
