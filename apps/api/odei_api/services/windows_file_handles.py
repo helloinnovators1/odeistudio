@@ -639,7 +639,8 @@ def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> N
         process, parent, process, ctypes.byref(rename_root),
         desired_access, False, 0,
     ):
-        raise ctypes.WinError(ctypes.get_last_error())
+        error = ctypes.WinError(ctypes.get_last_error())
+        raise OSError(f"DuplicateHandle for rename root failed: {error}") from error
     try:
         info.RootDirectory = rename_root
         io_status = _IoStatusBlock()
@@ -651,7 +652,10 @@ def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> N
             10,  # FileRenameInformation
         )
         if status < 0:
-            raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+            error = ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+            raise OSError(
+                f"NtSetInformationFile rename failed with NTSTATUS 0x{status & 0xFFFFFFFF:08x}: {error}"
+            ) from error
     finally:
         kernel32.CloseHandle(rename_root)
 
@@ -748,9 +752,12 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                     kernel32, temporary_handle, parent, target_name, replace=False,
                 )
             else:
-                target_handle = _open_relative_file_for_replace(
-                    kernel32, ntdll, parent, target_name
-                )
+                try:
+                    target_handle = _open_relative_file_for_replace(
+                        kernel32, ntdll, parent, target_name
+                    )
+                except OSError as exc:
+                    raise OSError(f"Opening existing target for replacement failed: {exc}") from exc
                 descriptor = None
                 try:
                     descriptor = msvcrt.open_osfhandle(
