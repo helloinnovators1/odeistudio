@@ -640,7 +640,9 @@ def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> N
     The POSIX rename flag permits replacing a destination that has open handles;
     those handles continue to refer to the old file. This is required because
     the caller deliberately holds the hash-checked target open to deny concurrent
-    writes while the staged file is installed.
+    writes while the staged file is installed. FileRenameInformationEx is
+    supported from Windows 10 version 1607 onward; unsupported filesystems fail
+    closed rather than falling back to path-based or non-atomic replacement.
     """
     encoded_name = name.encode("utf-16-le")
     offset = _FileRenameInfoEx.FileName.offset
