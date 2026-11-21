@@ -1,11 +1,12 @@
-"""Stateless, bounded NEXUS chat requests with explicit cloud consent."""
+"""Bounded NEXUS chat requests and safe incremental Responses API streaming."""
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from odei_api.services.secret_redaction import redact_secrets
+from odei_api.services.secret_redaction import StreamingSecretRedactor, redact_secrets
 
 MAX_CHAT_MESSAGES = 20
 MAX_CHAT_MESSAGE_CHARS = 8_000
@@ -36,16 +37,10 @@ class NexusChatResult:
     input_characters: int
 
 
-def run_nexus_chat(
-    client: Any,
-    *,
-    model: str,
+def _prepare_chat_input(
     messages: list[dict[str, str]],
-    workspace_files: list[dict[str, str]] | None = None,
-) -> NexusChatResult:
-    """Call Responses API without tools, persistence or execution side effects."""
-    if not isinstance(model, str) or not model.strip():
-        raise NexusChatError("A model must be configured")
+    workspace_files: list[dict[str, str]] | None,
+) -> tuple[list[dict[str, str]], int]:
     if not isinstance(messages, list) or not 1 <= len(messages) <= MAX_CHAT_MESSAGES:
         raise NexusChatError(f"messages must contain 1 to {MAX_CHAT_MESSAGES} entries")
 
@@ -92,7 +87,7 @@ def run_nexus_chat(
             len(clean_messages) - 1,
             {
                 "role": "user",
-                "content": "Selected workspace context:\n" + json.dumps(
+                "content": "Selected workspace context:\\n" + json.dumps(
                     context, ensure_ascii=False, separators=(",", ":")
                 ),
             },
@@ -102,7 +97,20 @@ def run_nexus_chat(
         raise NexusChatError(
             f"Serialized chat context exceeds {MAX_CHAT_TOTAL_CHARS} characters"
         )
+    return clean_messages, total
 
+
+def run_nexus_chat(
+    client: Any,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    workspace_files: list[dict[str, str]] | None = None,
+) -> NexusChatResult:
+    """Call Responses API without tools, persistence or execution side effects."""
+    if not isinstance(model, str) or not model.strip():
+        raise NexusChatError("A model must be configured")
+    clean_messages, total = _prepare_chat_input(messages, workspace_files)
     response = client.responses.create(
         model=model.strip(),
         instructions=CHAT_INSTRUCTIONS,
@@ -118,3 +126,61 @@ def run_nexus_chat(
         model=model.strip(),
         input_characters=total,
     )
+
+
+def stream_nexus_chat(
+    client: Any,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    workspace_files: list[dict[str, str]] | None = None,
+) -> Iterator[str]:
+    """Yield incremental text deltas after streaming secret redaction.
+
+    The Responses stream is never stored by the provider. A rolling redactor
+    withholds incomplete credential-like values across event boundaries.
+    """
+    if not isinstance(model, str) or not model.strip():
+        raise NexusChatError("A model must be configured")
+    clean_messages, _total = _prepare_chat_input(messages, workspace_files)
+    redactor = StreamingSecretRedactor()
+    raw_characters = 0
+    emitted_characters = 0
+    completed = False
+    try:
+        with client.responses.stream(
+            model=model.strip(),
+            instructions=CHAT_INSTRUCTIONS,
+            input=clean_messages,
+            max_output_tokens=MAX_CHAT_OUTPUT_TOKENS,
+            store=False,
+        ) as stream:
+            for event in stream:
+                event_type = getattr(event, "type", None)
+                if event_type == "response.output_text.delta":
+                    delta = getattr(event, "delta", "")
+                    if not isinstance(delta, str):
+                        raise NexusChatError("The model returned an invalid text delta")
+                    raw_characters += len(delta)
+                    if raw_characters > MAX_CHAT_OUTPUT_CHARS:
+                        raise NexusChatError("The model response exceeded the output limit")
+                    safe_delta = redactor.feed(delta)
+                    if safe_delta:
+                        emitted_characters += len(safe_delta)
+                        yield safe_delta
+                elif event_type == "response.completed":
+                    completed = True
+                elif event_type in {"response.failed", "response.incomplete", "error"}:
+                    raise NexusChatError("The model could not complete the streamed response")
+        final_delta = redactor.finish()
+        if final_delta:
+            emitted_characters += len(final_delta)
+            yield final_delta
+    except NexusChatError:
+        raise
+    except Exception as exc:
+        raise NexusChatError("The model streaming request failed") from exc
+    if not completed:
+        raise NexusChatError("The model stream ended before completion")
+    if emitted_characters == 0:
+        raise NexusChatError("The model returned no final answer")
