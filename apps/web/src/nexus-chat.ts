@@ -290,10 +290,11 @@ function validateConversation(value: unknown): NexusConversation {
 export async function createNexusConversation(
   apiBaseUrl: string, organizationId: string, projectId: string,
   accessToken: string, title: string, fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<NexusConversation> {
   const payload = await conversationRequest(
     apiBaseUrl, organizationId, projectId, accessToken, "", "POST",
-    { title: title.trim().slice(0, 120) }, undefined, fetcher,
+    { title: title.trim().slice(0, 120) }, signal, fetcher,
   );
   return validateConversation(payload);
 }
