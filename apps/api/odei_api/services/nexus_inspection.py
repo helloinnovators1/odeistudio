@@ -190,6 +190,8 @@ async def inspect_attached_project_excerpts(
             "status": created_proposal["status"],
             "version": created_proposal["version"],
             "file_count": len(proposal_files),
+            "created_at": created_proposal["created_at"].isoformat(),
+            "updated_at": created_proposal["updated_at"].isoformat(),
             "can_decide": (
                 project.get("owner_issuer") == principal.issuer
                 and project.get("owner_subject") == principal.subject
