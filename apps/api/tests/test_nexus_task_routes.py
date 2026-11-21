@@ -295,7 +295,7 @@ def test_same_subject_from_different_issuer_cannot_read_task(route_state):
 
 
 def test_task_read_success_is_audited(route_state):
-    _, audit, tasks = route_state
+    _, audit, tasks, _ = route_state
     task = TaskRecord(
         id="task-read", organization_id="org-1", project_id="project-1",
         owner_id=identity_owner_key("https://identity.example/", "user-1"),
@@ -312,7 +312,7 @@ def test_task_read_success_is_audited(route_state):
 
 
 def test_task_events_are_project_authorized_and_cursor_paginated(route_state):
-    _, audit, tasks = route_state
+    _, audit, tasks, _ = route_state
     task = TaskRecord(
         id="task-1", organization_id="org-1", project_id="project-1",
         owner_id=identity_owner_key("https://identity.example/", "user-1"),
