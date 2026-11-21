@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 
 from fastapi.testclient import TestClient
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from pydantic import SecretStr
 
-from odei_api.companion import PairingManager, create_companion_app
+from odei_api.companion import ApplyChallengeManager, PairingManager, create_companion_app
+from odei_api.config import Settings
+from odei_api.services.patch_approval import issue_patch_apply_capability
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
 ORIGIN = "https://studio.example.test"
@@ -518,5 +524,198 @@ def test_companion_patch_preview_validates_paths_and_hashes_before_io(tmp_path) 
             },
         )
         assert malformed_hash.status_code == 422
+    finally:
+        registry.close()
+
+
+def _build_apply_client(tmp_path):
+    selected = tmp_path / "project"
+    selected.mkdir()
+    original = "print('ODEI')"
+    (selected / "main.py").write_text(original, encoding="utf-8")
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    pairing = PairingManager()
+    code = pairing.issue_pairing_code()
+    private = Ed25519PrivateKey.generate()
+    private_raw = private.private_bytes(
+        serialization.Encoding.Raw,
+        serialization.PrivateFormat.Raw,
+        serialization.NoEncryption(),
+    )
+    public_raw = private.public_key().public_bytes(
+        serialization.Encoding.Raw,
+        serialization.PublicFormat.Raw,
+    )
+    private_encoded = base64.urlsafe_b64encode(private_raw).decode("ascii").rstrip("=")
+    public_encoded = base64.urlsafe_b64encode(public_raw).decode("ascii").rstrip("=")
+    settings = Settings(
+        patch_approval_issuer="https://api.odei.example",
+        patch_approval_key_id="companion-test",
+        patch_approval_private_key_b64=SecretStr(private_encoded),
+        patch_approval_ttl_seconds=60,
+    )
+    app = create_companion_app(
+        registry,
+        workspace_id,
+        allowed_origins=[ORIGIN],
+        pairing_manager=pairing,
+        port=8765,
+        patch_approval_issuer="https://api.odei.example",
+        patch_approval_public_keys={"companion-test": public_encoded},
+    )
+    return TestClient(app, base_url=BASE_URL), registry, pairing, code, workspace_id, settings, original
+
+
+def test_companion_apply_challenge_is_short_lived_session_bound_and_one_use():
+    now = [100.0]
+    manager = ApplyChallengeManager(ttl_seconds=60, clock=lambda: now[0])
+    challenge = manager.issue("workspace_1234567890123456", "session-one")
+    assert manager.consume(challenge, "workspace_1234567890123456", "session-two") is False
+    assert manager.consume(challenge, "workspace_1234567890123456", "session-one") is True
+    assert manager.consume(challenge, "workspace_1234567890123456", "session-one") is False
+    expired = manager.issue("workspace_1234567890123456", "session-one")
+    now[0] += 61
+    assert manager.consume(expired, "workspace_1234567890123456", "session-one") is False
+
+
+def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
+    client, registry, _pairing, code, workspace_id, settings, original = _build_apply_client(tmp_path)
+    try:
+        pair_response = client.post(
+            "/v1/pair", headers={"Origin": ORIGIN}, json={"code": code},
+        )
+        assert pair_response.status_code == 200
+        assert "patch:apply" in pair_response.json()["permissions"]
+        headers = {"Origin": ORIGIN, "Authorization": f"Bearer {pair_response.json()['access_token']}"}
+        paired = client.get("/v1/workspaces", headers=headers)
+        assert paired.status_code == 200
+        assert paired.json()["workspaces"][0]["workspace_id"] == workspace_id
+
+        challenge_response = client.post(
+            f"/v1/workspaces/{workspace_id}/apply-challenge", headers=headers,
+        )
+        assert challenge_response.status_code == 200
+        challenge = challenge_response.json()["challenge"]
+        replacement = "print('NEXUS')"
+        file_item = {
+            "path": "main.py",
+            "operation": "update",
+            "base_sha256": hashlib.sha256(original.encode("utf-8")).hexdigest(),
+            "result_sha256": hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
+            "content": replacement,
+        }
+        token, _, _ = issue_patch_apply_capability(
+            settings=settings,
+            principal_issuer="https://identity.odei.example",
+            principal_subject="owner-1",
+            organization_id="org-1",
+            project_id="project-1",
+            workspace_id=workspace_id,
+            proposal_id="proposal-1",
+            proposal_version=1,
+            files=[file_item],
+            challenge=challenge,
+        )
+        request = {
+            "organization_id": "org-1",
+            "project_id": "project-1",
+            "proposal_id": "proposal-1",
+            "proposal_version": 1,
+            "companion_challenge": challenge,
+            "capability": token,
+            "files": [file_item],
+        }
+        response = client.post(
+            f"/v1/workspaces/{workspace_id}/apply-patch",
+            headers=headers,
+            json=request,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["applied"] is True
+        assert registry.read_text(workspace_id, "main.py") == replacement
+        replay = client.post(
+            f"/v1/workspaces/{workspace_id}/apply-patch",
+            headers=headers,
+            json=request,
+        )
+        assert replay.status_code == 401
+    finally:
+        registry.close()
+
+
+def test_companion_rejects_stale_or_mismatched_signed_patch_without_writing(tmp_path):
+    client, registry, _pairing, code, workspace_id, settings, original = _build_apply_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        challenge = client.post(
+            f"/v1/workspaces/{workspace_id}/apply-challenge", headers=headers,
+        ).json()["challenge"]
+        replacement = "print('NEXUS')"
+        file_item = {
+            "path": "main.py",
+            "operation": "update",
+            "base_sha256": "0" * 64,
+            "result_sha256": hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
+            "content": replacement,
+        }
+        token, _, _ = issue_patch_apply_capability(
+            settings=settings,
+            principal_issuer="https://identity.odei.example",
+            principal_subject="owner-1",
+            organization_id="org-1",
+            project_id="project-1",
+            workspace_id=workspace_id,
+            proposal_id="proposal-stale",
+            proposal_version=1,
+            files=[file_item],
+            challenge=challenge,
+        )
+        response = client.post(
+            f"/v1/workspaces/{workspace_id}/apply-patch",
+            headers=headers,
+            json={
+                "organization_id": "org-1",
+                "project_id": "project-1",
+                "proposal_id": "proposal-stale",
+                "proposal_version": 1,
+                "companion_challenge": challenge,
+                "capability": token,
+                "files": [file_item],
+            },
+        )
+        assert response.status_code == 409
+        assert registry.read_text(workspace_id, "main.py") == original
+    finally:
+        registry.close()
+
+
+def test_workspace_handle_applies_root_create_and_delete_atomically(tmp_path):
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected)
+    try:
+        created_content = "print('created')"
+        created_hash = hashlib.sha256(created_content.encode("utf-8")).hexdigest()
+        created = registry.apply_patch(workspace_id, {
+            "path": "created.py",
+            "operation": "create",
+            "base_sha256": None,
+            "result_sha256": created_hash,
+            "content": created_content,
+        })
+        assert created["applied"] is True
+        assert registry.read_text(workspace_id, "created.py") == created_content
+
+        deleted = registry.apply_patch(workspace_id, {
+            "path": "created.py",
+            "operation": "delete",
+            "base_sha256": created_hash,
+            "result_sha256": None,
+            "content": None,
+        })
+        assert deleted["operation"] == "delete"
+        assert not (selected / "created.py").exists()
     finally:
         registry.close()
