@@ -264,10 +264,12 @@ export async function createNexusPatchApplyCapability(
     fetcher,
     signal,
   );
+  const nowSeconds = Math.floor(Date.now() / 1000);
   if (
     typeof payload.capability !== "string" || !payload.capability ||
     payload.capability.length > 8_192 ||
     typeof payload.expires_at !== "number" || !Number.isSafeInteger(payload.expires_at) ||
+    payload.expires_at <= nowSeconds || payload.expires_at > nowSeconds + 300 ||
     payload.workspace_id !== workspaceId ||
     payload.companion_challenge !== companionChallenge ||
     payload.proposal_id !== id ||
