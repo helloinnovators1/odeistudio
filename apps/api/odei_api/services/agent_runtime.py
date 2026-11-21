@@ -103,7 +103,7 @@ def run_nexus_agent(
     response = client.responses.create(
         model=model,
         instructions=AGENT_INSTRUCTIONS,
-        input=history,
+        input=list(history),
         tools=tools,
         tool_choice="auto",
         max_output_tokens=MAX_AGENT_OUTPUT_TOKENS,
