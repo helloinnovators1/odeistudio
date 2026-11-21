@@ -127,6 +127,9 @@ class ApplyChallengeManager:
             for key, value in list(self._challenges.items()):
                 if value[0] <= now:
                     self._challenges.pop(key, None)
+            if len(self._challenges) >= 128:
+                oldest = next(iter(self._challenges))
+                self._challenges.pop(oldest, None)
             self._challenges[digest] = (
                 now + self.ttl_seconds, workspace_id, session_digest,
             )
@@ -138,15 +141,20 @@ class ApplyChallengeManager:
         digest = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
         session_digest = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
         with self._lock:
-            record = self._challenges.pop(digest, None)
-        if record is None:
-            return False
-        expires_at, expected_workspace, expected_session = record
-        return (
-            self._clock() < expires_at
-            and hmac.compare_digest(expected_workspace, workspace_id)
-            and hmac.compare_digest(expected_session, session_digest)
-        )
+            record = self._challenges.get(digest)
+            if record is None:
+                return False
+            expires_at, expected_workspace, expected_session = record
+            if self._clock() >= expires_at:
+                self._challenges.pop(digest, None)
+                return False
+            if (
+                not hmac.compare_digest(expected_workspace, workspace_id)
+                or not hmac.compare_digest(expected_session, session_digest)
+            ):
+                return False
+            self._challenges.pop(digest, None)
+            return True
 
 
 class PairingManager:
