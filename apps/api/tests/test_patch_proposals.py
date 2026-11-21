@@ -148,3 +148,18 @@ def test_rejects_invalid_unicode_surrogates() -> None:
 def test_rejects_windows_reserved_path_components(path: str) -> None:
     with pytest.raises(PatchProposalError):
         build_patch_proposal({}, {path: "content"}, {path: None})
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["COM1.txt", "LPT9", "COM¹.log", "name" + "x" * 255 + ".txt"],
+)
+def test_rejects_windows_device_aliases_and_oversized_components(path: str) -> None:
+    with pytest.raises(PatchProposalError):
+        build_patch_proposal({}, {path: "content"}, {path: None})
+
+
+def test_rejects_non_nfc_unicode_paths() -> None:
+    decomposed = "cafe\\u0301.txt"
+    with pytest.raises(PatchProposalError, match="Unicode NFC"):
+        build_patch_proposal({}, {decomposed: "content"}, {decomposed: None})
