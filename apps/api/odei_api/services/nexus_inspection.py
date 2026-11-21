@@ -94,6 +94,8 @@ async def inspect_attached_project_excerpts(
         )
         if user_turn is None:
             raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "Conversation changed. Reload its history before inspecting attached files."})
+    except ConversationStoreError as exc:
+        raise HTTPException(status_code=422, detail={"code": "CONVERSATION_LIMIT_REACHED", "message": "The saved conversation has reached its storage limit. Start a new conversation."}) from exc
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "CONVERSATION_STORE_UNAVAILABLE", "message": "NEXUS conversation storage is temporarily unavailable."}) from exc
 
