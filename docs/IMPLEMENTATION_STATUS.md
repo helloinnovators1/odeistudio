@@ -433,3 +433,16 @@ Feature branch: `feat/nexus-persistent-patch-review`. The review API is implemen
 - Approve/reject use expected-version compare-and-set. Approval records a decision only; API responses explicitly return `application_enabled=false`.
 
 Important boundary: this does not apply any changes to a local workspace. Local application still requires a verified, short-lived, single-use approval capability that the loopback companion can independently validate, plus fresh base-hash checks and an atomic write/rollback implementation. Those safeguards are not implemented, so the Studio remains read-only.
+
+
+## NEXUS chat-generated patch proposals — in review (2026-11-21)
+
+Feature branch: `feat/nexus-chat-generated-patch-proposals`. Not merged or deployed until exact-head CI passes.
+
+- The attached-excerpt agent has a `propose_attached_file_change` tool. It can prepare a replacement only for a file explicitly attached to the current request. The replacement is captured in memory, secret-redacted, and never written to the workspace.
+- The inspection endpoint validates the generated replacement against the attached base snapshot with the existing path, hash and resource-budget validator, then persists an immutable review record in the tenant/project-scoped patch proposal store.
+- Proposal creation is audited without recording prompts, source contents or diffs in audit metadata.
+- The browser displays saved proposals and unified diffs. Only the project owner can approve or reject; optimistic version checks prevent stale decisions.
+- The UI and API continue to state `application_enabled=false`. Approval records a decision only; no local file is changed.
+
+Still outstanding: a short-lived single-use approval capability independently verified by the local companion; secure atomic apply and rollback with fresh handle-relative base-hash checks; application audit and recovery; isolated test/terminal execution; project-wide tool bridge; production ODID/Mongo/model configuration and staging E2E. No local tests were run in this hosted session; exact-head CI is pending.
