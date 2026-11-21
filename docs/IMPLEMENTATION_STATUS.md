@@ -1,3 +1,11 @@
+## IDE patch preview integration — 2026-11-21
+
+- Added `previewWorkspacePatch` in `apps/web/src/companion.ts`: browser Web Crypto computes base hashes, the client sends only the proposed replacement and expected hashes to the paired local companion, and it validates the preview-only response contract and file identities.
+- Added an active-file `Preview patch` action in `apps/web/src/App.tsx`. A separate proposed-content dialog requests and displays the unified diff; it has no apply/save/delete control and explicitly states that no files are changed.
+- Added Vitest transport tests for update/create hash payloads, missing snapshots and rejection of a response that claims writes were performed. API companion tests cover the live handle read/hash preview and non-mutation.
+- TypeScript/Vitest and API test suites are awaiting CI for the current head. No local build/test run was performed in this hosted session.
+- Remaining: multi-file IDE authoring/review, persisted proposal state, explicit approval/rejection, safe handle-relative writes and rollback, authenticated ODID project binding, isolated command execution and diagnostics.
+
 ## Local companion patch preview increment — 2026-11-21
 
 - Added authenticated `POST /v1/workspaces/{workspace_id}/patch-proposals` to the loopback companion. It re-lists the selected workspace through the retained root handle, reads each existing target through the handle-relative read API, checks expected SHA-256 base hashes, and returns bounded unified diffs for create/update/delete.
