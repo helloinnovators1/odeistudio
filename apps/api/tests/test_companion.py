@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import hashlib
 
 import pytest
@@ -765,3 +766,42 @@ def test_companion_rejects_invalid_pinned_public_keys_at_startup(tmp_path):
             )
     finally:
         registry.close()
+
+
+def test_windows_relative_rename_uses_nt_set_information_file(monkeypatch):
+    from types import SimpleNamespace
+
+    from odei_api.services import windows_file_handles as windows
+
+    captured = {}
+
+    def fake_nt_set_information_file(handle, io_status, buffer, length, info_class):
+        info = ctypes.cast(buffer, ctypes.POINTER(windows._FileRenameInfo)).contents
+        name = ctypes.string_at(
+            ctypes.addressof(buffer) + windows._FileRenameInfo.FileName.offset,
+            info.FileNameLength,
+        ).decode("utf-16-le")
+        captured.update({
+            "handle": handle,
+            "root": info.RootDirectory,
+            "name": name,
+            "replace": bool(info.ReplaceIfExists),
+            "length": length,
+            "info_class": info_class,
+        })
+        return 0
+
+    monkeypatch.setattr(
+        windows, "_apis",
+        lambda: (None, SimpleNamespace(NtSetInformationFile=fake_nt_set_information_file)),
+    )
+    windows._rename_relative(None, 0x1234, 0x5678, "created.py", replace=False)
+
+    assert captured == {
+        "handle": 0x1234,
+        "root": 0x5678,
+        "name": "created.py",
+        "replace": False,
+        "length": windows._FileRenameInfo.FileName.offset + len("created.py".encode("utf-16-le")),
+        "info_class": 10,
+    }
