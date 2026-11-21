@@ -6,6 +6,7 @@ import {
   listWorkspaces,
   listWorkspaceFiles,
   pairWithCompanion,
+  previewWorkspacePatch,
   readWorkspaceFile,
   type CompanionFile,
   type CompanionWorkspace,
@@ -45,6 +46,11 @@ export default function App() {
   const [chatSide, setChatSide] = useState<ChatPanelSide>(() => readChatPanelSide());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
+  const [patchDialogOpen, setPatchDialogOpen] = useState(false);
+  const [patchDraft, setPatchDraft] = useState("");
+  const [patchDiff, setPatchDiff] = useState<string | null>(null);
+  const [patchPreviewBusy, setPatchPreviewBusy] = useState(false);
+  const [patchPreviewError, setPatchPreviewError] = useState("");
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.path === activePath) ?? null,
@@ -117,6 +123,7 @@ export default function App() {
     setWorkspace(id);
     setTabs([]);
     setActivePath("");
+    setPatchDialogOpen(false);
     setCollapsedFolders(new Set());
     setBusy(true);
     setError("");
@@ -151,6 +158,34 @@ export default function App() {
     }
   }
 
+  function openPatchPreview() {
+    if (!activeTab) return;
+    setPatchDraft(activeTab.content);
+    setPatchDiff(null);
+    setPatchPreviewError("");
+    setPatchDialogOpen(true);
+  }
+
+  async function generatePatchPreview() {
+    if (!token || !workspace || !activeTab) return;
+    setPatchPreviewBusy(true);
+    setPatchPreviewError("");
+    try {
+      const preview = await previewWorkspacePatch(
+        token,
+        workspace,
+        { [activeTab.path]: patchDraft },
+        { [activeTab.path]: activeTab.content },
+      );
+      setPatchDiff(preview.files[0]?.unified_diff ?? "");
+      setMessage("Patch diff preview generated. No local files were changed.");
+    } catch (cause) {
+      setPatchPreviewError(cause instanceof Error ? cause.message : "Patch preview failed.");
+    } finally {
+      setPatchPreviewBusy(false);
+    }
+  }
+
   function closeTab(path: string) {
     const next = tabs.filter((tab) => tab.path !== path);
     setTabs(next);
@@ -174,6 +209,8 @@ export default function App() {
     setCollapsedFolders(new Set());
     setTabs([]);
     setActivePath("");
+    setPatchDialogOpen(false);
+    setPatchDiff(null);
     setMessage("Disconnected. The in-memory local session was cleared.");
   }
 
@@ -352,6 +389,9 @@ export default function App() {
         {chatOpen && chatSide === "left" && chatPanel}
 
         <section className="editor-column">
+          <div className="editor-actionbar">
+            {token && activeTab && <button className="patch-preview-trigger" onClick={openPatchPreview}>Preview patch</button>}
+          </div>
           <div className="editor-tabs" role="tablist" aria-label="Open files">
             {tabs.map((tab) => <div key={tab.path} className={activePath === tab.path ? "editor-tab active" : "editor-tab"}>
               <button role="tab" aria-selected={activePath === tab.path} onClick={() => setActivePath(tab.path)}>{tab.path.split("/").pop()}</button>
@@ -397,6 +437,38 @@ export default function App() {
 
         {chatOpen && chatSide === "right" && chatPanel}
       </div>
+
+      {patchDialogOpen && activeTab && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPatchDialogOpen(false); }}>
+        <section className="settings-dialog patch-dialog" role="dialog" aria-modal="true" aria-labelledby="patch-preview-title">
+          <div className="pane-heading">
+            <strong id="patch-preview-title">PREVIEW PATCH · {activeTab.path}</strong>
+            <button className="icon-button" onClick={() => setPatchDialogOpen(false)} aria-label="Close patch preview">×</button>
+          </div>
+          <p>Edit the proposed replacement below, then generate a live diff against the selected workspace file.</p>
+          <label className="field-label" htmlFor="patch-draft">PROPOSED FILE CONTENT</label>
+          <textarea
+            id="patch-draft"
+            className="patch-draft"
+            value={patchDraft}
+            onChange={(event) => { setPatchDraft(event.target.value); setPatchDiff(null); }}
+            maxLength={1_000_000}
+            rows={12}
+            spellCheck={false}
+          />
+          <div className="patch-preview-actions">
+            <button className="primary-button" disabled={patchPreviewBusy} onClick={() => void generatePatchPreview()}>
+              {patchPreviewBusy ? "Generating…" : "Generate diff"}
+            </button>
+            <button className="toolbar-button" onClick={() => setPatchDialogOpen(false)}>Close</button>
+          </div>
+          {patchPreviewError && <p className="inline-error patch-preview-error" role="alert">{patchPreviewError}</p>}
+          {patchDiff !== null && <div className="patch-diff-wrap">
+            <strong>UNIFIED DIFF · PREVIEW ONLY</strong>
+            <pre className="patch-diff">{patchDiff || "No textual differences."}</pre>
+          </div>}
+          <p className="settings-note">Preview only. No files are written, deleted or approved. Applying changes is not enabled.</p>
+        </section>
+      </div>}
 
       {settingsOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
         <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
