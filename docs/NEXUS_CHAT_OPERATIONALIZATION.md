@@ -1,6 +1,6 @@
 # NEXUS Chat Panel Operationalisation
 
-**Status:** the NEXUS panel now has an interactive ODID PKCE sign-in/callback path, tenant-scoped project listing, per-request cloud consent and a functional synchronous read-only composer. Production use remains gated on real ODID/API configuration and staging validation. Streaming, durable history, tools, patch application, isolated execution and agents remain future work.
+**Status:** the NEXUS panel now has an interactive ODID PKCE sign-in/callback path, tenant-scoped project listing, per-request cloud consent and a functional synchronous read-only composer. Production use remains gated on real ODID/API configuration and staging validation. SSE streaming and durable history are implemented in separate merged/in-review increments. Repository tools, patch application, isolated execution and agents remain future work.
 
 ## 1. Product responsibility
 
@@ -226,3 +226,13 @@ Feature branch: `feat/nexus-durable-conversations`. This increment is not merged
 - Automated tests have been added for owner/tenant isolation, optimistic versions, create/list/read/append/delete, durable chat turns, browser transport and the audit `started` lifecycle. They are not yet verified on this branch until CI completes.
 
 Not included in this increment: SSE/token streaming, guaranteed provider cancellation, tool invocation, chat-generated patch proposals, patch approval/application/rollback, isolated terminal/test execution, agent orchestration or production ODID/Mongo/model deployment configuration.
+
+
+## Task planning and approval controls — implementation in review (2026-11-21)
+
+- The chat composer exposes a separate **Plan task** action. It submits the draft as a task goal through the existing tenant/project-authorized task API.
+- Planning requires the same unchecked-by-default per-request cloud-model consent as chat. An active-file excerpt is included only when the user explicitly selects the attachment checkbox.
+- The panel displays the persisted plan, task status, task ID and version, and provides project-owner approval and cancellation controls.
+- The API remains authoritative for approval. Only the project owner may approve; client-side visibility is not authorization.
+- **Approval is not execution.** The current task approval endpoint records intent and does not write files, apply patches, run commands or launch agents.
+- This UI increment is on `feat/nexus-task-planning-ui`, not merged until CI passes.
