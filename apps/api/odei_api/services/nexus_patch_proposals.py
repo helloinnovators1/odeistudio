@@ -434,6 +434,12 @@ async def create_patch_apply_capability(
     principal: Principal = principal_dependency,
 ) -> dict:
     """Issue a short-lived capability for a specific approved proposal/workspace pair."""
+    if (
+        organization_id != organization_id.strip()
+        or project_id != project_id.strip()
+        or proposal_id != proposal_id.strip()
+    ):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
     project, store = await _project_and_store(request, organization_id, project_id, principal)
     if not _is_project_owner(project, principal):
         raise HTTPException(status_code=403, detail={"code": "PROJECT_OWNER_REQUIRED", "message": "Only the project owner can authorize local patch application."})
