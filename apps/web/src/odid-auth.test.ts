@@ -144,6 +144,19 @@ describe("ODID OAuth PKCE client", () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
+  it("rejects callbacks from an unregistered origin before exchanging a code", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(discovery));
+    const authorizationUrl = await beginODIDLogin(config, {
+      storage, cryptoProvider: fakeCrypto(), fetcher, now: 1_000,
+    });
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    await expect(completeODIDLogin(
+      `https://attacker.example.test/auth/callback?code=code&state=${state}`,
+      config, { storage, fetcher, now: 2_000 },
+    )).rejects.toThrow("does not match the registered redirect URI");
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it("rejects expired transactions and invalid token responses", async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(discovery))
