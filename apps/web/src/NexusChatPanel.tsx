@@ -122,6 +122,8 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     const remaining = access.expiresAt - Date.now();
     if (remaining <= 0) {
       setAccess(null);
+      setOrganizations([]);
+      setOrganizations([]);
       setProjects([]);
       setProjectId("");
       setMessages([]);
@@ -158,8 +160,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
     }
   }
 
-  async function loadProjects(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function loadProjects() {
     if (!access || !config.apiBaseUrl) return;
     setProjectBusy(true);
     setProjectError("");
@@ -295,18 +296,11 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
                 </option>
               ))}
             </select>
-            <button className="nexus-secondary-button" type="button" onClick={(event) => {
-              const form = event.currentTarget.form;
-              if (form) void loadProjects({ ...({ preventDefault: () => undefined } as FormEvent<HTMLFormElement>) });
-            }} disabled>
-              Load projects
-            </button>
           </div>
           {organizationError && <p className="nexus-error" role="alert">{organizationError}</p>}
           {organizationId && (
             <button className="nexus-secondary-button nexus-load-projects" type="button"
-              onClick={() => void loadProjects({ preventDefault: () => undefined } as FormEvent<HTMLFormElement>)}
-              disabled={projectBusy}>
+              onClick={() => void loadProjects()} disabled={projectBusy}>
               {projectBusy ? "Loading projects…" : "Load projects"}
             </button>
           )}
