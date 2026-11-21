@@ -129,8 +129,8 @@ describe("NEXUS chat transport", () => {
 
   it("parses CRLF-delimited SSE and rejects oversized event blocks", async () => {
     const crlf = [
-      "event: delta\\r\\ndata: {\\"delta\\":\\"hello\\"}\\r\\n\\r\\n",
-      "event: done\\r\\ndata: {\\"model\\":\\"test\\",\\"conversation_id\\":\\"chat-one\\",\\"conversation_persisted\\":true,\\"read_only\\":true,\\"tools_executed\\":0}\\r\\n\\r\\n",
+      `event: delta\r\ndata: ${JSON.stringify({ delta: "hello" })}\r\n\r\n`,
+      `event: done\r\ndata: ${JSON.stringify({ model: "test", conversation_id: "chat-one", conversation_persisted: true, read_only: true, tools_executed: 0 })}\r\n\r\n`,
     ].join("");
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(crlf, {
       status: 200, headers: { "Content-Type": "text/event-stream" },
@@ -139,7 +139,7 @@ describe("NEXUS chat transport", () => {
     await sendNexusChatStream({ ...base, conversationId: "chat-one" }, (delta) => { answer += delta; }, fetcher);
     expect(answer).toBe("hello");
     const oversized = vi.fn<typeof fetch>().mockResolvedValue(new Response(
-      "event: delta\\ndata: " + "x".repeat(70_000) + "\\n\\n",
+      `event: delta\\ndata: ${"x".repeat(70_000)}\\n\\n`,
       { status: 200, headers: { "Content-Type": "text/event-stream" } },
     ));
     await expect(sendNexusChatStream(
