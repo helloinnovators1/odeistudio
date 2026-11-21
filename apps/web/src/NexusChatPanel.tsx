@@ -391,6 +391,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     taskAbortRef.current = null;
     setAccess(null);
     setAuthBusy(false);
+    setAuthError("");
     try { clearODIDLoginTransaction(); } catch { /* no pending transaction to clear */ }
     if (config.auth && currentAccess) {
       const token = currentAccess.refreshToken ?? currentAccess.accessToken;
@@ -414,7 +415,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setUseAttachedTools(false);
     setChatError("");
     setProjectError("");
-    setNotice("Signed out. The in-memory access token and conversation were cleared.");
+    setNotice("Signed out. In-memory access/refresh tokens and conversation were cleared.");
   }
 
   async function loadPatchProposal(proposalId: string) {
@@ -630,7 +631,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         <section className="nexus-connection">
           <div className="nexus-mark">N</div>
           <h2>Connect NEXUS</h2>
-          <p>Authenticate with your organization identity provider. The access token stays in memory and is never saved in browser storage.</p>
+          <p>Authenticate with your organization identity provider. Access and optional refresh tokens stay in memory; neither is saved in browser storage.</p>
           {config.missing.length > 0 && (
             <div className="nexus-config-warning" role="status">
               Authentication is safely disabled until these deployment settings are configured:
@@ -646,7 +647,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
       {access && (
         <section className="nexus-project-context">
-          <div className="nexus-auth-status"><span className="nexus-online-dot" /> Signed in · token held in memory</div>
+          <div className="nexus-auth-status"><span className="nexus-online-dot" /> Signed in · access and optional refresh tokens held in memory</div>
           <div className="nexus-org-form">
             <label htmlFor="nexus-org-id">ORGANIZATION</label>
             <select id="nexus-org-id" value={organizationId} onChange={(event) => {
