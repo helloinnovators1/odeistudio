@@ -440,7 +440,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         companionWorkspaceId, challenge.challenge,
       );
       const file = selectedPatch.files[0];
-      await applyApprovedWorkspacePatch(
+      const applied = await applyApprovedWorkspacePatch(
         companionToken, companionWorkspaceId,
         {
           organizationId, projectId,
@@ -454,7 +454,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setNotice("Approved patch applied. Refreshing the selected workspace from disk…");
       try {
         await onPatchApplied?.(file);
-        setNotice("Approved patch applied to the selected local workspace. The file was reloaded from disk.");
+        setNotice(applied.files[0].durability_confirmed
+          ? "Approved patch applied to the selected local workspace. The file was reloaded from disk."
+          : "The patch was applied and reloaded, but directory-metadata durability could not be confirmed. Verify the file and keep a backup.");
       } catch (refreshError) {
         setPatchError("The patch was applied, but the workspace refresh failed. Reconnect or reload the selected folder before retrying: " + errorMessage(refreshError));
       }
