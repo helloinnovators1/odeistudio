@@ -320,7 +320,7 @@ def create_companion_app(
             base_files = {item.path: "" for item in indexed_files}
             paths_by_casefold = {item.path.casefold(): item.path for item in indexed_files}
 
-            for path, replacement in payload.changes.items():
+            for path in payload.changes:
                 expected_hash = payload.expected_base_hashes[path]
                 if expected_hash is None:
                     # Root-level creates only: nested directory creation is not part of
