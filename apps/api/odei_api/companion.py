@@ -25,6 +25,7 @@ from odei_api.services.patch_approval import (
     PatchApprovalNotConfigured,
     PatchCapabilityReplay,
     verify_patch_apply_capability,
+    validate_patch_approval_public_keys,
 )
 from odei_api.services.patch_proposals import (
     MAX_FILE_BYTES,
@@ -304,6 +305,10 @@ def create_companion_app(
             )
         ):
             raise ValueError("Patch approval issuer or pinned public keys are invalid")
+        try:
+            validate_patch_approval_public_keys(patch_approval_public_keys)
+        except PatchApprovalError as exc:
+            raise ValueError("Patch approval public keys are invalid") from exc
     apply_challenges = ApplyChallengeManager()
     capability_replays = CapabilityReplayCache()
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
