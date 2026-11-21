@@ -16,7 +16,14 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from odei_api.config import Settings
-from odei_api.services.patch_proposals import MAX_FILE_BYTES, MAX_PATCH_FILES, MAX_TOTAL_BYTES, PatchProposalError, sha256_text, validate_patch_path
+from odei_api.services.patch_proposals import (
+    MAX_FILE_BYTES,
+    MAX_PATCH_FILES,
+    MAX_TOTAL_BYTES,
+    PatchProposalError,
+    sha256_text,
+    validate_patch_path,
+)
 
 CAPABILITY_AUDIENCE = "odei-local-companion"
 MAX_CAPABILITY_TTL_SECONDS = 300
