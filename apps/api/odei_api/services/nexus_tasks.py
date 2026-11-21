@@ -22,10 +22,10 @@ from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
-from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.patch_proposals import PatchProposalError, build_patch_proposal, sha256_text, validate_patch_path
-from odei_api.services.secret_redaction import redact_secrets
+from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
+from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.tasks import (
     InvalidTaskTransition,
     TaskRecord,
@@ -433,7 +433,7 @@ async def generate_nexus_patch_draft(
         validate_patch_path(payload.path)
     except PatchProposalError as exc:
         raise HTTPException(status_code=422, detail={"code": "PATCH_PATH_REJECTED", "message": "The selected file path cannot be proposed for editing."}) from exc
-    if not payload.content or len(payload.content.encode("utf-8")) > 40_000:
+    if not payload.content or "\x00" in payload.content or len(payload.content.encode("utf-8")) > 40_000:
         raise HTTPException(status_code=422, detail={"code": "PATCH_CONTEXT_TOO_LARGE", "message": "Select a non-empty text file of at most 40 KB for a patch draft."})
     try:
         await _authorize_project(request, organization_id, project_id, principal)
@@ -443,6 +443,7 @@ async def generate_nexus_patch_draft(
     audit = getattr(request.app.state, "audit_event_store", None)
     if audit is None:
         raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is not configured."})
+
     async def record(outcome: str, model_name: str | None = None) -> None:
         try:
             await audit.append(
@@ -501,7 +502,7 @@ async def generate_nexus_patch_draft(
             raise ValueError("The model returned an invalid patch draft response")
         decoded = json.loads(raw)
         replacement = decoded.get("replacement_content") if isinstance(decoded, dict) else None
-        if not isinstance(replacement, str) or len(replacement.encode("utf-8")) > 1_000_000 or "\\x00" in replacement:
+        if not isinstance(replacement, str) or len(replacement.encode("utf-8")) > 1_000_000 or "\x00" in replacement:
             raise ValueError("The model returned an invalid replacement file")
         replacement = redact_secrets(replacement)
         if replacement == payload.content:
@@ -517,7 +518,7 @@ async def generate_nexus_patch_draft(
     except ModelConfigurationError as exc:
         await record("failure")
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
-    except (PatchProposalError, ValueError, json.JSONDecodeError) as exc:
+    except (PatchProposalError, ValueError) as exc:
         await record("failure")
         raise HTTPException(status_code=502, detail={"code": "PATCH_DRAFT_FAILED", "message": "NEXUS could not produce a valid, bounded patch draft."}) from exc
     except Exception as exc:  # noqa: BLE001 - provider errors must not expose internals
