@@ -419,6 +419,11 @@ export async function refreshODIDAccessToken(
     client_id: config.clientId,
     resource: config.resource,
   });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const forwardAbort = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener("abort", forwardAbort, { once: true });
   let response: Response;
   try {
     response = await fetcher(metadata.tokenEndpoint, {
@@ -426,7 +431,7 @@ export async function refreshODIDAccessToken(
       credentials: "omit",
       cache: "no-store",
       redirect: "error",
-      signal: options.signal,
+      signal: controller.signal,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -435,6 +440,9 @@ export async function refreshODIDAccessToken(
     });
   } catch {
     throw new ODidOAuthError("ODID session refresh could not be completed securely.");
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", forwardAbort);
   }
   const payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "refresh-token");
   if (!response.ok) throw new ODidOAuthError("ODID rejected the session refresh. Sign in again.");
