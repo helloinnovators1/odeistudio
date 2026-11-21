@@ -127,6 +127,7 @@ export interface CompanionApplyResult {
     operation: "create" | "update" | "delete";
     result_sha256: string;
     applied: true;
+    durability_confirmed: boolean;
   }>;
 }
 
@@ -214,7 +215,8 @@ export async function applyApprovedWorkspacePatch(
     !Array.isArray(result.files) || result.files.length !== 1 ||
     result.files[0].path !== request.file.path ||
     result.files[0].operation !== request.file.operation ||
-    result.files[0].applied !== true
+    result.files[0].applied !== true ||
+    typeof result.files[0].durability_confirmed !== "boolean"
   ) {
     throw new Error("Companion returned an invalid patch application result.");
   }
