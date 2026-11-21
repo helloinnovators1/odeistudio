@@ -10,6 +10,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Engineering standards](ENGINEERING_STANDARDS.md) — code quality, API, testing and contribution rules.
 - [Security and privacy](SECURITY.md) — threat model, secrets, isolation, identity and incident handling.
 - [Identity integration contract](IDENTITY_INTEGRATION.md) — verified upstream ODID maturity, RFC 9068 access-token profile, required issuer contract and RBAC gates.
+- [ODID browser authentication](ODID_BROWSER_AUTH.md) — provider-neutral Authorization Code + PKCE client, token-handling boundaries and production integration prerequisites.
 - [Global technical research and decisions](RESEARCH_DECISIONS.md) — official sources and implementation choices.
 
 ## Product and platform

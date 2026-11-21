@@ -101,3 +101,10 @@ The target currently exposes these authenticated routes under `/api/v1/organizat
 - `POST /{task_id}/cancel`: authorized cancellation with expected-version concurrency.
 
 These routes use the configured JWT verifier and server-side Mongo membership/project records. They do not provide membership provisioning, role administration, workspace file access, patch application or command execution. Do not treat the existence of these initial routes as production ODID integration.
+
+
+## Provider-neutral browser PKCE client foundation
+
+A generic OAuth 2.0 Authorization Code + PKCE S256 helper now exists in `apps/web/src/odid-auth.ts`. It validates discovery issuer equality and S256 support, binds callback origin/path and one-time state, bounds discovery/token response bodies, requests the configured RFC 8707 resource, and does not persist bearer tokens. Its only sessionStorage value is a ten-minute state/verifier transaction needed across the authorization redirect.
+
+This helper is not yet wired into the web application and is not a production ODID integration. The exact issuer, registered public client ID, redirect URI, API resource/audience, scopes, token profile, CORS policy and refresh/revocation behavior remain Identity-owner inputs. The API's RS256/JWKS verifier remains authoritative and must reject any token that does not satisfy the configured access-token profile. See [ODID Browser Authentication](ODID_BROWSER_AUTH.md) for the implementation and integration sequence.

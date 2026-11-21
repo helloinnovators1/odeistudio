@@ -1,3 +1,12 @@
+## ODID browser PKCE client foundation — 2026-11-21
+
+- Added `apps/web/src/odid-auth.ts`: provider-neutral OAuth 2.0 Authorization Code + PKCE S256 client. It validates issuer discovery, requires S256, binds the registered callback origin/path and state, bounds discovery/token response streams, uses the RFC 8707 resource parameter, and returns only a bounded bearer access token to caller memory.
+- The short-lived PKCE state/verifier transaction is kept in sessionStorage for the authorization redirect and consumed before token exchange. Access and refresh tokens are never persisted by this helper; no client secret is accepted.
+- Added Vitest coverage for discovery mismatch, PKCE parameters, callback-origin/state checks, transaction expiry/consumption, invalid token responses and oversized responses.
+- Added [ODID_BROWSER_AUTH.md](ODID_BROWSER_AUTH.md), indexed it, and updated the chat operationalisation and identity integration contracts.
+- This is an unconnected client foundation, not a completed ODID integration. No issuer/client/redirect/resource/scope values are configured, no callback route or runtime config exists, no token has been verified against a real ODID JWKS, and the NEXUS composer remains disabled. The helper does not refresh/revoke sessions or validate ID tokens.
+- GitHub Actions on this pull request are the verification gate. No local browser or ODID staging test was performed in this hosted session.
+
 ## NEXUS Chat operationalisation contract — 2026-11-21
 
 - Added [NEXUS_CHAT_OPERATIONALIZATION.md](NEXUS_CHAT_OPERATIONALIZATION.md) as the canonical operational contract for the Chat Panel: request lifecycle, UX/composer behavior, identity and project binding, cloud consent, data minimization, prompt-injection boundaries, streaming events, persistence model, proposal/approval, isolated execution and agent delegation.
