@@ -350,3 +350,156 @@ export async function deleteNexusConversation(
     throw new NexusChatTransportError("NEXUS did not confirm conversation deletion.", 200);
   }
 }
+
+
+export interface NexusChatStreamResult {
+  model: string;
+  conversation_id: string;
+  conversation_persisted: true;
+}
+
+export async function sendNexusChatStream(
+  request: NexusChatRequest,
+  onDelta: (delta: string) => void,
+  fetcher: typeof fetch = fetch,
+): Promise<NexusChatStreamResult> {
+  const apiBaseUrl = normalizeApiBaseUrl(request.apiBaseUrl);
+  const organizationId = requireIdentifier(request.organizationId, "Organization ID");
+  const projectId = requireIdentifier(request.projectId, "Project ID");
+  const conversationId = requireIdentifier(request.conversationId ?? "", "Conversation ID");
+  const accessToken = request.accessToken.trim();
+  if (!accessToken || accessToken.length > 16_384) throw new TypeError("A valid in-memory access token is required.");
+  if (request.cloudModelConsent !== true) throw new TypeError("Explicit cloud-model consent is required.");
+  if (!Array.isArray(request.messages) || request.messages.length < 1 || request.messages.length > 20) {
+    throw new TypeError("Conversation must contain between 1 and 20 messages.");
+  }
+  let totalCharacters = 0;
+  for (const message of request.messages) {
+    if (!message || !["user", "assistant"].includes(message.role) ||
+        typeof message.content !== "string" || !message.content.trim() ||
+        message.content.length > 8_000) {
+      throw new TypeError("Each message must have a valid role and contain 1 to 8,000 characters.");
+    }
+    totalCharacters += message.content.length;
+  }
+  if (request.messages.at(-1)?.role !== "user") throw new TypeError("The final conversation message must be from the user.");
+  const workspaceFiles = request.workspaceFiles ?? [];
+  if (!Array.isArray(workspaceFiles) || workspaceFiles.length > 5) throw new TypeError("At most five workspace excerpts may be sent.");
+  for (const file of workspaceFiles) {
+    if (!file || typeof file.path !== "string" || !file.path.trim() || file.path.length > 1_024 ||
+        typeof file.content !== "string" || file.content.length > 8_000) {
+      throw new TypeError("Each workspace excerpt must have a valid path and at most 8,000 characters.");
+    }
+    totalCharacters += file.path.length + file.content.length;
+  }
+  if (totalCharacters > 40_000) throw new TypeError("Combined conversation and workspace context exceeds 40,000 characters.");
+
+  const response = await fetcher(
+    `${apiBaseUrl}/api/v1/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/nexus/chat/stream`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        messages: request.messages,
+        workspace_files: workspaceFiles,
+        cloud_model_consent: true,
+        conversation_id: conversationId,
+      }),
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "error",
+      signal: request.signal,
+    },
+  );
+
+  if (!response.ok) {
+    const raw = await response.text();
+    let payload: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = raw ? JSON.parse(raw) : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+    } catch { /* Use a safe generic error. */ }
+    const detail = payload.detail && typeof payload.detail === "object"
+      ? payload.detail as Record<string, unknown> : payload;
+    const code = typeof detail.code === "string" ? detail.code : undefined;
+    throw new NexusChatTransportError(
+      code === "MODEL_NOT_CONFIGURED" ? "The NEXUS model provider is not configured."
+        : code === "CONVERSATION_VERSION_CONFLICT" ? "Conversation changed. Reload its history."
+        : "NEXUS could not start the streamed response.",
+      response.status, code,
+    );
+  }
+  if (!response.headers.get("content-type")?.includes("text/event-stream") || !response.body) {
+    throw new NexusChatTransportError("NEXUS did not return an event stream.", response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let totalOutput = 0;
+  let result: NexusChatStreamResult | null = null;
+  function dispatch(block: string): void {
+    let eventName = "message";
+    const data: string[] = [];
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith("event:")) eventName = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+    }
+    if (!data.length) return;
+    let payload: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(data.join("\n"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid");
+      payload = parsed as Record<string, unknown>;
+    } catch {
+      throw new NexusChatTransportError("NEXUS returned a malformed stream event.", response.status);
+    }
+    if (eventName === "delta") {
+      if (typeof payload.delta !== "string") throw new NexusChatTransportError("NEXUS returned an invalid text delta.", response.status);
+      totalOutput += payload.delta.length;
+      if (totalOutput > 16_000) throw new NexusChatTransportError("NEXUS streamed an oversized response.", response.status);
+      onDelta(payload.delta);
+    } else if (eventName === "error") {
+      throw new NexusChatTransportError(
+        typeof payload.message === "string" ? payload.message : "NEXUS streaming failed.",
+        response.status,
+      );
+    } else if (eventName === "done") {
+      if (
+        typeof payload.model !== "string" ||
+        payload.conversation_id !== conversationId ||
+        payload.conversation_persisted !== true ||
+        payload.read_only !== true || payload.tools_executed !== 0
+      ) throw new NexusChatTransportError("NEXUS returned an invalid stream completion contract.", response.status);
+      result = {
+        model: payload.model,
+        conversation_id: conversationId,
+        conversation_persisted: true,
+      };
+    }
+  }
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        dispatch(buffer.slice(0, boundary).replace(/\r$/, ""));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) dispatch(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  if (!result) throw new NexusChatTransportError("NEXUS stream ended without a completion event.", response.status);
+  return result;
+}
