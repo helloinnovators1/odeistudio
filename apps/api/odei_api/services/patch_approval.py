@@ -45,7 +45,7 @@ def _decode_key(value: str) -> bytes:
     if not isinstance(value, str) or not value or len(value) > 4096:
         raise PatchApprovalError("Key material is invalid")
     try:
-        return base64.urlsafe_b64decode((value + "=" * (-len(value) % 4)).encode("ascii"))
+        return base64.b64decode((value + "=" * (-len(value) % 4)).encode("ascii"), altchars=b"-_", validate=True)
     except (ValueError, UnicodeEncodeError) as exc:
         raise PatchApprovalError("Key material is invalid") from exc
 
