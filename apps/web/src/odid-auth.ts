@@ -279,6 +279,124 @@ function parseTokenResponse(
   now: number,
   previousRefreshToken?: string,
 ): ODidAccessToken {
+  const accessToken = payload.access_token;
+  const tokenType = payload.token_type;
+  const expiresIn = payload.expires_in;
+  const returnedRefreshToken = payload.refresh_token;
+  if (
+    typeof accessToken !== "string" || !/^[A-Za-z0-9\-._~+/]+=*$/.test(accessToken)
+    || accessToken.length > MAX_ACCESS_TOKEN_CHARS
+    || typeof tokenType !== "string" || tokenType.toLowerCase() !== "bearer"
+    || !Number.isInteger(expiresIn) || (expiresIn as number) < 1
+    || (expiresIn as number) > MAX_TOKEN_LIFETIME_SECONDS
+  ) {
+    throw new ODidOAuthError("ODID returned an invalid access-token response.");
+  }
+  if (returnedRefreshToken !== undefined && (
+    typeof returnedRefreshToken !== "string"
+    || !/^[A-Za-z0-9\-._~+/]+=*$/.test(returnedRefreshToken)
+    || returnedRefreshToken.length > MAX_REFRESH_TOKEN_CHARS
+  )) {
+    throw new ODidOAuthError("ODID returned an invalid refresh-token response.");
+  }
+  const refreshToken = typeof returnedRefreshToken === "string"
+    ? returnedRefreshToken
+    : previousRefreshToken;
+  return {
+    accessToken,
+    expiresAt: now + (expiresIn as number) * 1_000,
+    ...(typeof payload.scope === "string" ? { scope: payload.scope } : {}),
+    ...(refreshToken ? { refreshToken } : {}),
+  };
+}
+
+export async function completeODIDLogin(
+  callbackUrl: string,
+  rawConfig: ODidOAuthConfig,
+  options: {
+    storage?: TransactionStorage;
+    fetcher?: Fetcher;
+    now?: number;
+  } = {},
+): Promise<ODidAccessToken> {
+  const config = validateConfig(rawConfig);
+  const storage = storageOrThrow(options.storage ?? (typeof window !== "undefined" ? window.sessionStorage : undefined));
+  let callback: URL;
+  try {
+    callback = new URL(callbackUrl);
+  } catch {
+    throw new ODidOAuthError("ODID authorization callback URL is invalid.");
+  }
+  const registeredRedirect = new URL(config.redirectUri);
+  if (
+    callback.origin !== registeredRedirect.origin
+    || callback.pathname !== registeredRedirect.pathname
+    || callback.hash
+  ) {
+    throw new ODidOAuthError("ODID callback does not match the registered redirect URI.");
+  }
+  const codes = callback.searchParams.getAll("code");
+  const states = callback.searchParams.getAll("state");
+  const code = codes.length === 1 ? codes[0] : null;
+  const state = states.length === 1 ? states[0] : null;
+  const providerError = callback.searchParams.get("error");
+  let rawTransaction: string | null = null;
+  try {
+    rawTransaction = storage.getItem(TRANSACTION_KEY);
+    storage.removeItem(TRANSACTION_KEY);
+  } catch {
+    throw new ODidOAuthError("ODID login state could not be read securely.");
+  }
+  if (providerError) throw new ODidOAuthError("ODID authorization was not completed.");
+  if (!code || code.length > 4_096 || !state || state.length > 256 || !rawTransaction) {
+    throw new ODidOAuthError("ODID authorization callback is incomplete.");
+  }
+  let transaction: LoginTransaction;
+  try {
+    transaction = JSON.parse(rawTransaction) as LoginTransaction;
+  } catch {
+    throw new ODidOAuthError("ODID login state is invalid.");
+  }
+  const now = options.now ?? Date.now();
+  if (
+    !transaction || transaction.state !== state || transaction.issuer !== config.issuer
+    || transaction.clientId !== config.clientId || transaction.redirectUri !== config.redirectUri
+    || transaction.resource !== config.resource
+    || typeof transaction.verifier !== "string" || transaction.verifier.length < 43
+    || transaction.verifier.length > 128
+    || typeof transaction.createdAt !== "number" || !Number.isFinite(transaction.createdAt)
+    || transaction.createdAt > now || now - transaction.createdAt > TRANSACTION_TTL_MS
+  ) {
+    throw new ODidOAuthError("ODID login state is invalid or expired. Start login again.");
+  }
+
+  const metadata = await discover(config, options.fetcher ?? fetch);
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: config.redirectUri,
+    client_id: config.clientId,
+    code_verifier: transaction.verifier,
+    resource: config.resource,
+  });
+  let response: Response;
+  try {
+    response = await (options.fetcher ?? fetch)(metadata.tokenEndpoint, {
+      method: "POST",
+      credentials: "omit",
+      cache: "no-store",
+      redirect: "error",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+  } catch {
+    throw new ODidOAuthError("ODID token exchange could not be completed securely.");
+  }
+  const payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "token");
+  if (!response.ok) throw new ODidOAuthError("ODID rejected the authorization-code exchange.");
   return parseTokenResponse(payload, now);
 }
 
