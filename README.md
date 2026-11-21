@@ -18,7 +18,7 @@ The Master Admin Console is the overall management and configuration authority f
 Provider operations must use supported APIs and permission scopes. The MAC must never imply unsupported capabilities or expose secret values after saving them.
 
 ## Current status
-The repository now contains the product/architecture documentation, a FastAPI foundation, bounded project-file utilities, a Responses API planning service, guarded task lifecycle, transactional MongoDB task/event persistence, MongoDB readiness checks and an OIDC/JWKS verification foundation. The latest verified API CI run passed Ruff and 44 tests. Authentication is not yet connected to a confirmed ODID issuer or protected workspace/task routes. The application is not yet a complete coding agent or production-ready platform; each capability must be built and verified incrementally. UI prototypes are not evidence that backend services are operational.
+The repository contains the full ecosystem documentation collection (68 upstream Markdown/text documents), a FastAPI/NEXUS backend, protected project-scoped task API, secure read-only local companion prototype, and an initial React/TypeScript browser workspace client for pairing, multi-root browsing and file preview. NEXUS task creation/approval/cancellation writes task state, ordered lifecycle events and audit records in one MongoDB transaction; task/task-event reads and selected denials are audited. A real MongoDB 7.0 replica-set integration test verifies commit and rollback behavior. Readiness checks require a replica set or sharded MongoDB topology. API CI covers Ubuntu/Windows with Python 3.10/3.12, web tests/build and MongoDB integration; security CI runs Gitleaks, pip-audit, npm audit and CodeQL. Verified evidence: [API CI](https://github.com/helloinnovators1/odeistudio/actions/runs/44795590882) and [security CI](https://github.com/helloinnovators1/odeistudio/actions/runs/44795590924). This remains an early product foundation, not a complete coding agent or production-ready platform. Production ODID integration, role/membership administration, full audit coverage, editing, sandboxed execution, Monaco workspace, MAC/MAD and provider integrations remain outstanding.
 
 ## Security
 A database credential was exposed in project setup material. Assume it is compromised and rotate it immediately in MongoDB Atlas. Never commit secrets. Store secret values in a managed secret store and use server-only environment variables for runtime injection.
@@ -53,4 +53,16 @@ python -m pytest
 uvicorn odei_api.main:app --reload
 ```
 
-The health endpoints are `/api/v1/health/live` and `/api/v1/health/ready`. Readiness performs a bounded MongoDB ping and returns HTTP 503 when MongoDB is not configured or unavailable.
+The health endpoints are `/api/v1/health/live` and `/api/v1/health/ready`. Readiness performs a bounded MongoDB ping and `hello` topology check. It returns HTTP 503 when MongoDB is not configured/unavailable or when the server is standalone and cannot support the multi-document transactions required by NEXUS task/audit persistence. A replica set or sharded cluster is required.
+
+## Web workspace preview
+
+The initial read-only browser client lives in `apps/web`:
+
+```powershell
+cd apps/web
+npm install
+npm run dev
+```
+
+It binds to `127.0.0.1:3002`. Configure the local companion's `ODEI_COMPANION_ALLOWED_ORIGINS` to the exact origin `http://127.0.0.1:3002` (or the exact `localhost` origin if you open it that way). The browser pairing request must be initiated by the Connect button. The client keeps the bearer token in memory only and supports read-only file preview; it is not yet the full IDE.

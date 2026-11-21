@@ -17,10 +17,14 @@ dependencies = [
   "PyJWT[crypto]>=2.9,<3.0",
 ]
 
+[project.scripts]
+odei-companion = "odei_api.companion:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0,<9.0",
   "httpx>=0.27,<1.0",
+  "httpx2>=2.14,<3",
   "pytest-asyncio>=0.24,<2.0",
   "ruff>=0.9,<1.0",
 ]
@@ -33,6 +37,9 @@ include = ["odei_api*"]
 testpaths = ["tests"]
 addopts = "-q"
 asyncio_mode = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["odei_api"]
 
 [tool.ruff]
 line-length = 100

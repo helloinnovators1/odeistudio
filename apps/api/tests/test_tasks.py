@@ -4,6 +4,7 @@ from odei_api.services.tasks import (
     InvalidTaskTransition,
     TaskRecord,
     TaskStatus,
+    identity_owner_key,
     transition_task,
 )
 
@@ -54,3 +55,10 @@ def test_terminal_task_cannot_be_reopened() -> None:
     task = transition_task(task, TaskStatus.COMPLETED, expected_version=4)
     with pytest.raises(InvalidTaskTransition):
         transition_task(task, TaskStatus.EXECUTING, expected_version=5)
+
+
+def test_task_owner_key_is_issuer_scoped_and_unambiguous() -> None:
+    first = identity_owner_key("https://issuer-a.example/", "same-subject")
+    second = identity_owner_key("https://issuer-b.example/", "same-subject")
+    assert first == identity_owner_key("https://issuer-a.example/", "same-subject")
+    assert first != second

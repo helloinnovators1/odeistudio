@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     auth_issuer: str | None = None
     auth_audience: str | None = None
     auth_jwks_url: str | None = None
+    auth_allowed_client_ids: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

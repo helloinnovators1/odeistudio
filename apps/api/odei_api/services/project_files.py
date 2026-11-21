@@ -125,6 +125,19 @@ def _open_verified_file(root: Path, relative_path: str, target: Path) -> tuple[i
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     directory = getattr(os, "O_DIRECTORY", 0)
 
+    if os.name == "nt":
+        from odei_api.services.windows_file_handles import (
+            UnsafeWindowsPath,
+            open_readonly_file,
+        )
+
+        try:
+            return open_readonly_file(root, parts)
+        except IsADirectoryError as exc:
+            raise ProjectFileError("Requested path is not a regular file") from exc
+        except UnsafeWindowsPath as exc:
+            raise UnsafeProjectPath(str(exc)) from exc
+
     if (
         os.name == "posix"
         and nofollow
@@ -218,6 +231,223 @@ def _ignored_by_gitignore(root: Path, directory: Path, name: str, *, is_dir: boo
     return is_ignored
 
 
+
+def _list_project_files_windows(
+    workspace: Path,
+    *,
+    max_files: int,
+    max_total_bytes: int,
+    root_handle=None,
+    kernel32=None,
+) -> list[ProjectFile]:
+    """Enumerate a Windows workspace using held directory handles only."""
+    from odei_api.services.windows_file_handles import (
+        FILE_ATTRIBUTE_DIRECTORY,
+        FILE_ATTRIBUTE_REPARSE_POINT,
+        close_directory_handle,
+        iter_directory_entries,
+        open_child_directory_handle,
+        open_directory_handle,
+        read_child_text,
+    )
+
+    owns_root_handle = root_handle is None
+    if owns_root_handle:
+        kernel32, root_handle = open_directory_handle(workspace)
+    elif kernel32 is None:
+        raise ProjectFileError("A retained Windows root handle requires its owning kernel32 API reference")
+    found: list[ProjectFile] = []
+    total_bytes = 0
+
+    def walk(
+        directory_handle,
+        relative_parts: tuple[str, ...],
+        inherited_specs: list[tuple[tuple[str, ...], GitIgnoreSpec]],
+    ) -> bool:
+        nonlocal total_bytes
+        current_specs = list(inherited_specs)
+        ignore_text = read_child_text(directory_handle, ".gitignore")
+        if ignore_text is not None:
+            current_specs.append(
+                (relative_parts, GitIgnoreSpec.from_lines(ignore_text.splitlines()))
+            )
+
+        entries = sorted(
+            iter_directory_entries(directory_handle),
+            key=lambda item: item[0].casefold(),
+        )
+        for name, attributes, size in entries:
+            if name in {".", ".."}:
+                continue
+            parts = (*relative_parts, name)
+            if _is_excluded(parts):
+                continue
+            is_directory = bool(attributes & FILE_ATTRIBUTE_DIRECTORY)
+            if attributes & FILE_ATTRIBUTE_REPARSE_POINT:
+                continue
+
+            ignored = False
+            for prefix, spec in current_specs:
+                relative_to_rule = PurePosixPath(*parts[len(prefix):]).as_posix()
+                if is_directory:
+                    relative_to_rule += "/"
+                if spec.match_file(relative_to_rule):
+                    ignored = True
+            if ignored:
+                continue
+
+            if is_directory:
+                child_handle = None
+                try:
+                    child_handle = open_child_directory_handle(directory_handle, name)
+                    if not walk(child_handle, parts, current_specs):
+                        return False
+                except (OSError, UnsafeProjectPath):
+                    continue
+                finally:
+                    if child_handle is not None:
+                        close_directory_handle(kernel32, child_handle)
+                continue
+
+            if total_bytes + size > max_total_bytes:
+                return False
+            found.append(ProjectFile(path=PurePosixPath(*parts).as_posix(), size=size))
+            total_bytes += size
+            if len(found) >= max_files:
+                return False
+        return True
+
+    try:
+        walk(root_handle, (), [])
+        return found
+    finally:
+        if owns_root_handle:
+            close_directory_handle(kernel32, root_handle)
+
+def _read_ignore_spec_from_fd(directory_fd: int) -> GitIgnoreSpec | None:
+    """Read .gitignore relative to a held POSIX directory descriptor."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(".gitignore", flags, dir_fd=directory_fd)
+    except OSError:
+        return None
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 1_000_000:
+            return None
+        data = bytearray()
+        while len(data) <= 1_000_000:
+            chunk = os.read(descriptor, min(65536, 1_000_001 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > 1_000_000 or b"\x00" in data:
+            return None
+        try:
+            return GitIgnoreSpec.from_lines(data.decode("utf-8").splitlines())
+        except UnicodeDecodeError:
+            return None
+    finally:
+        os.close(descriptor)
+
+
+def _list_project_files_posix(
+    workspace: Path,
+    *,
+    max_files: int,
+    max_total_bytes: int,
+    root_fd: int | None = None,
+) -> list[ProjectFile]:
+    """List files using descriptor-relative traversal on POSIX."""
+    if not hasattr(os, "fwalk") or os.open not in os.supports_dir_fd:
+        raise ProjectFileError("This POSIX platform lacks safe descriptor traversal")
+
+    found: list[ProjectFile] = []
+    total_bytes = 0
+    specs_by_directory: dict[
+        tuple[str, ...], list[tuple[tuple[str, ...], GitIgnoreSpec]]
+    ] = {(): []}
+    open_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+
+    top = "." if root_fd is not None else workspace
+    walk_kwargs = {"dir_fd": root_fd} if root_fd is not None else {}
+    for current_dir, dirnames, filenames, directory_fd in os.fwalk(
+        top, topdown=True, follow_symlinks=False, **walk_kwargs
+    ):
+        if root_fd is None:
+            relative_directory = Path(current_dir).relative_to(workspace)
+            directory_parts = relative_directory.parts
+        else:
+            directory_parts = tuple(
+                part for part in PurePosixPath(current_dir).parts if part not in {".", ""}
+            )
+        current_specs = list(specs_by_directory.pop(directory_parts, []))
+        local_spec = _read_ignore_spec_from_fd(directory_fd)
+        if local_spec is not None:
+            current_specs.append((directory_parts, local_spec))
+
+        kept_directories: list[str] = []
+        for name in sorted(dirnames):
+            parts = (*directory_parts, name)
+            if _is_excluded(parts):
+                continue
+            try:
+                metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            except OSError:
+                continue
+            if not stat.S_ISDIR(metadata.st_mode):
+                continue
+            ignored = False
+            for prefix, spec in current_specs:
+                relative_name = PurePosixPath(*parts[len(prefix):]).as_posix() + "/"
+                if spec.match_file(relative_name):
+                    ignored = True
+            if ignored:
+                continue
+            kept_directories.append(name)
+            specs_by_directory[parts] = current_specs
+        dirnames[:] = kept_directories
+
+        for name in sorted(filenames):
+            parts = (*directory_parts, name)
+            if _is_excluded(parts):
+                continue
+            ignored = False
+            for prefix, spec in current_specs:
+                relative_name = PurePosixPath(*parts[len(prefix):]).as_posix()
+                if spec.match_file(relative_name):
+                    ignored = True
+            if ignored:
+                continue
+
+            descriptor = None
+            try:
+                descriptor = os.open(name, open_flags, dir_fd=directory_fd)
+                metadata = os.fstat(descriptor)
+                if not stat.S_ISREG(metadata.st_mode):
+                    continue
+            except OSError:
+                continue
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+
+            if total_bytes + metadata.st_size > max_total_bytes:
+                return found
+            found.append(
+                ProjectFile(path=PurePosixPath(*parts).as_posix(), size=metadata.st_size)
+            )
+            total_bytes += metadata.st_size
+            if len(found) >= max_files:
+                return found
+    return found
+
+
 def list_project_files(
     root: str | Path,
     *,
@@ -228,6 +458,14 @@ def list_project_files(
     if max_files < 1 or max_total_bytes < 1:
         raise ValueError("max_files and max_total_bytes must be positive")
     workspace = _workspace_root(root)
+    if os.name == "nt":
+        return _list_project_files_windows(
+            workspace, max_files=max_files, max_total_bytes=max_total_bytes
+        )
+    if os.name == "posix":
+        return _list_project_files_posix(
+            workspace, max_files=max_files, max_total_bytes=max_total_bytes
+        )
     found: list[ProjectFile] = []
     total_bytes = 0
 
@@ -268,6 +506,121 @@ def list_project_files(
 
     return found
 
+
+
+def list_project_files_from_windows_handle(
+    root_handle,
+    *,
+    kernel32,
+    max_files: int = DEFAULT_MAX_FILES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+) -> list[ProjectFile]:
+    """List files beneath a retained, user-authorized Windows root handle."""
+    if max_files < 1 or max_total_bytes < 1:
+        raise ValueError("max_files and max_total_bytes must be positive")
+    return _list_project_files_windows(
+        Path("."), max_files=max_files, max_total_bytes=max_total_bytes,
+        root_handle=root_handle,
+        kernel32=kernel32,
+    )
+
+
+def list_project_files_from_posix_fd(
+    root_fd: int,
+    *,
+    max_files: int = DEFAULT_MAX_FILES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+) -> list[ProjectFile]:
+    """List files beneath a retained, user-authorized POSIX root descriptor."""
+    if max_files < 1 or max_total_bytes < 1:
+        raise ValueError("max_files and max_total_bytes must be positive")
+    return _list_project_files_posix(
+        Path("."), max_files=max_files, max_total_bytes=max_total_bytes,
+        root_fd=root_fd,
+    )
+
+
+def _read_open_descriptor(file_fd: int, metadata: os.stat_result, max_bytes: int) -> str:
+    with os.fdopen(file_fd, "rb") as file_handle:
+        if metadata.st_size > max_bytes:
+            raise ProjectFileTooLarge(f"File exceeds the {max_bytes}-byte read limit")
+        data = file_handle.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ProjectFileTooLarge(f"File exceeds the {max_bytes}-byte read limit")
+    if b"\x00" in data:
+        raise BinaryProjectFile("Binary files are not returned as text")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise BinaryProjectFile("File is not valid UTF-8 text") from exc
+
+
+def read_project_text_file_from_posix_fd(
+    root_fd: int,
+    relative_path: str,
+    *,
+    max_bytes: int = MAX_TEXT_FILE_BYTES,
+) -> str:
+    """Read text relative to a retained POSIX root descriptor."""
+    if max_bytes < 1:
+        raise ValueError("max_bytes must be positive")
+    parts = _relative_parts(relative_path)
+    if _is_excluded(parts):
+        raise UnsafeProjectPath("This path is excluded from project indexing")
+    flags = (
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+    )
+    directory_flags = flags | getattr(os, "O_DIRECTORY", 0)
+    opened_directories = []
+    file_fd = None
+    try:
+        parent_fd = root_fd
+        for component in parts[:-1]:
+            child_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            opened_directories.append(child_fd)
+            parent_fd = child_fd
+        file_fd = os.open(parts[-1], flags, dir_fd=parent_fd)
+        metadata = os.fstat(file_fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ProjectFileError("Requested path is not a regular file")
+        owned_fd = file_fd
+        file_fd = None
+        return _read_open_descriptor(owned_fd, metadata, max_bytes)
+    except OSError as exc:
+        if isinstance(exc, IsADirectoryError):
+            raise ProjectFileError("Requested path is not a regular file") from exc
+        raise
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        for descriptor in reversed(opened_directories):
+            os.close(descriptor)
+
+
+def read_project_text_file_from_windows_handle(
+    root_handle,
+    relative_path: str,
+    *,
+    max_bytes: int = MAX_TEXT_FILE_BYTES,
+) -> str:
+    """Read text relative to a retained, user-authorized Windows root handle."""
+    if max_bytes < 1:
+        raise ValueError("max_bytes must be positive")
+    parts = _relative_parts(relative_path)
+    if _is_excluded(parts):
+        raise UnsafeProjectPath("This path is excluded from project indexing")
+    from odei_api.services.windows_file_handles import (
+        UnsafeWindowsPath,
+        open_readonly_file_from_handle,
+    )
+    try:
+        file_fd, metadata = open_readonly_file_from_handle(root_handle, parts)
+    except IsADirectoryError as exc:
+        raise ProjectFileError("Requested path is not a regular file") from exc
+    except UnsafeWindowsPath as exc:
+        raise UnsafeProjectPath(str(exc)) from exc
+    return _read_open_descriptor(file_fd, metadata, max_bytes)
 
 def read_project_text_file(
     root: str | Path,

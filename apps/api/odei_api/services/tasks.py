@@ -6,6 +6,7 @@ invoking these transitions or persisting their results.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
@@ -16,6 +17,7 @@ class TaskStatus(str, Enum):
     CONTEXT_GATHERING = "context_gathering"
     PLANNING = "planning"
     AWAITING_APPROVAL = "awaiting_approval"
+    APPROVED = "approved"
     EXECUTING = "executing"
     VALIDATING = "validating"
     REPAIRING = "repairing"
@@ -37,7 +39,8 @@ ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.CREATED: {TaskStatus.CONTEXT_GATHERING, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.CONTEXT_GATHERING: {TaskStatus.PLANNING, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.PLANNING: {TaskStatus.AWAITING_APPROVAL, TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.FAILED},
-    TaskStatus.AWAITING_APPROVAL: {TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
+    TaskStatus.AWAITING_APPROVAL: {TaskStatus.APPROVED, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
+    TaskStatus.APPROVED: {TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.EXPIRED},
     TaskStatus.EXECUTING: {TaskStatus.VALIDATING, TaskStatus.REPAIRING, TaskStatus.REVIEW_READY, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.VALIDATING: {TaskStatus.REPAIRING, TaskStatus.REVIEW_READY, TaskStatus.CANCELLED, TaskStatus.FAILED},
     TaskStatus.REPAIRING: {TaskStatus.EXECUTING, TaskStatus.VALIDATING, TaskStatus.REVIEW_READY, TaskStatus.CANCELLED, TaskStatus.FAILED},
@@ -47,6 +50,13 @@ ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.CANCELLED: set(),
     TaskStatus.EXPIRED: set(),
 }
+
+
+def identity_owner_key(issuer: str, subject: str) -> str:
+    """Return a stable, unambiguous owner key for a verified external identity."""
+    if not issuer.strip() or not subject.strip():
+        raise ValueError("issuer and subject must not be empty")
+    return json.dumps([issuer, subject], ensure_ascii=False, separators=(",", ":"))
 
 
 class InvalidTaskTransition(ValueError):

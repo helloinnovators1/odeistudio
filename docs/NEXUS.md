@@ -1,7 +1,7 @@
 # ODEI NEXUS — AI Software Engineering Agent
 
 **Priority:** First major product implementation.  
-**Status:** Initial planning service and read-only project indexing utilities are committed. No authenticated agent API, tool execution loop or sandbox is implemented yet.
+**Status:** Initial planning service, bounded read-only Responses API tool loop, secure workspace indexing primitives and an authenticated planning-only API are committed. No authenticated execution-agent API, mutating tools or sandbox is implemented yet.
 
 ## Mission
 NEXUS is the repository-aware coding agent at the heart of ODEI Studio. It turns a developer's goal into a reviewable, tested set of code changes while respecting workspace permissions and execution policy.
@@ -29,9 +29,14 @@ Additional terminal states: `failed`, `cancelled`, `expired`. Every transition i
 - `services/planning.py` calls the OpenAI Responses API through an injected client, with bounded task/context inputs and no tools enabled. Its output is an untrusted proposal only.
 - `model_client.py` creates a server-side OpenAI client from `OPENAI_API_KEY` and requires a configured `ODEI_MODEL`.
 - `services/tasks.py` defines task states, legal transitions, terminal states, plan-before-approval and optimistic version checks.
-- `services/task_store.py` persists tasks in MongoDB with organization-scoped reads/writes, optimistic version matching and atomic status-change event append. The caller must enforce organization membership and task permissions.
+- `services/task_store.py` persists tasks in MongoDB with organization-scoped reads/writes, optimistic version matching and atomic status-change event append. Project-scoped task creation and approve/cancel transitions also insert the corresponding audit event in the same MongoDB transaction; audit failure rolls back task state and lifecycle events. The caller must enforce organization membership and task permissions.
 - `mongo_client.py` constructs a lazy PyMongo Async client from a private `MONGODB_URI`; live database connectivity has not yet been configured or tested.
-- `services/project_files.py` lists, reads and searches bounded text files with common secret exclusions, GitIgnoreSpec rules and scan budgets. It is not exposed to HTTP callers.
+- `services/project_files.py` lists, reads and searches bounded text files with common secret exclusions, GitIgnoreSpec rules and scan budgets. It is not exposed to cloud HTTP callers.
+- `services/tool_registry.py` exposes only strict-schema list/read/literal-search tools against one workspace ID injected by the trusted caller; the model cannot choose a workspace. This is a read-only allowlist, not yet a complete per-task capability/approval policy engine.
+- The organization-membership API now writes successful, denied and malformed-record authorization outcomes through `MongoAuditEventStore`; audit persistence failure blocks the response. Project-scoped task create/approve/cancel actions now append audit events atomically with task state and lifecycle events. Task and task-event reads append success events before returning; task-not-found/owner denials and project-owner approval denials are recorded. Authentication outcomes, companion-session actions and tool executions remain unaudited, and a full route-by-route audit coverage review is still required.
+- `services/agent_runtime.py` runs a bounded Responses API tool loop (six rounds/twelve calls) with no write, shell, install, network or deployment tools. It uses stateless Responses requests (`store=False`) and replays output items locally.
+- `services/secret_redaction.py` redacts common API tokens, private keys, bearer tokens, JWTs, database URI passwords and quoted secret assignments before task/context/tool text is sent to or returned from the model. This is defense-in-depth, not a full DLP guarantee.
+- Both planner and agent runtime fail closed unless the trusted caller confirms explicit user consent to send task/workspace context to a cloud model. Responses application-state storage is disabled; API abuse-monitoring retention remains subject to the OpenAI account's data controls.
 
 ## Initial tool contract
 - `project.list_files`: list permitted paths, honoring ignore rules and symlink policy.
@@ -45,7 +50,7 @@ Additional terminal states: `failed`, `cancelled`, `expired`. Every transition i
 - `git.status`: report repository state.
 - `git.commit` / `git.push`: require explicit user authorization and scoped credentials.
 
-Tool schemas must define arguments, output, permission, timeout, resource limits, idempotency and audit behavior. Tool output and repository contents are untrusted data, never system instructions.
+Only the initial list/read/search tools are implemented. All patch, runtime, test and Git tools remain planned and must not be exposed until authorization, approval records, sandbox isolation and audit are implemented. Tool schemas must define arguments, output, permission, timeout, resource limits, idempotency and audit behavior. Tool output and repository contents are untrusted data, never system instructions.
 
 ## Planner and execution loop
 1. Parse goal and identify missing requirements.
@@ -90,3 +95,48 @@ The agent orchestrator owns durable task state and policy. Tool executors run in
 
 ## Deferred capabilities
 Parallel agents, remote cloud workspaces, browser automation, advanced semantic indexing, autonomous PR review and long-running background tasks are later milestones, not assumed features of the first slice.
+
+
+## First authenticated planning API
+
+The API now exposes `POST /api/v1/organizations/{organization_id}/nexus/plan` as the first authenticated NEXUS workflow slice. It requires a verified bearer principal, an active server-side organization membership and an explicit `cloud_model_consent: true` value. Task text and caller-supplied project context are bounded, secret-redacted by the planning service and sent through the server-side OpenAI Responses client with `store=false`. The route writes a tenant/actor-scoped audit outcome without storing task text, repository context or plan content. Audit failure blocks the response.
+
+This endpoint produces a plan only. It does not connect to the local companion, inspect local files, create durable tasks, apply patches, run commands or authorize implementation. The supplied project context is untrusted caller input, not verified repository evidence. Production use still requires configured ODID issuer/audience/JWKS/client allowlist, membership provisioning, MongoDB and OpenAI credentials, plus the remaining authorization and runtime controls.
+
+
+## Project-scoped task API
+
+NEXUS now has an authenticated project-scoped task API for create, read, durable event-history retrieval, approve and cancel. Creation checks active organization membership and active project owner/member access, requires explicit cloud-model consent, and persists an approval-ready task with its lifecycle events. Approval is a distinct `approved` state and is deliberately not an execution trigger. Task retrieval and event-history reads are limited to the task owner or project owner. Task ownership uses the canonical verified issuer + subject pair. Mutations use optimistic version checks and append audit records in the same transaction as task state and lifecycle events.
+
+This increment adds ordered event-history retrieval with a bounded page size and reconnectable version cursor, but not a live event-stream transport. It does not add file mutation, shell execution, test execution, repair, CLI, desktop editor or cloud agents. The local companion remains read-only.
+
+
+## Atomic task audit guarantee
+
+The project-scoped task API passes a validated audit event into `MongoTaskStore`. The task document, ordered `task_events`, and audit document are inserted/updated under one MongoDB session transaction. If the audit writer is missing or its insert fails, the transaction aborts and task state remains unchanged. This guarantee depends on MongoDB replica-set or sharded-cluster transaction support; unit/fake-transaction tests are available, and a real MongoDB 7.0 replica-set transaction test passed in API CI run 44794850821. Production replica-set deployment and verification remain release gates.
+
+
+## Task access audit coverage
+
+The project-scoped task API records successful task reads and task-event reads before returning their data. It also records task-not-found/owner denials and project-owner approval denials. Task create/approve/cancel state changes remain atomically audited with their task lifecycle events. Authentication outcomes, companion pairing/revocation and tool execution are still not instrumented.
+
+
+Task lifecycle transitions emit semantic event types for approval and terminal outcomes (`task.approved`, `task.cancelled`, `task.completed`, `task.failed`, `task.expired`) instead of collapsing these into a generic status-changed event. Intermediate transitions continue to use `task.status_changed` with from/to status fields.
+
+
+## Project lifecycle API
+
+The API now provides tenant-scoped project creation and listing, plus project-owner membership administration. Any active organization member may create a project and becomes its owner. Project listing is limited to active projects owned by or actively shared with the caller. Only the project owner can add/remove project members, and a target must already be an active member of the same organization. The owner is implicit (not duplicated in the membership collection); removals are soft deactivations.
+
+Project and membership mutations append their audit record in the same MongoDB transaction as the data change. Unique compound indexes enforce organization/project and organization/project/identity uniqueness. This is an initial project lifecycle contract, not a complete organization/role system: provisioning, invitations, ownership transfer, custom roles and admin workflows remain open. The routes do not grant file-write or command-execution capabilities.
+
+
+## IDE workspace shell and chat-panel preference
+
+The web client now has an initial Monaco-based IDE shell with a read-only explorer/editor, multiple tabs and bottom status surfaces. `Command+I` on macOS and `Ctrl+I` on Windows/Linux toggle the NEXUS chat panel. Workspace Settings lets the user choose the panel side (Left or Right); Right is the default and the choice is persisted locally in the browser. See [IDE workspace implementation](IDE_WORKSPACE.md).
+
+The browser panel remains a non-operational shell because ODID token acquisition and frontend API integration are not connected. The backend now exposes the authenticated, project-scoped, read-only chat endpoint described in [NEXUS chat API](NEXUS_CHAT_API.md); it has no tools, streaming or persistent conversation history. Monaco is read-only; the terminal is disabled and is not a browser shell. The current React/Vite workspace is not the full upstream Next.js/Code-OSS desktop editor.
+
+## Authenticated read-only project chat
+
+The API now exposes a first project-authorized chat endpoint documented in [NEXUS chat API](NEXUS_CHAT_API.md). It verifies the existing ODEI Identity access-token dependency, active organization/project membership, explicit cloud consent, bounded conversation/file excerpts, secret redaction and audit events. It uses stateless Responses API calls (`store=false`) with no tools. It does not write files, execute commands, persist conversations or stream. The web NEXUS composer remains disabled until browser ODID token acquisition and API integration are implemented.
