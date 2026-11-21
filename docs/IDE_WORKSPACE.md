@@ -10,7 +10,7 @@
 - Explorer: builds a nested, collapsible directory/file tree from the already-authorized companion relative-path listing. Folders sort before files; filtering reveals matching paths and their ancestors; keyboard navigation supports Arrow Up/Down, Arrow Left/Right, Home and End. Tree construction rejects malformed relative paths and performs no additional filesystem access. Filesystem watching is not implemented.
 - Tabs: multiple read-only files can be opened, activated and closed.
 - Bottom panel: output/status messages, an honest no-LSP Problems surface and a disabled terminal explanation.
-- Patch preview: an explicit editor action opens a proposed-content dialog and requests a live, SHA-256-checked unified diff from the local companion. It is preview-only; no local files are changed.
+- Patch preview: an explicit editor action opens a proposed-content dialog and requests a live, SHA-256-checked unified diff from the local companion. Preview itself does not write; a separate project-owner-approved one-file apply path is available through the signed companion capability.
 - NEXUS panel: authenticated project-scoped chat with explicit cloud consent, SSE responses, durable owner-scoped history, attached-excerpt read-only tools, task planning, persisted patch proposals and owner decisions. A separately approved one-file proposal can be applied through the paired companion with a signed capability and fresh challenge. Whole-workspace tool access, rollback and execution are not available.
 
 ## NEXUS chat panel position
@@ -26,7 +26,7 @@
 
 | Capability | Current status |
 |---|---|
-| Local companion connect and one-time pairing | Implemented in the existing read-only flow |
+| Local companion connect and one-time pairing | Implemented; read-only by default, with a separate explicit signed apply capability |
 | Workspace selection and file listing | Implemented |
 | Monaco source viewing | Implemented, read-only |
 | Multiple open tabs | Implemented |
@@ -58,7 +58,7 @@ The UI must not imply that a disabled capability is operational. The composer is
 - Pairing credentials are held in React memory, not local storage.
 - Disconnect clears the in-memory session and requests server-side revocation.
 - The browser UI lists and reads explicitly selected files and may send bounded excerpts to NEXUS only after explicit cloud consent. Patch preview is computed by the paired local companion; proposals are persisted for review. The companion applies only a single approved file operation after verifying the signed capability, one-use challenge and live base hash.
-- Do not enable editor writes by adding a browser-side fetch to an arbitrary path. A future patch service must use the server's handle-relative Windows and descriptor-relative POSIX path controls, validate content hashes/concurrent edits, require explicit review/approval and audit mutations atomically.
+- Never add browser-side writes to arbitrary paths. The existing one-file apply service uses handle-relative Windows and descriptor-relative POSIX path controls, validates live content hashes, requires project-owner approval and a signed one-use capability, and audits the operation. Multi-file transactions and durable rollback remain future work.
 - A future terminal must be an isolated execution service with resource/network/filesystem policy, not a shell exposed from the browser.
 
 ## Next implementation dependencies
@@ -70,6 +70,10 @@ The UI must not imply that a disabled capability is operational. The composer is
 5. Add recursive explorer, workspace persistence, file watching, Git integration and preview.
 6. Build the full Agents Window, CLI, background and cloud-agent control planes.
 7. Validate the complete desktop/companion flow on the user's Windows 10 build 18362 environment before claiming support.
+
+## Historical implementation details
+
+The sections below preserve earlier milestone and verification notes. Where they differ from the current capability table and status at the top of this document, the current snapshot is authoritative.
 
 ## Hierarchical Explorer
 
