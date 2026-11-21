@@ -13,6 +13,7 @@ import {
   type CompanionWorkspace,
 } from "./companion";
 import { formatBytes } from "./file-utils";
+import type { NexusPatchProposalFile } from "./nexus-patch-proposals";
 import { filterWorkspaceFiles } from "./workspace-filter";
 import { buildWorkspaceTree, type WorkspaceTreeNode } from "./workspace-tree";
 import {
@@ -32,6 +33,7 @@ interface OpenTab {
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [canApplyPatches, setCanApplyPatches] = useState(false);
   const [code, setCode] = useState("");
   const [workspaces, setWorkspaces] = useState<CompanionWorkspace[]>([]);
   const [workspace, setWorkspace] = useState("");
@@ -117,6 +119,7 @@ export default function App() {
         throw cause;
       }
       setToken(session.access_token);
+      setCanApplyPatches(session.permissions.includes("patch:apply"));
       setWorkspaces(selectedWorkspaces);
       setCode("");
       setMessage("Paired. Select a folder that you explicitly chose in the companion.");
@@ -211,6 +214,7 @@ export default function App() {
       }
     }
     setToken(null);
+    setCanApplyPatches(false);
     setConnected(false);
     setWorkspaces([]);
     setWorkspace("");
