@@ -69,7 +69,7 @@ class StreamingSecretRedactor:
         r"db[_-]?password|password|passwd|secret|credential)\b[\"']?\s*[:=]\s*"
     )
     _BEARER = re.compile(r"(?i)\bBearer\s+")
-    _MONGO = re.compile(r"(?i)mongodb(?:\+srv)?://[^:/@\\s]+:")
+    _MONGO = re.compile(r"(?i)mongodb(?:\+srv)?://[^:/@\s]+:")
     _TOKENS = (
         re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
         re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}"),
