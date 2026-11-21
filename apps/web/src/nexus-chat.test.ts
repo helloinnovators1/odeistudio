@@ -98,14 +98,14 @@ describe("NEXUS chat transport", () => {
 
   it("parses incremental SSE deltas and validates durable completion", async () => {
     const events = [
-      'event: status\\ndata: {"status":"generating"}\\n\\n',
-      'event: delta\\ndata: {"delta":"Hello "}\\n\\n',
-      'event: delta\\ndata: {"delta":"world"}\\n\\n',
-      'event: done\\ndata: {"model":"test-model","conversation_id":"chat-one","conversation_persisted":true,"read_only":true,"tools_executed":0}\\n\\n',
+      'event: status\ndata: {"status":"generating"}\n\n',
+      'event: delta\ndata: {"delta":"Hello "}\n\n',
+      'event: delta\ndata: {"delta":"world"}\n\n',
+      'event: done\ndata: {"model":"test-model","conversation_id":"chat-one","conversation_persisted":true,"read_only":true,"tools_executed":0}\n\n',
     ].join("");
     const encoded = new TextEncoder().encode(events);
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(
-      new ReadableStream({ start(controller) {
+      new ReadableStream<Uint8Array>({ start(controller) {
         controller.enqueue(encoded.slice(0, 31));
         controller.enqueue(encoded.slice(31));
         controller.close();
@@ -132,13 +132,13 @@ describe("NEXUS chat transport", () => {
       status: 200, headers: { "Content-Type": "text/event-stream" },
     });
     const errorFetcher = vi.fn<typeof fetch>().mockResolvedValue(makeResponse(
-      'event: error\\ndata: {"message":"NEXUS failed"}\\n\\n',
+      'event: error\ndata: {"message":"NEXUS failed"}\n\n',
     ));
     await expect(sendNexusChatStream(
       { ...base, conversationId: "chat-one" }, () => undefined, errorFetcher,
     )).rejects.toThrow("NEXUS failed");
     const mismatchFetcher = vi.fn<typeof fetch>().mockResolvedValue(makeResponse(
-      'event: done\\ndata: {"model":"test","conversation_id":"other-chat","conversation_persisted":true,"read_only":true,"tools_executed":0}\\n\\n',
+      'event: done\ndata: {"model":"test","conversation_id":"other-chat","conversation_persisted":true,"read_only":true,"tools_executed":0}\n\n',
     ));
     await expect(sendNexusChatStream(
       { ...base, conversationId: "chat-one" }, () => undefined, mismatchFetcher,
