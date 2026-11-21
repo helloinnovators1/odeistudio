@@ -3,9 +3,9 @@ from __future__ import annotations
 import base64
 import hashlib
 
-from fastapi.testclient import TestClient
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from odei_api.companion import ApplyChallengeManager, PairingManager, create_companion_app
