@@ -1,6 +1,6 @@
 # NEXUS Chat Panel Operationalisation
 
-**Verified repository status — 2026-11-21:** The current implementation includes an interactive ODID Authorization Code + PKCE browser foundation and callback, server-authorized organization/project discovery, explicit per-request cloud consent, streaming chat with cancellation, durable owner-scoped conversations, bounded attached-excerpt inspection, persisted review-only patch proposals, project-owner approval/rejection, and a signed single-file local-companion apply path under review in PR #24. The companion apply path is not merged or deployed; its Windows access-rights regression is being remediated and requires a passing Windows CI run plus validation on the user's Windows 10 build 18362 device. The browser token is held in memory and expires; refresh/revocation behavior still depends on the confirmed ODID provider contract and is not implemented by the current helper. Production issuer/client/redirect/resource/scope configuration, MongoDB replica-set deployment, model credentials, production CORS/API settings and staging E2E remain external release gates. Isolated command/test execution, rollback/recovery journals, multi-file atomic application, background agents and MAC/MAD are not implemented.
+**Verified repository status — 2026-11-21:** The current main branch includes configurable ODID Authorization Code + PKCE login/callback, server-authorized organization/project discovery, explicit per-request cloud consent, an active composer, SSE streaming with browser cancellation, durable owner-scoped conversations, bounded read-only inspection of explicitly attached excerpts, persisted patch proposals, project-owner approve/reject decisions, and a merged signed single-file local-companion apply path (PR #24, merge commit 1a5e6d9). Local apply requires a paired companion, explicit workspace write opt-in, matched Ed25519 API/companion configuration, an approved proposal, a fresh one-use challenge and live base-hash verification. Windows and Ubuntu CI passed on Python 3.10/3.12, along with web, MongoDB integration, CodeQL, secret scanning and dependency audits. This is not a complete production release: the companion has not been installed or exercised on the user's Windows 10 build 18362 device, and no real ODID staging/browser-to-companion E2E has been performed. Real ODID issuer/client/redirect/resource/scope and token refresh/revocation configuration, production API issuer/JWKS/CORS settings, MongoDB deployment, model credentials and hosting remain external gates. Multi-file transactions, durable rollback/recovery, isolated command/test execution, agent orchestration, cloud/background agents and MAC/MAD execution remain unimplemented.
 
 ## 1. Product responsibility
 
@@ -12,15 +12,15 @@ It is not itself an authorization boundary. Every server operation must independ
 
 | Mode | User experience | Permitted effects |
 |---|---|---|
-| Explain | Ask questions, discuss architecture, explain selected code | Read-only model response |
-| Inspect | Ask NEXUS to inspect selected project files | Explicitly authorized bounded reads/search only |
-| Plan | Ask for an implementation or remediation plan | Create a tenant/project-scoped plan and task records |
-| Propose | Request code changes | Create reviewable patch proposals; no file mutation |
-| Apply | Approve a reviewed proposal | Future capability: audited atomic handle-relative writes with rollback |
-| Execute | Run tests, diagnostics or commands | Future capability: isolated, policy-constrained execution |
-| Delegate | Assign work to agents | Future capability: scoped agent jobs with checkpoints and cancellation |
+| Explain | Ask questions, discuss architecture, explain selected code | Project-scoped model response |
+| Inspect | Ask NEXUS to inspect selected files | Read/list/literal-search only within explicitly attached, bounded excerpts |
+| Plan | Ask for an implementation or remediation plan | Create tenant/project-scoped plan and task records; approval records intent but does not execute |
+| Propose | Request code changes | Create persisted, reviewable patch proposals with hashes and diffs |
+| Apply | Approve a reviewed proposal | One-file signed, challenge-bound companion apply; no multi-file transaction or rollback |
+| Execute | Run tests, diagnostics or commands | Not available; requires isolated, policy-constrained workers |
+| Delegate | Assign work to agents | Not available; requires scoped agent jobs, checkpoints and cancellation |
 
-The first production chat release must not advertise Apply, Execute or Delegate until their services and tests are available.
+Apply is shown only for an approved one-file proposal when the paired companion advertises the apply capability. Production use remains gated on real ODID/API/model configuration and local Windows 10 build 18362 acceptance. Do not advertise Execute or Delegate until their isolated execution and orchestration services exist.
 
 ## 3. Request lifecycle
 
