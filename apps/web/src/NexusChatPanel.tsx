@@ -8,6 +8,14 @@ import {
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
+import {
+  approveNexusPatchProposal,
+  getNexusPatchProposal,
+  listNexusPatchProposals,
+  rejectNexusPatchProposal,
+  type NexusPatchProposal,
+  type NexusPatchProposalSummary,
+} from "./nexus-patch-proposals";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -80,6 +88,10 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState("");
+  const [patchProposals, setPatchProposals] = useState<NexusPatchProposalSummary[]>([]);
+  const [selectedPatch, setSelectedPatch] = useState<NexusPatchProposal | null>(null);
+  const [patchBusy, setPatchBusy] = useState(false);
+  const [patchError, setPatchError] = useState("");
   const [notice, setNotice] = useState("Sign in and select an authorized project to start.");
   const abortRef = useRef<AbortController | null>(null);
   const taskAbortRef = useRef<AbortController | null>(null);
@@ -160,6 +172,20 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       .finally(() => { if (active) setConversationBusy(false); });
     return () => { active = false; };
   }, [access, config.apiBaseUrl, organizationId, projectId]);
+  useEffect(() => {
+    if (!access || !config.apiBaseUrl || !organizationId || !projectId) {
+      setPatchProposals([]);
+      setSelectedPatch(null);
+      return;
+    }
+    let active = true;
+    setPatchError("");
+    void listNexusPatchProposals(config.apiBaseUrl, organizationId, projectId, access.accessToken)
+      .then((result) => { if (active) setPatchProposals(result.proposals); })
+      .catch((cause: unknown) => { if (active) setPatchError(errorMessage(cause)); });
+    return () => { active = false; };
+  }, [access, config.apiBaseUrl, organizationId, projectId]);
+
   useEffect(() => {
     if (!access) return;
     const remaining = access.expiresAt - Date.now();
@@ -341,6 +367,52 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setNotice("Signed out. The in-memory access token and conversation were cleared.");
   }
 
+  async function loadPatchProposal(proposalId: string) {
+    if (!access || !config.apiBaseUrl || !organizationId || !projectId || !proposalId) return;
+    setPatchBusy(true);
+    setPatchError("");
+    try {
+      const item = await getNexusPatchProposal(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken, proposalId,
+      );
+      setSelectedPatch(item);
+    } catch (cause) {
+      setPatchError(errorMessage(cause));
+    } finally {
+      setPatchBusy(false);
+    }
+  }
+
+  async function decidePatchProposal(decision: "approve" | "reject") {
+    if (!access || !config.apiBaseUrl || !selectedPatch || !selectedPatch.can_decide || patchBusy) return;
+    setPatchBusy(true);
+    setPatchError("");
+    try {
+      const decide = decision === "approve" ? approveNexusPatchProposal : rejectNexusPatchProposal;
+      await decide(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken,
+        selectedPatch.proposal_id, selectedPatch.version,
+      );
+      const updated = await getNexusPatchProposal(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken,
+        selectedPatch.proposal_id,
+      );
+      setSelectedPatch(updated);
+      setPatchProposals((items) => items.map((item) =>
+        item.proposal_id === updated.proposal_id
+          ? { ...item, status: updated.status, version: updated.version, updated_at: updated.updated_at }
+          : item
+      ));
+      setNotice(decision === "approve"
+        ? "Project owner approval recorded. The local file is unchanged; application is not enabled."
+        : "Patch proposal rejected. The local file is unchanged.");
+    } catch (cause) {
+      setPatchError(errorMessage(cause));
+    } finally {
+      setPatchBusy(false);
+    }
+  }
+
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
@@ -361,7 +433,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setConsent(false);
     setChatError("");
     setSending(true);
-    setInspectionRunning(useAttachedTools && excerpt.length > 0);
+    const isInspection = useAttachedTools && excerpt.length > 0;
+    setInspectionRunning(isInspection);
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -372,7 +445,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         setConversationId(activeConversationId);
         setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
       }
-      if (useAttachedTools && excerpt.length > 0) {
+      if (isInspection) {
         const inspected = await sendNexusChatInspection({
           apiBaseUrl: config.apiBaseUrl,
           organizationId,
@@ -387,7 +460,24 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         setMessages((current) => [...current, {
           id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer,
         }].slice(-20));
-        setNotice("Read-only inspection completed with " + inspected.tools_executed + " tool calls (" + (inspected.tool_names.join(", ") || "no tools requested") + "). Only the attached excerpt was available.");
+        if (inspected.patch_proposal) {
+          setPatchProposals((items) => [
+            {
+              proposal_id: inspected.patch_proposal!.proposal_id,
+              title: inspected.patch_proposal!.title,
+              status: inspected.patch_proposal!.status,
+              version: inspected.patch_proposal!.version,
+              file_count: inspected.patch_proposal!.file_count,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            ...items.filter((item) => item.proposal_id !== inspected.patch_proposal!.proposal_id),
+          ].slice(0, 30));
+          await loadPatchProposal(inspected.patch_proposal.proposal_id);
+          setNotice("NEXUS created a persistent review-only patch proposal. Approval does not apply it to local files.");
+        } else {
+          setNotice("Read-only inspection completed with " + inspected.tools_executed + " tool calls (" + (inspected.tool_names.join(", ") || "no tools requested") + "). Only the attached excerpt was available.");
+        }
         return;
       }
       const assistantId = "stream-" + newMessageId();
@@ -417,7 +507,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     } catch (cause) {
       setMessages((current) => current.filter((message) => !message.id.startsWith("stream-")));
       if (controller.signal.aborted) {
-        setNotice(inspectionRunning ? "Inspection cancelled in the browser; server-side model work may finish." : "Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
+        setNotice(isInspection ? "Inspection cancelled in the browser; server-side model work may finish." : "Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
       } else {
         setChatError(errorMessage(cause));
       }
@@ -577,6 +667,51 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             <p>{message.content}</p>
           </article>
         ))}
+        {selectedPatch && (
+          <section className="nexus-patch-review" aria-label="NEXUS patch proposal review">
+            <div className="nexus-task-heading">
+              <strong>PATCH PROPOSAL REVIEW</strong>
+              <span>{selectedPatch.status}</span>
+            </div>
+            <p>{selectedPatch.title}</p>
+            {selectedPatch.files.map((file) => (
+              <details key={file.path} className="nexus-patch-file">
+                <summary>{file.operation.toUpperCase()} · {file.path}</summary>
+                <pre>{file.unified_diff || "No textual diff was generated."}</pre>
+              </details>
+            ))}
+            {selectedPatch.status === "pending" && selectedPatch.can_decide && (
+              <div className="nexus-patch-actions">
+                <button type="button" className="nexus-secondary-button" disabled={patchBusy}
+                  onClick={() => void decidePatchProposal("approve")}>
+                  {patchBusy ? "Saving…" : "Approve proposal"}
+                </button>
+                <button type="button" className="nexus-link-button" disabled={patchBusy}
+                  onClick={() => void decidePatchProposal("reject")}>Reject</button>
+              </div>
+            )}
+            {selectedPatch.status === "pending" && !selectedPatch.can_decide && (
+              <p className="nexus-task-safety">Awaiting a project-owner decision.</p>
+            )}
+            <p className="nexus-task-safety">Approval records review intent only. It does not write, apply or delete local files. Application remains disabled.</p>
+            <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
+          </section>
+        )}
+        {patchProposals.length > 0 && (
+          <div className="nexus-proposal-picker">
+            <label htmlFor="nexus-patch-proposal-id">PATCH PROPOSALS</label>
+            <select id="nexus-patch-proposal-id" value={selectedPatch?.proposal_id ?? ""}
+              disabled={patchBusy || sending}
+              onChange={(event) => void loadPatchProposal(event.target.value)}>
+              <option value="">Select a saved proposal…</option>
+              {patchProposals.map((item) => (
+                <option key={item.proposal_id} value={item.proposal_id}>
+                  {item.status.toUpperCase()} · {item.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {taskPlan && (
           <section className="nexus-task-plan" aria-label="NEXUS task plan">
             <div className="nexus-task-heading">
@@ -616,7 +751,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             {attachActiveFile && activeFile && (
               <label className="nexus-attach-toggle nexus-tools-toggle">
                 <input type="checkbox" checked={useAttachedTools} onChange={(event) => setUseAttachedTools(event.target.checked)} />
-                Allow NEXUS read-only tools on this attached excerpt
+                Allow NEXUS inspection and review-only change proposals for this attached excerpt
               </label>
             )}
             {attachActiveFile && activeFile && activeFile.content.length > 8_000 && (
@@ -659,6 +794,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         )}
         {chatError && <p className="nexus-error" role="alert">{chatError}</p>}
         {taskError && <p className="nexus-error" role="alert">{taskError}</p>}
+        {patchError && <p className="nexus-error" role="alert">{patchError}</p>}
         <p className="nexus-disclaimer">{notice}</p>
       </div>
     </aside>
