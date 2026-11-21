@@ -18,7 +18,11 @@ from pymongo.errors import PyMongoError
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.nexus_tasks import _authorize_project
-from odei_api.services.patch_approval import PatchApprovalError, PatchApprovalNotConfigured, issue_patch_apply_capability
+from odei_api.services.patch_approval import (
+    PatchApprovalError,
+    PatchApprovalNotConfigured,
+    issue_patch_apply_capability,
+)
 from odei_api.services.patch_proposals import (
     MAX_DIFF_BYTES,
     MAX_FILE_BYTES,
