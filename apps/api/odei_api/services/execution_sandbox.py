@@ -76,6 +76,39 @@ class SandboxProfile:
             raise ValueError("Sandbox output limit must be between 1 KB and 1 MB")
 
 
+class SandboxProfileNotFound(SandboxError):
+    """A requested server-defined execution profile is not registered."""
+
+
+class SandboxProfileRegistry:
+    """Immutable-by-interface registry of server-approved execution profiles."""
+
+    def __init__(self, profiles: list[SandboxProfile] | tuple[SandboxProfile, ...]) -> None:
+        if not profiles:
+            raise ValueError("At least one approved sandbox profile is required")
+        registered: dict[str, SandboxProfile] = {}
+        for profile in profiles:
+            if not isinstance(profile, SandboxProfile):
+                raise TypeError("Only SandboxProfile instances may be registered")
+            profile.validate()
+            if profile.name in registered:
+                raise ValueError(f"Duplicate sandbox profile: {profile.name}")
+            registered[profile.name] = profile
+        self._profiles = registered
+
+    def get(self, profile_id: str) -> SandboxProfile:
+        if not isinstance(profile_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", profile_id):
+            raise SandboxProfileNotFound("The requested execution profile is not available")
+        try:
+            return self._profiles[profile_id]
+        except KeyError as exc:
+            raise SandboxProfileNotFound("The requested execution profile is not available") from exc
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(sorted(self._profiles))
+
+
 @dataclasses.dataclass(frozen=True)
 class SandboxResult:
     exit_code: int
