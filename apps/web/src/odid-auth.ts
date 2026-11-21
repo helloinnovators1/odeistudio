@@ -237,8 +237,18 @@ export async function completeODIDLogin(
   } catch {
     throw new ODidOAuthError("ODID authorization callback URL is invalid.");
   }
-  const code = callback.searchParams.get("code");
-  const state = callback.searchParams.get("state");
+  const registeredRedirect = new URL(config.redirectUri);
+  if (
+    callback.origin !== registeredRedirect.origin
+    || callback.pathname !== registeredRedirect.pathname
+    || callback.hash
+  ) {
+    throw new ODidOAuthError("ODID callback does not match the registered redirect URI.");
+  }
+  const codes = callback.searchParams.getAll("code");
+  const states = callback.searchParams.getAll("state");
+  const code = codes.length === 1 ? codes[0] : null;
+  const state = states.length === 1 ? states[0] : null;
   const providerError = callback.searchParams.get("error");
   let rawTransaction: string | null = null;
   try {
@@ -261,7 +271,10 @@ export async function completeODIDLogin(
   if (
     !transaction || transaction.state !== state || transaction.issuer !== config.issuer
     || transaction.clientId !== config.clientId || transaction.redirectUri !== config.redirectUri
-    || transaction.resource !== config.resource || typeof transaction.verifier !== "string"
+    || transaction.resource !== config.resource
+    || typeof transaction.verifier !== "string" || transaction.verifier.length < 43
+    || transaction.verifier.length > 128
+    || typeof transaction.createdAt !== "number" || !Number.isFinite(transaction.createdAt)
     || transaction.createdAt > now || now - transaction.createdAt > TRANSACTION_TTL_MS
   ) {
     throw new ODidOAuthError("ODID login state is invalid or expired. Start login again.");
