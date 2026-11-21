@@ -489,14 +489,14 @@ async def nexus_project_chat_stream(
                 if not publish("delta", delta):
                     return
             publish("complete")
-        except Exception as exc:
+        except Exception:  # noqa: BLE001 - provider SDK failures must become safe SSE errors
             publish("error", "NEXUS could not complete the streamed response.")
 
     def encode_event(name: str, data: dict) -> bytes:
         return (
             f"event: {name}\n"
             f"data: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
-        ).encode("utf-8")
+        ).encode()
 
     async def event_stream():
         worker = asyncio.create_task(asyncio.to_thread(provider_worker))
@@ -544,7 +544,7 @@ async def nexus_project_chat_stream(
                     outcome="success", message_count=len(model_messages),
                     file_count=len(payload.workspace_files), model=model,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001 - persist/audit failures must not leak through SSE
                 try:
                     await _append_nexus_chat_audit(
                         request, principal, organization_id, project_id,
