@@ -24,7 +24,8 @@ from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.conversation_store import MongoConversationStore
 from odei_api.services.nexus_conversations import router as nexus_conversations_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
-from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore, router as nexus_patch_proposals_router
+from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
+from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
