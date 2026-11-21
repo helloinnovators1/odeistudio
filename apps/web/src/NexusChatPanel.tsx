@@ -189,7 +189,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   useEffect(() => {
     setAttachActiveFile(false);
     setUseAttachedTools(false);
-  }, [activeFile?.path]);
+  }, [activeFile?.path, activeFile?.content]);
 
   async function signIn() {
     if (!config.auth) {
