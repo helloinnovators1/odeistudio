@@ -304,6 +304,11 @@ def create_companion_app(
             )
         ):
             raise ValueError("Patch approval issuer or pinned public keys are invalid")
+    if patch_approval_issuer is not None and any(
+        not registry.can_apply_patch(workspace_id)
+        for workspace_id in selected
+    ):
+        raise ValueError("Patch application requires selected roots opened with explicit write permission")
     apply_challenges = ApplyChallengeManager()
     capability_replays = CapabilityReplayCache()
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
