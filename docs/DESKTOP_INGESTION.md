@@ -93,7 +93,8 @@ The local API is separate from the cloud /api/v1 API:
 | POST | /v1/pair | Exchange one-time pairing code for read-only bearer session |
 | GET | /v1/workspaces | Return selected workspace IDs and folder-basename labels only (never absolute paths) |
 | GET | /v1/workspaces/{id}/files | Return one selected root's bounded relative path/size manifest |
-| GET | /v1/workspaces/{id}/file?path=... | Return one bounded UTF-8 text file from that root |\n| POST | /v1/workspaces/{id}/patch-proposals | Build a bounded live-snapshot diff preview for create/update/delete; no file writes or persistence |
+| GET | /v1/workspaces/{id}/file?path=... | Return one bounded UTF-8 text file from that root 
+| POST | /v1/workspaces/{id}/patch-proposals | Build a bounded live-snapshot diff preview for create/update/delete; no file writes or persistence |
 | GET | /v1/workspace, /v1/workspace/files, /v1/workspace/file | Single-root compatibility routes; return 409 when multiple roots are selected |
 | POST | /v1/session/revoke | Revoke the current bearer session |
 
