@@ -112,6 +112,11 @@ function endpoint(value: unknown, label: string): string {
   return parseHttpsUrl(value, `ODID ${label}`).toString();
 }
 
+function validRefreshToken(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_REFRESH_TOKEN_CHARS
+    && /^[\\x21-\\x7E]+$/.test(value);
+}
+
 async function readJson(response: Response, maximum: number, label: string): Promise<Record<string, unknown>> {
   const declaredLength = Number(response.headers.get("Content-Length"));
   if (Number.isFinite(declaredLength) && declaredLength > maximum) {
