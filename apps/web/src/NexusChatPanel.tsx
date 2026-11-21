@@ -76,11 +76,21 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!config.auth || callbackHandled.current) return;
-    const redirect = new URL(config.auth.redirectUri);
+    if (callbackHandled.current) return;
+    let redirect: URL;
+    try {
+      redirect = new URL(import.meta.env.VITE_ODID_REDIRECT_URI ?? "");
+    } catch {
+      return;
+    }
     if (window.location.origin !== redirect.origin || window.location.pathname !== redirect.pathname) return;
     if (!window.location.search) return;
     callbackHandled.current = true;
+    if (!config.auth) {
+      window.history.replaceState({}, document.title, redirect.pathname);
+      setAuthError("ODID callback received, but the complete public browser configuration is missing.");
+      return;
+    }
     setAuthBusy(true);
     setAuthError("");
     void completeODIDLogin(window.location.href, config.auth)
