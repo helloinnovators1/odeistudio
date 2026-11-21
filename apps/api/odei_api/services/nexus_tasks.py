@@ -501,6 +501,8 @@ async def nexus_project_chat_stream(
     async def event_stream():
         worker = asyncio.create_task(asyncio.to_thread(provider_worker))
         answer_parts: list[str] = []
+        loop = asyncio.get_running_loop()
+        last_heartbeat = loop.time()
         try:
             yield encode_event("status", {"status": "generating"})
             while True:
@@ -509,6 +511,9 @@ async def nexus_project_chat_stream(
                 except queue.Empty:
                     if cancelled.is_set():
                         return
+                    if loop.time() - last_heartbeat >= 15:
+                        last_heartbeat = loop.time()
+                        yield b": keep-alive\\n\\n"
                     continue
                 if kind == "delta" and value is not None:
                     answer_parts.append(value)
