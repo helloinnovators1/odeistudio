@@ -1,3 +1,9 @@
+## Patch proposal regression coverage — 2026-11-21
+
+- Added regression tests for case-insensitive collisions against existing base paths, aggregate replacement content exceeding 5 MB, and aggregate base snapshots exceeding 5 MB.
+- Together with prior tests, the proposal validator now has explicit coverage for create/update/delete diffs, stale hashes, path traversal, sensitive paths, file/directory conflicts, missing-file deletion, binary/invalid Unicode content, per-file limits, file-count limits, Windows device names and Unicode normalization.
+- Tests are committed but not locally executed; latest-head GitHub Actions remains the verification gate.
+
 ## Patch proposal path validation hardening — 2026-11-21
 
 - Extended cross-platform path validation to reject non-NFC Unicode aliases, Windows COM/LPT device aliases (including superscript variants), and path components exceeding the Windows 255 UTF-16-unit limit.
