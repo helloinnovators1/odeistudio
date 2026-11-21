@@ -738,7 +738,7 @@ def main() -> int:
         print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
         print(f"{len(workspace_ids)} selected folder(s) are held by OS handles.")
         print(
-            "Signed one-file patch application is enabled."
+            "Signed one-file patch application is configured; writable roots advertise approval-gated access."
             if approval_issuer else
             "Access is read-only; signed patch application is not configured."
         )
