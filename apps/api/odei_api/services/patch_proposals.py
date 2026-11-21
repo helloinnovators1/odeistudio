@@ -9,6 +9,7 @@ import difflib
 import hashlib
 import hmac
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -60,13 +61,15 @@ def _validate_path(path: str) -> tuple[str, ...]:
         raise PatchProposalError("Path traversal and empty path components are not allowed")
     for part in parts:
         lowered = part.casefold()
-        device_name = lowered.split(".", 1)[0]
+        device_name = lowered.split(".", 1)[0].rstrip(" .")
         if (
             ":" in part
             or part.endswith((".", " "))
             or any(ord(character) < 32 or character in '<>:"|?*' for character in part)
             or device_name in _WINDOWS_RESERVED
+            or len(part.encode("utf-16-le")) // 2 > 255
             or re.fullmatch(r"(?:com|lpt)[1-9]", device_name)
+            or re.fullmatch(r"(?:com|lpt)[¹²³]", device_name)
         ):
             raise PatchProposalError("Path contains a Windows-reserved or invalid component")
         if (
