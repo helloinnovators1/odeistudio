@@ -736,7 +736,10 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                     )
                 finally:
                     if descriptor is not None:
-                        os.close(descriptor)
+                        try:
+                            os.close(descriptor)
+                        except OSError:
+                            pass
                     if target_handle is not None:
                         kernel32.CloseHandle(target_handle)
             kernel32.CloseHandle(temporary_handle)
