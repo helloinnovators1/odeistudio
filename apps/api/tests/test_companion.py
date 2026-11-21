@@ -820,3 +820,48 @@ def test_windows_relative_rename_uses_nt_set_information_file(monkeypatch):
         "desired_access": windows.FILE_TRAVERSE | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE,
         "closed_root": 0x9876,
     }
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows native file API regression")
+def test_windows_patch_directory_access_does_not_require_delete_child(monkeypatch):
+    from types import SimpleNamespace
+
+    from odei_api.services import windows_file_handles as windows
+
+    captured = {}
+
+    def fake_create_file(path, desired_access, *args):
+        captured["root_access"] = desired_access
+        return 0x1234
+
+    fake_kernel32 = SimpleNamespace(
+        CreateFileW=fake_create_file,
+        CloseHandle=lambda handle: 1,
+    )
+    monkeypatch.setattr(windows, "_apis", lambda: (fake_kernel32, SimpleNamespace()))
+    monkeypatch.setattr(windows, "_check_type", lambda kernel32, handle, *, directory: None)
+
+    _kernel32, root_handle = windows.open_directory_handle(
+        "C:\\selected-workspace", allow_patch_apply=True
+    )
+    assert root_handle == 0x1234
+    assert captured["root_access"] & windows.FILE_ADD_FILE
+    assert not captured["root_access"] & windows.FILE_DELETE_CHILD
+
+    child_capture = {}
+
+    def fake_nt_create_file(child_ptr, desired_access, *args):
+        ctypes.cast(
+            child_ptr, ctypes.POINTER(windows.wintypes.HANDLE)
+        ).contents.value = 0x5678
+        child_capture["access"] = desired_access
+        return 0
+
+    fake_ntdll = SimpleNamespace(NtCreateFile=fake_nt_create_file)
+    child = windows._open_child(
+        fake_kernel32, fake_ntdll, root_handle, "nested",
+        directory=True, allow_write=True,
+    )
+    assert child.value == 0x5678
+    assert child_capture["access"] & windows.FILE_ADD_FILE
+    assert not child_capture["access"] & windows.FILE_DELETE_CHILD
