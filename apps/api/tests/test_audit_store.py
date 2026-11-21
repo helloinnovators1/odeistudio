@@ -130,3 +130,22 @@ async def test_audit_store_forwards_existing_transaction_session():
         session=session,
     )
     assert collection.sessions == [session]
+
+
+
+@pytest.mark.asyncio
+async def test_audit_store_accepts_started_lifecycle_outcome():
+    collection = FakeAuditCollection()
+    store = MongoAuditEventStore(collection)
+    event = await store.append(
+        organization_id="org-1",
+        actor_issuer="https://identity.example/",
+        actor_subject="user-1",
+        action="nexus.chat.request",
+        target_type="project",
+        target_id="project-1",
+        outcome="started",
+        request_id="request-started",
+        metadata={"message_count": 1},
+    )
+    assert event["outcome"] == "started"

@@ -17,6 +17,7 @@ export interface NexusChatRequest {
   workspaceFiles?: NexusWorkspaceExcerpt[];
   cloudModelConsent: true;
   signal?: AbortSignal;
+  conversationId?: string;
 }
 
 export interface NexusChatResponse {
@@ -24,7 +25,8 @@ export interface NexusChatResponse {
   model: string;
   read_only: true;
   tools_executed: 0;
-  conversation_persisted: false;
+  conversation_persisted: boolean;
+  conversation_id?: string | null;
 }
 
 export class NexusChatTransportError extends Error {
@@ -125,6 +127,7 @@ export async function sendNexusChat(
         messages: request.messages,
         workspace_files: request.workspaceFiles ?? [],
         cloud_model_consent: true,
+        ...(request.conversationId ? { conversation_id: request.conversationId } : {}),
       }),
       cache: "no-store",
       credentials: "omit",
@@ -165,9 +168,185 @@ export async function sendNexusChat(
   if (
     typeof payload.answer !== "string" || !payload.answer.trim() ||
     typeof payload.model !== "string" || payload.read_only !== true ||
-    payload.tools_executed !== 0 || payload.conversation_persisted !== false
+    payload.tools_executed !== 0 || typeof payload.conversation_persisted !== "boolean" ||
+    (request.conversationId && (payload.conversation_persisted !== true || payload.conversation_id !== request.conversationId))
   ) {
     throw new NexusChatTransportError("NEXUS returned an unexpected response contract.", response.status);
   }
   return payload as unknown as NexusChatResponse;
+}
+
+
+export interface NexusConversationMessage {
+  message_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export interface NexusConversationSummary {
+  conversation_id: string;
+  title: string;
+  version: number;
+  message_count: number;
+  updated_at: string;
+}
+
+export interface NexusConversation {
+  conversation_id: string;
+  organization_id: string;
+  project_id: string;
+  title: string;
+  messages: NexusConversationMessage[];
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+async function conversationRequest(
+  apiBaseUrlValue: string,
+  organizationIdValue: string,
+  projectIdValue: string,
+  accessTokenValue: string,
+  path: string,
+  method: "GET" | "POST" | "DELETE",
+  body?: unknown,
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<Record<string, unknown>> {
+  const base = normalizeApiBaseUrl(apiBaseUrlValue);
+  const organizationId = requireIdentifier(organizationIdValue, "Organization ID");
+  const projectId = requireIdentifier(projectIdValue, "Project ID");
+  const token = accessTokenValue.trim();
+  if (!token || token.length > 16_384) throw new TypeError("A valid in-memory access token is required.");
+  const response = await fetcher(
+    `${base}/api/v1/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}/nexus/conversations${path}`,
+    {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "error",
+      signal,
+    },
+  );
+  const raw = await response.text();
+  if (raw.length > 7_000_000) throw new NexusChatTransportError("NEXUS returned oversized conversation data.", response.status);
+  let payload: Record<string, unknown>;
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid");
+    payload = parsed as Record<string, unknown>;
+  } catch {
+    throw new NexusChatTransportError("NEXUS returned invalid conversation data.", response.status);
+  }
+  if (!response.ok) {
+    const detail = payload.detail && typeof payload.detail === "object"
+      ? payload.detail as Record<string, unknown> : payload;
+    const code = typeof detail.code === "string" ? detail.code : undefined;
+    throw new NexusChatTransportError(
+      code === "CONVERSATION_NOT_FOUND" ? "Conversation was not found."
+        : code === "CONVERSATION_VERSION_CONFLICT" ? "Conversation changed. Reload its history."
+        : "NEXUS could not access conversation history.",
+      response.status, code,
+    );
+  }
+  return payload;
+}
+
+function validateConversation(value: unknown): NexusConversation {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new NexusChatTransportError("NEXUS returned an invalid conversation.", 200);
+  }
+  const item = value as Record<string, unknown>;
+  if (
+    typeof item.conversation_id !== "string" || !item.conversation_id ||
+    typeof item.organization_id !== "string" || typeof item.project_id !== "string" ||
+    typeof item.title !== "string" || !Array.isArray(item.messages) ||
+    item.messages.length > 200 || typeof item.version !== "number" || !Number.isInteger(item.version) ||
+    typeof item.created_at !== "string" || typeof item.updated_at !== "string"
+  ) throw new NexusChatTransportError("NEXUS returned an invalid conversation contract.", 200);
+  const messages = item.messages.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new NexusChatTransportError("NEXUS returned an invalid conversation message.", 200);
+    }
+    const message = entry as Record<string, unknown>;
+    if (
+      typeof message.message_id !== "string" ||
+      (message.role !== "user" && message.role !== "assistant") ||
+      typeof message.content !== "string" || message.content.length > 16_000 ||
+      typeof message.created_at !== "string"
+    ) throw new NexusChatTransportError("NEXUS returned an invalid conversation message.", 200);
+    return message as unknown as NexusConversationMessage;
+  });
+  return { ...item, messages } as unknown as NexusConversation;
+}
+
+export async function createNexusConversation(
+  apiBaseUrl: string, organizationId: string, projectId: string,
+  accessToken: string, title: string, fetcher: typeof fetch = fetch,
+): Promise<NexusConversation> {
+  const payload = await conversationRequest(
+    apiBaseUrl, organizationId, projectId, accessToken, "", "POST",
+    { title: title.trim().slice(0, 120) }, undefined, fetcher,
+  );
+  return validateConversation(payload);
+}
+
+export async function listNexusConversations(
+  apiBaseUrl: string, organizationId: string, projectId: string,
+  accessToken: string, fetcher: typeof fetch = fetch,
+): Promise<NexusConversationSummary[]> {
+  const payload = await conversationRequest(
+    apiBaseUrl, organizationId, projectId, accessToken, "?limit=30", "GET",
+    undefined, undefined, fetcher,
+  );
+  if (!Array.isArray(payload.conversations) || payload.conversations.length > 30) {
+    throw new NexusChatTransportError("NEXUS returned an invalid conversation list.", 200);
+  }
+  return payload.conversations.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new NexusChatTransportError("NEXUS returned an invalid conversation summary.", 200);
+    }
+    const item = value as Record<string, unknown>;
+    if (
+      typeof item.conversation_id !== "string" || !item.conversation_id ||
+      typeof item.title !== "string" || typeof item.version !== "number" || !Number.isInteger(item.version) ||
+      typeof item.message_count !== "number" || !Number.isInteger(item.message_count) || item.message_count < 0 ||
+      typeof item.updated_at !== "string"
+    ) throw new NexusChatTransportError("NEXUS returned an invalid conversation summary.", 200);
+    return item as unknown as NexusConversationSummary;
+  });
+}
+
+export async function getNexusConversation(
+  apiBaseUrl: string, organizationId: string, projectId: string,
+  accessToken: string, conversationId: string, fetcher: typeof fetch = fetch,
+): Promise<NexusConversation> {
+  const id = requireIdentifier(conversationId, "Conversation ID");
+  const payload = await conversationRequest(
+    apiBaseUrl, organizationId, projectId, accessToken,
+    `/${encodeURIComponent(id)}`, "GET", undefined, undefined, fetcher,
+  );
+  return validateConversation(payload);
+}
+
+
+export async function deleteNexusConversation(
+  apiBaseUrl: string, organizationId: string, projectId: string,
+  accessToken: string, conversationId: string, fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const id = requireIdentifier(conversationId, "Conversation ID");
+  const payload = await conversationRequest(
+    apiBaseUrl, organizationId, projectId, accessToken,
+    "/" + encodeURIComponent(id), "DELETE", undefined, undefined, fetcher,
+  );
+  if (payload.conversation_id !== id || payload.deleted !== true) {
+    throw new NexusChatTransportError("NEXUS did not confirm conversation deletion.", 200);
+  }
 }

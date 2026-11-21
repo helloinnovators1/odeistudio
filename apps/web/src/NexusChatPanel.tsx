@@ -6,7 +6,7 @@ import {
   type ODidOAuthConfig,
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
-import { sendNexusChat, type NexusChatMessage } from "./nexus-chat";
+import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -66,6 +66,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [conversations, setConversations] = useState<NexusConversationSummary[]>([]);
+  const [conversationId, setConversationId] = useState("");
+  const [conversationBusy, setConversationBusy] = useState(false);
   const [draft, setDraft] = useState("");
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
@@ -129,6 +132,28 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   }, [access, config.apiBaseUrl]);
 
   useEffect(() => {
+    if (!access || !config.apiBaseUrl || !organizationId || !projectId) {
+      setConversations([]); setConversationId(""); return;
+    }
+    let active = true;
+    setConversationBusy(true); setMessages([]); setConversationId("");
+    void listNexusConversations(config.apiBaseUrl, organizationId, projectId, access.accessToken)
+      .then(async (items) => {
+        if (!active) return;
+        setConversations(items);
+        if (items.length > 0) {
+          const latest = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, items[0].conversation_id);
+          if (!active) return;
+          setConversationId(latest.conversation_id);
+          setMessages(latest.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+          setNotice("Loaded your most recent saved conversation.");
+        } else { setNotice("No saved conversations in this project. Start a new conversation."); }
+      })
+      .catch((cause: unknown) => { if (active) setChatError(errorMessage(cause)); })
+      .finally(() => { if (active) setConversationBusy(false); });
+    return () => { active = false; };
+  }, [access, config.apiBaseUrl, organizationId, projectId]);
+  useEffect(() => {
     if (!access) return;
     const remaining = access.expiresAt - Date.now();
     if (remaining <= 0) {
@@ -180,6 +205,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setProjects([]);
     setProjectId("");
     setMessages([]);
+    setConversations([]);
+    setConversationId("");
     setConsent(false);
     try {
       const result = await listNexusProjects(config.apiBaseUrl, organizationId, access.accessToken);
@@ -201,6 +228,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setProjects([]);
     setProjectId("");
     setMessages([]);
+    setConversations([]);
+    setConversationId("");
     setDraft("");
     setConsent(false);
     setAttachActiveFile(false);
@@ -212,7 +241,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
-    if (!access || !projectId || !consent || !content || sending || !config.apiBaseUrl) return;
+    if (!access || !projectId || !consent || !content || sending || conversationBusy || !config.apiBaseUrl) return;
     if (content.length > 8_000) {
       setChatError("Messages are limited to 8,000 characters.");
       return;
@@ -232,11 +261,19 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     const controller = new AbortController();
     abortRef.current = controller;
     try {
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const created = await createNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, content.slice(0, 120) || "NEXUS conversation");
+        activeConversationId = created.conversation_id;
+        setConversationId(activeConversationId);
+        setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
+      }
       const response = await sendNexusChat({
         apiBaseUrl: config.apiBaseUrl,
         organizationId,
         projectId,
         accessToken: access.accessToken,
+        conversationId: activeConversationId,
         messages: next.map(({ role, content: text }) => ({ role, content: text })),
         workspaceFiles: excerpt,
         cloudModelConsent: true,
@@ -246,7 +283,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         ...current,
         { id: newMessageId(), role: "assistant" as const, content: response.answer },
       ].slice(-20));
-      setNotice(`Read-only response from ${response.model}. No tools ran and no conversation was persisted.`);
+      setNotice("Saved response from " + response.model + ". Conversation history is stored in your authorized project.");
     } catch (cause) {
       if (controller.signal.aborted) {
         setNotice("Client request aborted. The current API does not guarantee provider-side cancellation.");
@@ -299,6 +336,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               setProjects([]);
               setProjectId("");
               setMessages([]);
+              setConversationBusy(true);
               setConsent(false);
               setProjectError("");
             }} disabled={organizationBusy || organizations.length === 0}>
@@ -324,6 +362,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               <select id="nexus-project-id" value={projectId} onChange={(event) => {
                 setProjectId(event.target.value);
                 setMessages([]);
+                setConversationBusy(true);
                 setConsent(false);
                 setChatError("");
               }}>
@@ -333,6 +372,50 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             </label>
           )}
           {selectedProject && <p className="nexus-selected-project">Project: <strong>{selectedProject.name}</strong></p>}
+          {selectedProject && (
+            <div className="nexus-conversation-controls">
+              <label htmlFor="nexus-conversation-id">CONVERSATION HISTORY</label>
+              <select id="nexus-conversation-id" value={conversationId} disabled={conversationBusy || sending}
+                onChange={async (event) => {
+                  const selected = event.target.value;
+                  if (!selected) { setConversationId(""); setMessages([]); return; }
+                  setConversationBusy(true);
+                  try {
+                    const item = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access!.accessToken, selected);
+                    setConversationId(item.conversation_id);
+                    setMessages(item.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+                    setChatError("");
+                  } catch (cause) { setChatError(errorMessage(cause)); }
+                  finally { setConversationBusy(false); }
+                }}>
+                <option value="">New conversation</option>
+                {conversations.map((item) => <option key={item.conversation_id} value={item.conversation_id}>{item.title}</option>)}
+              </select>
+              <div className="nexus-conversation-actions">
+                <button type="button" className="nexus-link-button" disabled={sending || conversationBusy}
+                  onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setChatError(""); }}>
+                  New
+                </button>
+                {conversationId && (
+                  <button type="button" className="nexus-link-button" disabled={sending || conversationBusy}
+                    onClick={async () => {
+                      if (!window.confirm("Delete this saved conversation permanently?")) return;
+                      setConversationBusy(true);
+                      try {
+                        await deleteNexusConversation(config.apiBaseUrl, organizationId, projectId, access!.accessToken, conversationId);
+                        setConversations((items) => items.filter((item) => item.conversation_id !== conversationId));
+                        setConversationId("");
+                        setMessages([]);
+                        setNotice("Saved conversation deleted.");
+                      } catch (cause) { setChatError(errorMessage(cause)); }
+                      finally { setConversationBusy(false); }
+                    }}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -350,6 +433,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             <p>{message.content}</p>
           </article>
         ))}
+        {conversationBusy && <div className="nexus-thinking" role="status">Loading saved conversations…</div>}
         {sending && <div className="nexus-thinking" role="status">NEXUS is thinking…</div>}
         <div ref={transcriptEndRef} />
       </div>
@@ -377,7 +461,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 rows={3}
                 maxLength={8_000}
                 value={draft}
-                disabled={sending || !consent}
+                disabled={sending || conversationBusy || !consent}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -387,10 +471,10 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 }}
               />
               <div>
-                <span>Read-only · session-only history</span>
+                <span>Read-only · durable project history</span>
                 {sending
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>Stop</button>
-                  : <button type="submit" disabled={!draft.trim() || !consent}>Send</button>}
+                  : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy}>Send</button>}
               </div>
             </form>
           </>

@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   NexusChatTransportError,
   sendNexusChat,
+  createNexusConversation,
+  deleteNexusConversation,
+  listNexusConversations,
+  getNexusConversation,
   type NexusChatRequest,
 } from "./nexus-chat";
 
@@ -37,6 +41,58 @@ describe("NEXUS chat transport", () => {
     expect(init?.redirect).toBe("error");
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer ephemeral-token");
     expect(JSON.parse(String(init?.body))).toMatchObject({ cloud_model_consent: true });
+  });
+
+  it("binds a chat response to a durable owner-scoped conversation", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(okResponse({
+      conversation_persisted: true,
+      conversation_id: "conversation-1",
+    }));
+    const result = await sendNexusChat({ ...base, conversationId: "conversation-1" }, fetcher);
+    expect(result.conversation_persisted).toBe(true);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({
+      conversation_id: "conversation-1",
+    });
+  });
+
+  it("creates, lists and loads durable conversations using bearer-only requests", async () => {
+    const item = {
+      conversation_id: "conversation-1",
+      organization_id: "org-a",
+      project_id: "project-a",
+      title: "First chat",
+      messages: [{
+        message_id: "message-1", role: "user", content: "Hello",
+        created_at: "2026-11-21T00:00:00Z",
+      }],
+      version: 1,
+      created_at: "2026-11-21T00:00:00Z",
+      updated_at: "2026-11-21T00:00:00Z",
+    };
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify(item), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ conversations: [{ conversation_id: item.conversation_id, title: item.title, version: item.version, message_count: 1, updated_at: item.updated_at }], limit: 30 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(item), { status: 200 }));
+    const created = await createNexusConversation(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, "First chat", fetcher);
+    const listed = await listNexusConversations(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, fetcher);
+    const loaded = await getNexusConversation(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, "conversation-1", fetcher);
+    expect(created.conversation_id).toBe("conversation-1");
+    expect(listed).toHaveLength(1);
+    expect(loaded.messages[0].content).toBe("Hello");
+    for (const [, init] of fetcher.mock.calls) {
+      expect(init?.credentials).toBe("omit");
+      expect(init?.cache).toBe("no-store");
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer ephemeral-token");
+    }
+  });
+
+  it("deletes only the selected owner-scoped conversation and requires confirmation", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      conversation_id: "conversation-1", deleted: true,
+    }), { status: 200 }));
+    await expect(deleteNexusConversation(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, "conversation-1", fetcher)).resolves.toBeUndefined();
+    expect(fetcher.mock.calls[0][1]?.method).toBe("DELETE");
+    expect(fetcher.mock.calls[0][1]?.credentials).toBe("omit");
   });
 
   it("allows HTTP only for loopback development endpoints", async () => {

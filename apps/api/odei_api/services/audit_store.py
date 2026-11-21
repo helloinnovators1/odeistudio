@@ -19,7 +19,7 @@ _SENSITIVE_KEY = re.compile(
     r"(?:secret|password|passwd|token|api[_-]?key|authorization|cookie|credential)",
     re.IGNORECASE,
 )
-_ALLOWED_OUTCOMES = frozenset({"success", "denied", "failure"})
+_ALLOWED_OUTCOMES = frozenset({"started", "success", "denied", "failure"})
 _MAX_METADATA_KEYS = 32
 _MAX_METADATA_DEPTH = 4
 _MAX_STRING_LENGTH = 2048

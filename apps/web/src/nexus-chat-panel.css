@@ -2,3 +2,5 @@
 .nexus-org-form select{min-width:0;width:100%;padding:7px 8px;border:1px solid #424d5c;border-radius:5px;background:#11161e;color:#e7eaf0;font-size:10px}.nexus-load-projects{width:100%;margin-top:8px}
 .nexus-pane-hidden{display:none}.workbench.chat-left .editor-column{grid-column:4;grid-row:1}.workbench.chat-left .nexus-pane{grid-column:3;grid-row:1}
 @media(max-width:760px){.workbench.chat-left .editor-column,.workbench.chat-right .editor-column{grid-column:2;grid-row:2}.workbench.chat-left .nexus-pane{grid-column:2;grid-row:3}.workbench.chat-right .nexus-pane{grid-column:2;grid-row:4}}
+.nexus-conversation-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:end;margin-top:8px}.nexus-conversation-controls label{grid-column:1/-1;color:#8994a4;font-size:9px;letter-spacing:.08em}.nexus-conversation-controls select{min-width:0;width:100%;padding:7px 8px;border:1px solid #424d5c;border-radius:5px;background:#11161e;color:#e7eaf0;font-size:10px}.nexus-conversation-controls button{align-self:stretch}
+.nexus-conversation-actions{display:flex;gap:8px;align-items:center}.nexus-conversation-actions button{white-space:nowrap}

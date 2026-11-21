@@ -341,3 +341,19 @@ Earlier entries in this file describe intermediate milestones and may say task H
 - Added the `listNexusOrganizations` browser transport with bearer-only, no-credentials/no-cache/redirect-rejecting requests and strict response validation.
 - Replaced manual organization ID entry in the NEXUS panel with a selector populated from the server-side membership endpoint. Project listing remains separately scoped and authorized by the API.
 - Added API route and browser transport tests. Latest-head CI is required before this increment is considered verified.
+
+
+## Durable NEXUS conversations — implementation in review (2026-11-21)
+
+Feature branch: `feat/nexus-durable-conversations`. This increment is not merged or production-deployed.
+
+- Added MongoDB-backed conversation records keyed by conversation ID and scoped to organization, project, verified identity issuer and subject.
+- Added authenticated create/list/read/append/delete endpoints. Every endpoint rechecks active organization membership and project access. A conversation is visible only to its creating identity, even among project members.
+- Conversation writes use optimistic version checks; message count is capped at 200 and aggregate UTF-8 content at 1 MB. Conversation lists return metadata summaries rather than full transcripts.
+- Added secret redaction before conversation titles and messages are persisted. Audit events cover create/list/read/append/delete and chat request outcomes without logging prompts or source contents.
+- The chat endpoint now loads history from the authorized conversation, appends the user's turn and persists the assistant response. The provider receives only the latest bounded 19 persisted turns plus the new turn and explicitly selected workspace excerpts. Existing stateless compatibility remains available when no conversation ID is supplied.
+- The Studio loads the most recent saved conversation when a project is selected, supports switching histories, starting a new conversation and deleting a saved conversation.
+- MongoDB indexes are initialized by the API lifespan. Durable storage requires a configured MongoDB deployment; encryption-at-rest is a database/hosting configuration requirement and has not been verified here.
+- Automated tests have been added for owner/tenant isolation, optimistic versions, create/list/read/append/delete, durable chat turns, browser transport and the audit `started` lifecycle. They are not yet verified on this branch until CI completes.
+
+Not included in this increment: SSE/token streaming, guaranteed provider cancellation, tool invocation, chat-generated patch proposals, patch approval/application/rollback, isolated terminal/test execution, agent orchestration or production ODID/Mongo/model deployment configuration.

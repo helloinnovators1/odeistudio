@@ -44,6 +44,7 @@ class NexusChatRequest(BaseModel):
     messages: list[dict[str, StrictStr]] = Field(min_length=1, max_length=20)
     workspace_files: list[dict[str, StrictStr]] = Field(default_factory=list, max_length=5)
     cloud_model_consent: StrictBool
+    conversation_id: StrictStr | None = Field(default=None, min_length=1, max_length=128)
 
 
 async def _append_nexus_chat_audit(
@@ -441,13 +442,42 @@ async def nexus_project_chat(
         outcome="started", message_count=len(payload.messages),
         file_count=len(payload.workspace_files),
     )
+    model_messages = payload.messages
+    persisted_user_message = None
+    conversation_store = getattr(request.app.state, "conversation_store", None)
+    if payload.conversation_id is not None:
+        if conversation_store is None:
+            raise HTTPException(status_code=503, detail={"code": "CONVERSATION_STORE_UNAVAILABLE", "message": "NEXUS conversation storage is not configured."})
+        try:
+            conversation = await conversation_store.get_for_owner(
+                organization_id=organization_id, project_id=project_id,
+                owner_issuer=principal.issuer, owner_subject=principal.subject,
+                conversation_id=payload.conversation_id,
+            )
+            if conversation is None:
+                raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Conversation was not found."})
+            persisted_user_message = await conversation_store.append(
+                organization_id=organization_id, project_id=project_id,
+                owner_issuer=principal.issuer, owner_subject=principal.subject,
+                conversation_id=payload.conversation_id, role="user",
+                content=payload.messages[-1]["content"],
+                expected_version=conversation["version"],
+            )
+            if persisted_user_message is None:
+                raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "Conversation changed. Reload its history before sending another message."})
+            model_messages = [
+                {"role": item["role"], "content": item["content"]}
+                for item in persisted_user_message["messages"][-19:]
+            ]
+        except PyMongoError as exc:
+            raise HTTPException(status_code=503, detail={"code": "CONVERSATION_STORE_UNAVAILABLE", "message": "NEXUS conversation storage is temporarily unavailable."}) from exc
     try:
         client, model = get_openai_client()
         result = await run_in_threadpool(
             run_nexus_chat,
             client,
             model=model,
-            messages=payload.messages,
+            messages=model_messages,
             workspace_files=payload.workspace_files,
         )
     except ModelConfigurationError as exc:
@@ -482,9 +512,21 @@ async def nexus_project_chat(
             detail={"code": "NEXUS_CHAT_UNAVAILABLE", "message": "NEXUS chat is temporarily unavailable."},
         ) from exc
 
+    if payload.conversation_id is not None and persisted_user_message is not None:
+        try:
+            saved = await conversation_store.append(
+                organization_id=organization_id, project_id=project_id,
+                owner_issuer=principal.issuer, owner_subject=principal.subject,
+                conversation_id=payload.conversation_id, role="assistant",
+                content=result.answer, expected_version=persisted_user_message["version"],
+            )
+            if saved is None:
+                raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "The conversation changed while NEXUS was responding. Reload history before continuing."})
+        except PyMongoError as exc:
+            raise HTTPException(status_code=503, detail={"code": "CONVERSATION_STORE_UNAVAILABLE", "message": "NEXUS could not persist its response."}) from exc
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
-        outcome="success", message_count=len(payload.messages),
+        outcome="success", message_count=len(model_messages),
         file_count=len(payload.workspace_files), model=result.model,
     )
     return {
@@ -492,5 +534,6 @@ async def nexus_project_chat(
         "model": result.model,
         "read_only": True,
         "tools_executed": 0,
-        "conversation_persisted": False,
+        "conversation_persisted": payload.conversation_id is not None,
+        **({"conversation_id": payload.conversation_id} if payload.conversation_id is not None else {}),
     }
