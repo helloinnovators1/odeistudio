@@ -257,3 +257,13 @@ Feature branch: `feat/nexus-streaming-chat`. This increment is not merged or dep
 - Remaining prerequisites: approved ODID issuer/client/redirect/resource/scope values, real ODID staging verification, production API/Mongo/model configuration, encryption-at-rest/retention/backup controls and deployment. No production credentials are in source and none should be pasted into chat.
 
 This increment does not implement chat-triggered repository tools, patch creation/review/application/rollback, terminal/test execution, agent orchestration, cloud/background agents or MAC/MAD operations. The current chat agent remains read-only.
+
+
+## Task planning and approval controls — implementation in review (2026-11-21)
+
+- The chat composer exposes a separate **Plan task** action. It submits the draft as a task goal through the existing tenant/project-authorized task API.
+- Planning requires the same unchecked-by-default per-request cloud-model consent as chat. An active-file excerpt is included only when the user explicitly selects the attachment checkbox.
+- The panel displays the persisted plan, task status, task ID and version, and provides project-owner approval and cancellation controls.
+- The API remains authoritative for approval. Only the project owner may approve; client-side visibility is not authorization.
+- **Approval is not execution.** The current task approval endpoint records intent and does not write files, apply patches, run commands or launch agents.
+- This UI increment is on `feat/nexus-task-planning-ui-main`, not merged until CI passes.
