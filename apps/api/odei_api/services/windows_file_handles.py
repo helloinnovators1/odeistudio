@@ -601,7 +601,7 @@ def _write_handle(kernel32, handle, data: bytes) -> None:
 def _rename_relative(kernel32, handle, parent, name: str, *, replace: bool) -> None:
     encoded_name = name.encode("utf-16-le")
     offset = _FileRenameInfo.FileName.offset
-    buffer_size = ctypes.sizeof(_FileRenameInfo) + len(encoded_name) - ctypes.sizeof(wintypes.WCHAR)
+    buffer_size = ctypes.sizeof(_FileRenameInfo) + len(encoded_name)
     buffer = ctypes.create_string_buffer(buffer_size)
     info = ctypes.cast(buffer, ctypes.POINTER(_FileRenameInfo)).contents
     info.ReplaceIfExists = bool(replace)
