@@ -137,7 +137,7 @@ class WorkspaceHandleRegistry:
                 int(grant.handle), relative_path, max_bytes=max_bytes
             )
 
-    def apply_patch(self, workspace_id: str, file: dict) -> dict[str, str]:
+    def apply_patch(self, workspace_id: str, file: dict) -> dict[str, str | bool]:
         """Apply one signed, pre-authorized file operation beneath its held root."""
         from odei_api.services.workspace_patch_apply import apply_single_file_patch
 
