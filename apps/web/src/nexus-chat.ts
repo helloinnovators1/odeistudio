@@ -209,7 +209,7 @@ async function conversationRequest(
   projectIdValue: string,
   accessTokenValue: string,
   path: string,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   body?: unknown,
   signal?: AbortSignal,
   fetcher: typeof fetch = fetch,
@@ -334,4 +334,19 @@ export async function getNexusConversation(
     `/${encodeURIComponent(id)}`, "GET", undefined, undefined, fetcher,
   );
   return validateConversation(payload);
+}
+
+
+export async function deleteNexusConversation(
+  apiBaseUrl: string, organizationId: string, projectId: string,
+  accessToken: string, conversationId: string, fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const id = requireIdentifier(conversationId, "Conversation ID");
+  const payload = await conversationRequest(
+    apiBaseUrl, organizationId, projectId, accessToken,
+    "/" + encodeURIComponent(id), "DELETE", undefined, undefined, fetcher,
+  );
+  if (payload.conversation_id !== id || payload.deleted !== true) {
+    throw new NexusChatTransportError("NEXUS did not confirm conversation deletion.", 200);
+  }
 }
