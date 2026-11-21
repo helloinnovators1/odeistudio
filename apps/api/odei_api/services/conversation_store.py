@@ -12,7 +12,7 @@ from odei_api.services.secret_redaction import redact_secrets
 MAX_CONVERSATIONS_PAGE = 50
 MAX_CONVERSATION_MESSAGES = 200
 MAX_CONVERSATION_MESSAGE_CHARS = 16_000
-MAX_CONVERSATION_TOTAL_CHARS = 1_000_000
+MAX_CONVERSATION_TOTAL_BYTES = 1_000_000
 
 
 class ConversationStoreError(ValueError):
@@ -120,11 +120,11 @@ class MongoConversationStore:
                         {"$sum": {"$map": {
                             "input": {"$ifNull": ["$messages", []]},
                             "as": "message",
-                            "in": {"$strLenCP": "$$message.content"},
+                            "in": {"$strLenBytes": "$message.content"},
                         }}},
-                        len(content),
+                        len(content.encode("utf-8")),
                     ]},
-                    MAX_CONVERSATION_TOTAL_CHARS,
+                    MAX_CONVERSATION_TOTAL_BYTES,
                 ]},
             ]},
         }
