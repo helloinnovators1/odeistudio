@@ -740,7 +740,23 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             {selectedPatch.status === "pending" && !selectedPatch.can_decide && (
               <p className="nexus-task-safety">Awaiting a project-owner decision.</p>
             )}
-            <p className="nexus-task-safety">Approval records review intent only. It does not write, apply or delete local files. Application remains disabled.</p>
+            {selectedPatch.status === "approved" && selectedPatch.can_decide &&
+              companionToken && companionWorkspaceId && companionCanApply &&
+              selectedPatch.files.length === 1 && (
+                <button type="button" className="nexus-secondary-button"
+                  disabled={patchBusy} onClick={() => void applyApprovedPatch()}>
+                  {patchBusy ? "Applying…" : "Apply approved patch to selected folder"}
+                </button>
+              )}
+            {selectedPatch.status === "approved" && selectedPatch.files.length > 1 && (
+              <p className="nexus-task-safety">This proposal contains multiple files. The current local apply path is deliberately limited to one atomic file operation; split it into one-file proposals before applying.</p>
+            )}
+            {selectedPatch.status === "approved" && (!companionToken || !companionWorkspaceId || !companionCanApply) && (
+              <p className="nexus-task-safety">Approval is recorded. To apply, connect a local companion configured with the matching trusted patch-approval public key and select its workspace.</p>
+            )}
+            {selectedPatch.status !== "approved" && (
+              <p className="nexus-task-safety">Approval is required before a signed, short-lived local apply capability can be issued.</p>
+            )}
             <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
           </section>
         )}
