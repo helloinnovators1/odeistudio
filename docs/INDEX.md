@@ -45,3 +45,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 3. Record provider capabilities against official documentation and the exact account/product scope tested.
 4. Update relevant docs in the same change as behavior or API changes.
 5. Never place credentials, tokens, connection strings or private customer data in documentation.
+
+- [NEXUS Task Planning and Approval](NEXUS_TASKS.md) — task planning, ownership, approval semantics and execution boundaries.
