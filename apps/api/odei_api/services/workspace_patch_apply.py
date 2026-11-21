@@ -104,7 +104,7 @@ def _open_posix_parent(root_fd: int, parts: tuple[str, ...]) -> tuple[int, str]:
         raise
 
 
-def _apply_posix(root_fd: int, item: dict[str, Any], parsed) -> dict[str, str]:
+def _apply_posix(root_fd: int, item: dict[str, Any], parsed) -> dict[str, str | bool]:
     parts, operation, base_hash, result_hash = parsed
     parent_fd, name = _open_posix_parent(root_fd, parts)
     temp_name: str | None = None
@@ -135,6 +135,8 @@ def _apply_posix(root_fd: int, item: dict[str, Any], parsed) -> dict[str, str]:
             )
             temp_fd = os.open(temp_name, flags, 0o600, dir_fd=parent_fd)
             try:
+                if operation == "update" and current is not None:
+                    os.fchmod(temp_fd, stat.S_IMODE(current[1].st_mode))
                 offset = 0
                 while offset < len(encoded):
                     offset += os.write(temp_fd, encoded[offset:])
@@ -160,7 +162,7 @@ def _apply_posix(root_fd: int, item: dict[str, Any], parsed) -> dict[str, str]:
             "path": item["path"],
             "operation": operation,
             "result_sha256": result_hash or "",
-            "applied": "true",
+            "applied": True,
         }
     except WorkspacePatchApplyError:
         raise
@@ -175,7 +177,7 @@ def _apply_posix(root_fd: int, item: dict[str, Any], parsed) -> dict[str, str]:
         os.close(parent_fd)
 
 
-def apply_single_file_patch(grant: Any, item: dict[str, Any]) -> dict[str, str]:
+def apply_single_file_patch(grant: Any, item: dict[str, Any]) -> dict[str, str | bool]:
     """Apply exactly one approved file operation atomically or fail closed."""
     parsed = _validate_file(item)
     if grant.platform == "posix":
