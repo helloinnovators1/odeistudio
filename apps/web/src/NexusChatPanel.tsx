@@ -427,6 +427,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               setOrganizationId(event.target.value);
               setProjects([]);
               setProjectId("");
+              setTaskPlan(null);
+              setTaskError("");
               setMessages([]);
               setConversationBusy(true);
               setConsent(false);
@@ -453,6 +455,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               <span>PROJECT</span>
               <select id="nexus-project-id" value={projectId} onChange={(event) => {
                 setProjectId(event.target.value);
+                setTaskPlan(null);
+                setTaskError("");
                 setMessages([]);
                 setConversationBusy(true);
                 setConsent(false);
@@ -525,6 +529,28 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             <p>{message.content}</p>
           </article>
         ))}
+        {taskPlan && (
+          <section className="nexus-task-plan" aria-label="NEXUS task plan">
+            <div className="nexus-task-heading">
+              <strong>APPROVAL-READY PLAN</strong>
+              <span>{taskPlan.status.replaceAll("_", " ")}</span>
+            </div>
+            <p>{taskPlan.goal}</p>
+            <pre>{taskPlan.plan ?? "No plan text is available."}</pre>
+            {taskPlan.status === "awaiting_approval" && (
+              <button type="button" className="nexus-secondary-button" onClick={() => void approveTaskPlan()} disabled={taskBusy}>
+                {taskBusy ? "Saving…" : "Approve plan"}
+              </button>
+            )}
+            {["awaiting_approval", "approved"].includes(taskPlan.status) && (
+              <button type="button" className="nexus-link-button" onClick={() => void cancelTaskPlan()} disabled={taskBusy}>
+                Cancel task
+              </button>
+            )}
+            <p className="nexus-task-safety">Approval records intent only. Task execution, file writes and command execution are not enabled.</p>
+            <small>Task ID: {taskPlan.task_id} · Version {taskPlan.version}</small>
+          </section>
+        )}
         {conversationBusy && <div className="nexus-thinking" role="status">Loading saved conversations…</div>}
         {sending && <div className="nexus-thinking" role="status">NEXUS is thinking…</div>}
         <div ref={transcriptEndRef} />
@@ -544,7 +570,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             )}
             <label className="nexus-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              I consent to sending this message{attachActiveFile && activeFile ? " and the selected file excerpt" : ""} to the configured cloud AI provider.
+              I consent to sending this request{attachActiveFile && activeFile ? " and the selected file excerpt" : ""} to the configured cloud AI provider.
             </label>
             <form className="chat-composer" onSubmit={(event) => void submitMessage(event)}>
               <textarea
@@ -553,7 +579,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 rows={3}
                 maxLength={8_000}
                 value={draft}
-                disabled={sending || conversationBusy || !consent}
+                disabled={sending || taskBusy || conversationBusy || !consent}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -566,7 +592,11 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 <span>Read-only · durable project history</span>
                 {sending
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>Stop</button>
-                  : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy}>Send</button>}
+                  : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy || taskBusy}>Send</button>}
+                <button type="button" className="nexus-secondary-button" onClick={() => void planTask()}
+                  disabled={!draft.trim() || !consent || conversationBusy || sending || taskBusy}>
+                  {taskBusy ? "Working…" : "Plan task"}
+                </button>
               </div>
             </form>
           </>
@@ -574,6 +604,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           <div className="nexus-composer-locked">Sign in and select an authorized project to enable chat.</div>
         )}
         {chatError && <p className="nexus-error" role="alert">{chatError}</p>}
+        {taskError && <p className="nexus-error" role="alert">{taskError}</p>}
         <p className="nexus-disclaimer">{notice}</p>
       </div>
     </aside>
