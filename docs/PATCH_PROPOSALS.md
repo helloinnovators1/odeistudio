@@ -18,7 +18,7 @@ Callers must obtain the base snapshot through the existing authenticated, tenant
 - Reject sensitive paths and excluded directories such as `.git`, `.ssh`, `.aws`, `.env*`, credentials, private keys and dependency directories.
 - Reject case-insensitive duplicate paths and file/directory hierarchy collisions in both the base snapshot and proposed changes.
 - Reject stale/malformed hashes, deletion of missing files, binary/NUL content and invalid UTF-8 text.
-- Enforce at most 20 changed files, 1 MB per replacement, 5 MB aggregate replacement content and 8 MB aggregate unified diff.
+- Enforce at most 20 changed files, 1 MB per base/replacement file, 5 MB aggregate changed base and replacement content, and 8 MB aggregate unified diff. Require NFC-normalized paths and enforce Windows UTF-16 component length and device-name rules.
 - Return per-file operation, base/result hashes, replacement content and unified diff.
 
 ## Required next stages
