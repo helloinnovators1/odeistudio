@@ -530,6 +530,50 @@ def _open_relative_file_for_delete(kernel32, ntdll, parent, name: str):
         raise
 
 
+def _open_relative_file_for_replace(kernel32, ntdll, parent, name: str):
+    """Open an existing file while denying concurrent write opens but allowing rename."""
+    if not name or "\\" in name or "/" in name or name in {".", ".."}:
+        raise UnsafeWindowsPath("Invalid target file name")
+    name_buffer = ctypes.create_unicode_buffer(name)
+    name_bytes = len(name.encode("utf-16-le"))
+    unicode_name = _UnicodeString(
+        Length=name_bytes,
+        MaximumLength=name_bytes + 2,
+        Buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    )
+    object_attributes = _ObjectAttributes(
+        Length=ctypes.sizeof(_ObjectAttributes),
+        RootDirectory=parent,
+        ObjectName=ctypes.pointer(unicode_name),
+        Attributes=OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor=None,
+        SecurityQualityOfService=None,
+    )
+    io_status = _IoStatusBlock()
+    handle = wintypes.HANDLE()
+    status = ntdll.NtCreateFile(
+        ctypes.byref(handle),
+        FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        ctypes.byref(object_attributes),
+        ctypes.byref(io_status),
+        None,
+        0,
+        FILE_SHARE_READ | FILE_SHARE_DELETE,
+        FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+        0,
+    )
+    if status < 0:
+        raise ctypes.WinError(ntdll.RtlNtStatusToDosError(status))
+    try:
+        _check_type(kernel32, handle, directory=False)
+        return handle
+    except Exception:
+        kernel32.CloseHandle(handle)
+        raise
+
+
 def _write_handle(kernel32, handle, data: bytes) -> None:
     offset = 0
     while offset < len(data):
@@ -641,16 +685,47 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                 kernel32, ntdll, parent, temporary_name
             )
             _write_handle(kernel32, temporary_handle, data)
-            latest = _read_windows_file(root_handle, parts)
             if operation == "create":
+                latest = _read_windows_file(root_handle, parts)
                 if latest is not None:
                     raise UnsafeWindowsPath("A file appeared at the approved create path")
-            elif latest is None or hashlib.sha256(latest.encode("utf-8")).hexdigest() != base_hash:
-                raise UnsafeWindowsPath("The file changed immediately before replacement")
-            _rename_relative(
-                kernel32, temporary_handle, parent, target_name,
-                replace=operation == "update",
-            )
+                _rename_relative(
+                    kernel32, temporary_handle, parent, target_name, replace=False,
+                )
+            else:
+                target_handle = _open_relative_file_for_replace(
+                    kernel32, ntdll, parent, target_name
+                )
+                descriptor = None
+                try:
+                    descriptor = msvcrt.open_osfhandle(
+                        int(target_handle.value), os.O_RDONLY | getattr(os, "O_BINARY", 0)
+                    )
+                    target_handle = None
+                    data_check = bytearray()
+                    while len(data_check) <= 1_000_000:
+                        chunk = os.read(
+                            descriptor, min(65_536, 1_000_001 - len(data_check))
+                        )
+                        if not chunk:
+                            break
+                        data_check.extend(chunk)
+                    if (
+                        len(data_check) > 1_000_000 or b"\\x00" in data_check
+                        or hashlib.sha256(data_check).hexdigest() != base_hash
+                    ):
+                        raise UnsafeWindowsPath("The file changed immediately before replacement")
+                    # The held target handle denies concurrent write opens and allows
+                    # delete sharing, so the replacement is performed against the
+                    # exact file that was just hash-checked.
+                    _rename_relative(
+                        kernel32, temporary_handle, parent, target_name, replace=True,
+                    )
+                finally:
+                    if descriptor is not None:
+                        os.close(descriptor)
+                    if target_handle is not None:
+                        kernel32.CloseHandle(target_handle)
             kernel32.CloseHandle(temporary_handle)
             temporary_handle = None
         return {
