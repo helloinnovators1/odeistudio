@@ -25,7 +25,7 @@ The cloud API never receives a local filesystem path. The local companion never 
 - Capabilities use Ed25519, an explicit issuer and audience, a key ID, a short expiry (30–300 seconds), a unique token ID and an exact canonical patch digest.
 - The API private signing key is server-side only. The local companion receives only pinned public keys.
 - The companion accepts exactly one file operation per apply request. Multi-file proposals are not silently partially applied.
-- Paths are checked by the shared patch-path validator. POSIX operations use retained directory descriptors and no-follow opens. Windows operations use relative NT file opens from the retained directory handle, reject reparse points, stage a temporary file in the same directory and rename through the directory handle.
+- Paths are checked by the shared patch-path validator. POSIX operations use retained directory descriptors and no-follow opens. Windows operations use relative NT file opens from the retained directory handle, reject reparse points, stage a temporary file in the same directory and rename through a least-privilege duplicate of the held parent handle. Replacement uses `NtSetInformationFile` with `FileRenameInformationEx` (class 65), `FILE_RENAME_REPLACE_IF_EXISTS` and `FILE_RENAME_POSIX_SEMANTICS`; the latter allows the hash-checked original to remain open while the staged file atomically replaces its name. There is no absolute-path fallback. The POSIX-semantics flag requires a supporting filesystem; unsupported filesystems fail closed.
 - Existing file content is re-read and its SHA-256 checked immediately before replacement/deletion. Create operations refuse to overwrite an existing path.
 - Request content, capability size, file size and path length are bounded. The route does not expose shell, process execution, network tools or arbitrary filesystem paths.
 - The browser receives no private signing key and does not persist the capability. The token is held only for the immediate apply request.
@@ -55,7 +55,7 @@ For key rotation, first add the new public key to the companion's pinned map, th
 - **No crash-recovery journal.** The one-file replacement itself is atomic; a process interruption around metadata durability still requires filesystem-level recovery procedures. There is no multi-file transaction to recover.
 - **No command/test execution.** The companion still exposes no shell, package installation, build/test execution, deployment or arbitrary process launch.
 - **No production key configuration is present by default.** An unconfigured companion remains read-only.
-- **No user-machine verification has occurred yet.** CI must pass on Windows and Ubuntu, and the companion must then be installed and tested on the user's Windows 10 build 18362 environment before claiming that local application works on that machine.
+- **No user-machine verification has occurred yet.** GitHub CI passed on Windows Server 2025 and Ubuntu for Python 3.10/3.12 on the exact source head; the companion must still be installed and tested on the user's Windows 10 build 18362 environment before claiming that local application works on that machine.
 - **No production deployment or real ODID staging E2E is implied by these source changes.**
 
 ## Verification
