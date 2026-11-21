@@ -94,7 +94,7 @@ class ApplyPatchFile(BaseModel):
     operation: StrictStr = Field(pattern="^(create|update|delete)$")
     base_sha256: StrictStr | None = None
     result_sha256: StrictStr | None = None
-    content: StrictStr | None = None
+    content: StrictStr | None = Field(default=None, max_length=1_000_000)
 
 
 class ApplyPatchRequest(BaseModel):
