@@ -9,3 +9,61 @@ export async function listWorkspaces(token:string):Promise<CompanionWorkspace[]>
 export async function listWorkspaceFiles(token:string,id:string):Promise<CompanionFile[]>{return(await call<{files:CompanionFile[]}>("/v1/workspaces/"+encodeURIComponent(id)+"/files",{token})).files}
 export async function readWorkspaceFile(token:string,id:string,path:string):Promise<string>{const q=new URLSearchParams({path});return(await call<{content:string}>("/v1/workspaces/"+encodeURIComponent(id)+"/file?"+q.toString(),{token})).content}
 export async function disconnectFromCompanion(token:string):Promise<void>{await call<void>("/v1/session/revoke",{method:"POST",token})}
+
+export interface PatchPreviewFile {
+  path: string;
+  operation: "create" | "update" | "delete";
+  base_sha256: string | null;
+  result_sha256: string | null;
+  content: string | null;
+  unified_diff: string;
+}
+export interface PatchPreviewResponse {
+  workspace_id: string;
+  mode: "preview_only";
+  writes_performed: false;
+  files: PatchPreviewFile[];
+  total_content_bytes: number;
+  total_diff_bytes: number;
+}
+async function sha256Text(content: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) throw new Error("Secure hashing is unavailable in this browser.");
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+export async function previewWorkspacePatch(
+  token: string,
+  workspaceId: string,
+  changes: Record<string, string | null>,
+  baseContents: Record<string, string | null>,
+): Promise<PatchPreviewResponse> {
+  const paths = Object.keys(changes);
+  if (paths.length === 0 || paths.length > 20 || paths.length !== Object.keys(baseContents).length) {
+    throw new Error("Patch preview requires matching base content for 1–20 changed files.");
+  }
+  const expectedBaseHashes: Record<string, string | null> = {};
+  for (const path of paths) {
+    if (!Object.prototype.hasOwnProperty.call(baseContents, path)) {
+      throw new Error("Patch preview is missing a base snapshot for a changed path.");
+    }
+    const base = baseContents[path];
+    expectedBaseHashes[path] = base === null ? null : await sha256Text(base);
+  }
+  const response = await call<PatchPreviewResponse>(
+    "/v1/workspaces/" + encodeURIComponent(workspaceId) + "/patch-proposals",
+    { method: "POST", token, body: { changes, expected_base_hashes: expectedBaseHashes } },
+  );
+  if (
+    response.workspace_id !== workspaceId ||
+    response.mode !== "preview_only" ||
+    response.writes_performed !== false ||
+    !Array.isArray(response.files) ||
+    response.files.length !== paths.length ||
+    response.files.some((file) => !paths.includes(file.path) ||
+      !["create", "update", "delete"].includes(file.operation) ||
+      typeof file.unified_diff !== "string")
+  ) {
+    throw new Error("Companion returned an invalid patch preview response.");
+  }
+  return response;
+}
