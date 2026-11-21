@@ -145,6 +145,7 @@ def test_patch_proposal_is_persisted_redacted_and_owner_approved(patch_state):
     )
     assert detail.status_code == 200
     assert detail.json()["files"][0]["base_sha256"] == sha256_text("print('old')\n")
+    assert detail.json()["can_decide"] is True
 
     approved = client.post(
         f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{body['proposal_id']}/approve",
