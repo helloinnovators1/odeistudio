@@ -35,7 +35,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [x] Add a fail-closed project authorization service: active tenant-scoped project, exact owner issuer+subject or active project membership; hide absent/unauthorized projects consistently.
 - [x] Add tenant-scoped project create/list and owner-managed membership add/remove routes; require active organization membership for creator and target; use unique indexes and transactional audit writes. Ownership transfer, org administration and invitations remain open.
 - [x] Add atomic planned-task persistence with ordered created → context_gathering → planning → awaiting_approval events in one MongoDB transaction; integrated project-scoped create/read/events/approve/cancel routes enforce membership/project/task access. Full role policy, project administration and production ODID integration remain open.
-- [x] Add pure, bounded multi-file patch proposal validation with SHA-256 snapshot checks, unified diffs, sensitive-path/Windows-name protections and resource budgets (no persistence or writes).
+- [x] Add pure, bounded multi-file patch proposal validation and a local companion endpoint that re-reads live workspace files, checks SHA-256 base hashes and returns preview-only diffs (no persistence or writes).
 - [ ] Add proposal persistence, IDE diff/review, explicit approval, atomic handle-relative patch application, concurrency checks and rollback.
 - [ ] Add isolated command runner with timeout/resource limits and network/filesystem policy.
 - [ ] Add test runner and structured diagnostics.
@@ -49,7 +49,7 @@ This roadmap is ordered by dependencies. Status is updated only from repository 
 - [ ] Integrate the upstream React/Next.js/TypeScript/Monaco Agents and Editor experience after settling the canonical service boundary.
 - [ ] Deliver full project explorer, editor, tabs and multi-card/multi-tab persistence.
 - [ ] Add agent chat, task plan and approval UI.
-- [ ] Add diff/review panel and isolated terminal integration.
+- [x] Add active-file preview-only diff dialog in the IDE, backed by the local companion's live hash-checked proposal endpoint.\n- [ ] Add multi-file proposal persistence, explicit reviewer approval/rejection, safe atomic apply/rollback and isolated terminal integration.
 - [ ] Add preview and diagnostics.
 - [ ] Add persistent tasks and reconnect/resume behavior.
 
