@@ -8,6 +8,7 @@ import json
 import os
 import secrets
 import sys
+import threading
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping
@@ -114,7 +115,7 @@ class ApplyChallengeManager:
     def __init__(self, *, ttl_seconds: int = 60, clock: Callable[[], float] = time.monotonic):
         self.ttl_seconds = ttl_seconds
         self._clock = clock
-        self._lock = __import__("threading").Lock()
+        self._lock = threading.Lock()
         self._challenges: dict[str, tuple[float, str, str]] = {}
 
     def issue(self, workspace_id: str, session_token: str) -> str:
@@ -645,6 +646,33 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
+    approval_issuer = os.getenv("ODEI_PATCH_APPROVAL_ISSUER", "").strip() or None
+    public_keys_value = os.getenv("ODEI_PATCH_APPROVAL_PUBLIC_KEYS", "").strip()
+    approval_public_keys = None
+    if bool(approval_issuer) != bool(public_keys_value):
+        print(
+            "Set both ODEI_PATCH_APPROVAL_ISSUER and ODEI_PATCH_APPROVAL_PUBLIC_KEYS, or leave both unset.",
+            file=sys.stderr,
+        )
+        return 2
+    if public_keys_value:
+        try:
+            parsed_keys = json.loads(public_keys_value)
+            if (
+                not isinstance(parsed_keys, dict)
+                or not parsed_keys
+                or any(
+                    not isinstance(key_id, str) or not key_id
+                    or not isinstance(value, str) or not value
+                    for key_id, value in parsed_keys.items()
+                )
+            ):
+                raise ValueError("Pinned public keys must be a non-empty JSON object of key IDs and base64 values")
+            approval_public_keys = parsed_keys
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(f"Invalid ODEI_PATCH_APPROVAL_PUBLIC_KEYS: {exc}", file=sys.stderr)
+            return 2
+
     selected_paths: list[str] = []
     while True:
         try:
@@ -678,9 +706,16 @@ def main() -> int:
             allowed_origins=origins,
             pairing_manager=pairing,
             port=args.port,
+            patch_approval_issuer=approval_issuer,
+            patch_approval_public_keys=approval_public_keys,
         )
         print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
-        print(f"{len(workspace_ids)} selected folder(s) are held by OS handles; access is read-only.")
+        print(f"{len(workspace_ids)} selected folder(s) are held by OS handles.")
+        print(
+            "Signed one-file patch application is enabled."
+            if approval_issuer else
+            "Access is read-only; signed patch application is not configured."
+        )
         print("Enter this one-time pairing code in the ODEI Studio web app:")
         print(code)
         print("The code expires in five minutes. Do not share it with anyone.")
