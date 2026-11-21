@@ -399,7 +399,9 @@ def test_companion_patch_preview_rejects_stale_hash_and_nested_create(tmp_path) 
     client, registry, _pairing, code = _build_client(tmp_path)
     try:
         headers = _paired_headers(client, code)
-        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
         stale = client.post(
             f"/v1/workspaces/{workspace_id}/patch-proposals",
             headers=headers,
