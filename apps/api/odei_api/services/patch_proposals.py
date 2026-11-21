@@ -11,7 +11,7 @@ import hmac
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Mapping
+from collections.abc import Mapping
 
 MAX_PATCH_FILES = 20
 MAX_FILE_BYTES = 1_000_000
