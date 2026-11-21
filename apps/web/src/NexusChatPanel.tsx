@@ -238,6 +238,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setConsent(false);
     setAttachActiveFile(false);
     setUseAttachedTools(false);
+    setUseAttachedTools(false);
     setChatError("");
     setProjectError("");
     setNotice("Signed out. The in-memory access token and conversation were cleared.");
@@ -319,13 +320,14 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     } catch (cause) {
       setMessages((current) => current.filter((message) => !message.id.startsWith("stream-")));
       if (controller.signal.aborted) {
-        setNotice("Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
+        setNotice(inspectionRunning ? "Inspection cancelled in the browser; server-side model work may finish." : "Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
       } else {
         setChatError(errorMessage(cause));
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setSending(false);
+      setInspectionRunning(false);
     }
   }
 
