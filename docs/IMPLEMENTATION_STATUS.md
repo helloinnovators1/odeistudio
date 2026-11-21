@@ -1,3 +1,12 @@
+## NEXUS Chat operationalisation contract — 2026-11-21
+
+- Added [NEXUS_CHAT_OPERATIONALIZATION.md](NEXUS_CHAT_OPERATIONALIZATION.md) as the canonical operational contract for the Chat Panel: request lifecycle, UX/composer behavior, identity and project binding, cloud consent, data minimization, prompt-injection boundaries, streaming events, persistence model, proposal/approval, isolated execution and agent delegation.
+- Indexed the document in [INDEX.md](INDEX.md).
+- This is a requirements and acceptance-gate document, not evidence that the listed future capabilities are implemented. The current React panel remains a disabled shell; the typed browser transport is not connected to the composer. The API remains synchronous, read-only and stateless.
+- The blocking integration inputs are still absent: approved ODID issuer/discovery metadata, public browser client ID, exact registered redirect URI, supported scopes/audience, access-token profile and refresh/revocation contract; production API issuer/audience/JWKS/CORS settings; and a trusted organization/project discovery and selection workflow. These values must not be invented or replaced by pasted bearer tokens.
+- No conversation persistence, streaming, tool execution, patch application, shell, or agent delegation was enabled. Persistence requires an approved encryption/key-management, tenant isolation, retention and deletion design; writes and execution require their separate security controls.
+- No local tests were run in this hosted repository session. This documentation-only change still requires the current-head GitHub Actions checks. No merge to `main` or deployment was performed.
+
 ## IDE patch preview integration — 2026-11-21
 
 - Added `previewWorkspacePatch` in `apps/web/src/companion.ts`: browser Web Crypto computes base hashes, the client sends only the proposed replacement and expected hashes to the paired local companion, and it validates the preview-only response contract and file identities.
