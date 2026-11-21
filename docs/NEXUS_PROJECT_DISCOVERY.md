@@ -35,3 +35,10 @@ The module does not persist access tokens, discover organizations, implement OID
 ## Explicit limitations
 
 This increment is a reusable API client, not an end-to-end sign-in or project-selection experience. It does not change API authorization, add roles, persist credentials, enable chat submission, or claim production readiness. The UI must not enable project-dependent chat until authentication, trusted organization discovery, consent and project selection are connected and verified.
+
+
+## Organization discovery endpoint and browser selector — 2026-11-21
+
+- Added `GET /api/v1/organizations` to list only active memberships for the verified identity, bounded to 100 and audited per returned organization.
+- Added a strict typed browser transport and connected the NEXUS panel to organization discovery before project selection.
+- This endpoint returns organization IDs and roles only; display names, invitations and membership administration remain separate concerns.
