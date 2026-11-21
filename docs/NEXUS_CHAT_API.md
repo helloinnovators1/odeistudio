@@ -97,3 +97,18 @@ Feature branch: `feat/nexus-durable-conversations`. This increment is not merged
 - Automated tests have been added for owner/tenant isolation, optimistic versions, create/list/read/append/delete, durable chat turns, browser transport and the audit `started` lifecycle. They are not yet verified on this branch until CI completes.
 
 Not included in this increment: SSE/token streaming, guaranteed provider cancellation, tool invocation, chat-generated patch proposals, patch approval/application/rollback, isolated terminal/test execution, agent orchestration or production ODID/Mongo/model deployment configuration.
+
+
+## NEXUS SSE streaming increment — in review (2026-11-21)
+
+Feature branch: `feat/nexus-streaming-chat`. This increment is not merged or deployed.
+
+- Added authenticated `POST /api/v1/organizations/{organization_id}/projects/{project_id}/nexus/chat/stream` requiring explicit cloud-model consent and a server-owned conversation ID.
+- Streams Responses API text deltas over Server-Sent Events. The API persists the user turn before generation and the assistant turn only after successful stream completion, using optimistic conversation versions.
+- Added incremental credential redaction that withholds incomplete secret-like values across provider event boundaries before any text delta is sent to the browser.
+- Emits `status`, `delta`, `error` and `done` events; disables response caching and proxy buffering.
+- Connected the browser panel to incremental SSE parsing and rendering. The existing Stop control aborts the browser request; provider cancellation is best-effort because the synchronous SDK worker can only stop when its stream iterator yields or closes.
+- Provider streaming uses `store=False`, no tools and the existing bounded/redacted context. The panel continues to require explicit per-message cloud consent.
+- Added server streaming/redaction, route persistence, and browser SSE transport tests. CI on the exact feature head is required before merge.
+
+Still outstanding: durable transactional audit coupling for every conversation mutation, guaranteed provider-side cancellation, encrypted-at-rest/retention configuration verification, repository tool invocation, task-planning UI, persistent patch proposals, approval/application/rollback, isolated command/test execution, agent orchestration and production staging E2E.
