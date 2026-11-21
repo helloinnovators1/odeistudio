@@ -257,8 +257,11 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     }, refreshDelay);
     return () => {
       window.clearTimeout(timer);
-      refreshAbortRef.current?.abort();
-      refreshAbortRef.current = null;
+      if (refreshAbortRef.current) {
+        authGenerationRef.current += 1;
+        refreshAbortRef.current.abort();
+        refreshAbortRef.current = null;
+      }
     };
   }, [access, config.auth]);
 
