@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   beginODIDLogin,
   completeODIDLogin,
+  clearODIDLoginTransaction,
+  refreshODIDAccessToken,
+  revokeODIDToken,
   type ODidAccessToken,
   type ODidOAuthConfig,
 } from "./odid-auth";
@@ -103,6 +106,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const abortRef = useRef<AbortController | null>(null);
   const taskAbortRef = useRef<AbortController | null>(null);
   const callbackHandled = useRef(false);
+  const authGenerationRef = useRef(0);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -125,6 +129,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setAuthError("");
     void completeODIDLogin(window.location.href, config.auth)
       .then((token) => {
+        authGenerationRef.current += 1;
         setAccess(token);
         setNotice("Signed in. Loading your active organization memberships.");
       })
@@ -196,9 +201,11 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
   useEffect(() => {
     if (!access) return;
-    const remaining = access.expiresAt - Date.now();
-    if (remaining <= 0) {
+    const expireSession = (message: string, error = "") => {
+      authGenerationRef.current += 1;
       setAccess(null);
+      setAuthBusy(false);
+      setAuthError(error);
       setOrganizations([]);
       setOrganizationId("");
       setProjects([]);
@@ -208,20 +215,44 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       setConversationId("");
       setTaskPlan(null);
       setTaskError("");
-      setNotice("Your sign-in expired. Sign in again.");
+      setNotice(message);
+    };
+    const remaining = access.expiresAt - Date.now();
+    if (remaining <= 0) {
+      expireSession("Your sign-in expired. Sign in again.");
       return;
     }
+    const refreshToken = access.refreshToken;
+    const refreshDelay = refreshToken
+      ? Math.max(0, remaining - Math.min(60_000, Math.floor(remaining / 2)))
+      : remaining;
+    const generation = authGenerationRef.current;
     const timer = window.setTimeout(() => {
-      setAccess(null);
-      setOrganizations([]);
-      setOrganizationId("");
-      setProjects([]);
-      setProjectId("");
-      setMessages([]);
-      setNotice("Your sign-in expired. Sign in again.");
-    }, remaining);
+      if (!refreshToken || !config.auth) {
+        expireSession("Your sign-in expired. Sign in again.");
+        return;
+      }
+      setAuthBusy(true);
+      void refreshODIDAccessToken(config.auth, refreshToken)
+        .then((nextToken) => {
+          if (authGenerationRef.current !== generation) return;
+          setAccess(nextToken);
+          setAuthError("");
+          setNotice("Your ODID session was refreshed securely.");
+        })
+        .catch(() => {
+          if (authGenerationRef.current !== generation) return;
+          expireSession(
+            "Your ODID session could not be refreshed. Sign in again.",
+            "Session refresh failed. Please authenticate again.",
+          );
+        })
+        .finally(() => {
+          if (authGenerationRef.current === generation) setAuthBusy(false);
+        });
+    }, refreshDelay);
     return () => window.clearTimeout(timer);
-  }, [access]);
+  }, [access, config.auth]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -352,11 +383,22 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   }
 
   function signOut() {
+    const currentAccess = access;
+    authGenerationRef.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
     taskAbortRef.current?.abort();
     taskAbortRef.current = null;
     setAccess(null);
+    setAuthBusy(false);
+    try { clearODIDLoginTransaction(); } catch { /* no pending transaction to clear */ }
+    if (config.auth && currentAccess) {
+      const token = currentAccess.refreshToken ?? currentAccess.accessToken;
+      const hint = currentAccess.refreshToken ? "refresh_token" : "access_token";
+      void revokeODIDToken(config.auth, token, hint).catch(() => {
+        // Local sign-out must complete even when the provider revocation endpoint is unavailable.
+      });
+    }
     setOrganizations([]);
     setOrganizationId("");
     setProjects([]);
