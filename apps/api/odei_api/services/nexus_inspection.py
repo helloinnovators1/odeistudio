@@ -71,10 +71,15 @@ async def inspect_attached_project_excerpts(
         )
         if conversation is None:
             raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Conversation was not found."})
-        prior_messages = [
-            {"role": item["role"], "content": item["content"]}
-            for item in conversation["messages"][-19:]
-        ]
+        prior_messages = []
+        prior_characters = 0
+        for item in reversed(conversation["messages"][-19:]):
+            content = item["content"]
+            if prior_characters + len(content) > 72_000:
+                break
+            prior_messages.append({"role": item["role"], "content": content})
+            prior_characters += len(content)
+        prior_messages.reverse()
         user_turn = await store.append(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
