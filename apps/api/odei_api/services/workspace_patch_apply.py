@@ -12,7 +12,11 @@ import stat
 from pathlib import PurePosixPath
 from typing import Any
 
-from odei_api.services.patch_proposals import MAX_FILE_BYTES, PatchProposalError, validate_patch_path
+from odei_api.services.patch_proposals import (
+    MAX_FILE_BYTES,
+    PatchProposalError,
+    validate_patch_path,
+)
 
 
 class WorkspacePatchApplyError(ValueError):
