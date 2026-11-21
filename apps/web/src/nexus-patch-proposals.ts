@@ -41,7 +41,7 @@ function normalizeBase(value: string): string {
   if ((url.protocol !== "https:" && !localHttp) || url.username || url.password || url.search || url.hash) {
     throw new TypeError("NEXUS API must use HTTPS (or loopback HTTP) without URL credentials or query parameters.");
   }
-  return url.toString().replace(/\\/+$/, "");
+  return url.toString().replace(/\/+$/, "");
 }
 
 function validateSummary(value: unknown): NexusPatchProposalSummary {
