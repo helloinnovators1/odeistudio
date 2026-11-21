@@ -34,7 +34,7 @@ from odei_api.services.patch_proposals import (
     build_patch_proposal,
     validate_patch_path,
 )
-from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+from odei_api.services.workspace_handles import WorkspaceHandleError, WorkspaceHandleRegistry
 
 DEFAULT_PORT = 8765
 DEFAULT_PAIRING_TTL_SECONDS = 300
@@ -448,6 +448,8 @@ def create_companion_app(
             applied = await run_in_threadpool(
                 registry.apply_patch, workspace_id, file_item
             )
+        except WorkspaceHandleError as exc:
+            raise HTTPException(status_code=404, detail="The selected workspace is no longer available") from exc
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=409, detail="The approved patch could not be applied to the current workspace state") from exc
         return {
