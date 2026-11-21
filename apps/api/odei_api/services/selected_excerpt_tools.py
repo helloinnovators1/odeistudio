@@ -158,7 +158,7 @@ class SelectedExcerptTools:
                 raise SelectedExcerptToolError("A replacement proposal already exists for this attached file")
             if len(self._proposed_changes) >= MAX_EXCERPTS:
                 raise SelectedExcerptToolError("A proposal may change at most five attached files")
-            if len(content) > MAX_EXCERPT_CHARS or "\\x00" in content:
+            if len(content) > MAX_EXCERPT_CHARS or "\x00" in content:
                 raise SelectedExcerptToolError("Replacement content exceeds the 8,000-character text limit")
             try:
                 content.encode("utf-8", errors="strict")
