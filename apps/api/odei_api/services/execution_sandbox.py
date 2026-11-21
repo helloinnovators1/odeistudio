@@ -218,6 +218,7 @@ class ContainerSandbox:
         )
 
     async def _remove_container(self, container_name: str) -> None:
+        process: asyncio.subprocess.Process | None = None
         try:
             process = await asyncio.create_subprocess_exec(
                 self._runtime, "rm", "--force", container_name,
@@ -225,8 +226,32 @@ class ContainerSandbox:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             await asyncio.wait_for(process.wait(), timeout=5)
-        except (OSError, asyncio.TimeoutError):
+        except asyncio.TimeoutError:
+            if process is not None and process.returncode is None:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                await process.wait()
+        except OSError:
             return
+
+    @staticmethod
+    async def _terminate_process(process: asyncio.subprocess.Process) -> None:
+        if process.returncode is not None:
+            return
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            return
+        try:
+            await asyncio.wait_for(process.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            await process.wait()
 
     async def run(
         self,
@@ -275,13 +300,7 @@ class ContainerSandbox:
             except asyncio.TimeoutError:
                 timed_out = True
                 await self._remove_container(container_name)
-                if process.returncode is None:
-                    process.terminate()
-                    try:
-                        await asyncio.wait_for(process.wait(), timeout=3)
-                    except asyncio.TimeoutError:
-                        process.kill()
-                        await process.wait()
+                await self._terminate_process(process)
 
             stdout_bytes, stdout_truncated = await stdout_task
             stderr_bytes, stderr_truncated = await stderr_task
@@ -297,12 +316,7 @@ class ContainerSandbox:
         except asyncio.CancelledError:
             if process is not None and process.returncode is None:
                 await self._remove_container(container_name)
-                process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=3)
-                except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
+                await self._terminate_process(process)
             raise
         finally:
             await self._remove_container(container_name)
