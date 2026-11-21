@@ -268,7 +268,7 @@ function validateConversation(value: unknown): NexusConversation {
     typeof item.conversation_id !== "string" || !item.conversation_id ||
     typeof item.organization_id !== "string" || typeof item.project_id !== "string" ||
     typeof item.title !== "string" || !Array.isArray(item.messages) ||
-    item.messages.length > 200 || !Number.isInteger(item.version) ||
+    item.messages.length > 200 || typeof item.version !== "number" || !Number.isInteger(item.version) ||
     typeof item.created_at !== "string" || typeof item.updated_at !== "string"
   ) throw new NexusChatTransportError("NEXUS returned an invalid conversation contract.", 200);
   const messages = item.messages.map((entry) => {
@@ -316,8 +316,8 @@ export async function listNexusConversations(
     const item = value as Record<string, unknown>;
     if (
       typeof item.conversation_id !== "string" || !item.conversation_id ||
-      typeof item.title !== "string" || !Number.isInteger(item.version) ||
-      !Number.isInteger(item.message_count) || (item.message_count as number) < 0 ||
+      typeof item.title !== "string" || typeof item.version !== "number" || !Number.isInteger(item.version) ||
+      typeof item.message_count !== "number" || !Number.isInteger(item.message_count) || item.message_count < 0 ||
       typeof item.updated_at !== "string"
     ) throw new NexusChatTransportError("NEXUS returned an invalid conversation summary.", 200);
     return item as unknown as NexusConversationSummary;
