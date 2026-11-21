@@ -30,7 +30,7 @@ def test_builds_create_update_and_delete_review_changes() -> None:
     assert update.result_sha256 == sha256_text(changes["src/main.py"])
     assert "-print('old')" in update.unified_diff
     assert "+print('new')" in update.unified_diff
-    assert proposal.total_content_bytes == len("# New\nprint('new')\n".encode())
+    assert proposal.total_content_bytes == len(b"# New\nprint('new')\n")
 
 
 def test_rejects_stale_base_hash() -> None:
@@ -103,7 +103,7 @@ def test_requires_exact_expected_hash_set() -> None:
 
 
 def test_rejects_more_than_twenty_file_changes() -> None:
-    changes = {"file-%02d.txt" % index: "x" for index in range(21)}
+    changes = {f"file-{index:02d}.txt": "x" for index in range(21)}
     hashes = {path: None for path in changes}
     with pytest.raises(PatchProposalError, match="between 1 and 20"):
         build_patch_proposal({}, changes, hashes)
