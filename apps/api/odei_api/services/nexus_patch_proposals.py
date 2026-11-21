@@ -91,11 +91,11 @@ class MongoPatchProposalStore:
     async def create(
         self, *, organization_id: str, project_id: str,
         owner_issuer: str, owner_subject: str, title: str,
-        files: list[dict[str, Any]],
+        files: list[dict[str, Any]], proposal_id: str | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         document = {
-            "proposal_id": uuid4().hex,
+            "proposal_id": proposal_id or uuid4().hex,
             "organization_id": organization_id,
             "project_id": project_id,
             "owner_issuer": owner_issuer,
