@@ -306,3 +306,12 @@ The attached-file inspection flow now supports a separate review-only change pro
 The authenticated inspection route computes the base SHA-256 from the submitted base snapshot, validates the replacement through the patch proposal validator, persists the review record under the authenticated organization/project/author, and audits proposal creation. The panel loads the saved diff and exposes owner-only approve/reject actions with optimistic version checks.
 
 **Approval is not application.** The proposal API and UI keep `application_enabled=false`; no file writes or shell commands occur. Applying an approved proposal still requires a separately designed single-use capability, independent local companion verification, fresh handle-relative base hash checks, safe atomic writes, rollback and recovery tests. This increment is in review and has not been merged or deployed.
+
+
+## Approved one-file local application — in review (2026-11-21)
+
+- The chat review card now exposes **Apply approved patch to selected folder** only when the server identifies the signed-in user as project owner, the proposal is approved, exactly one file is included, and the paired local companion advertises `patch:apply`.
+- The browser obtains a fresh one-use challenge from the paired companion, requests an Ed25519 capability from the authenticated API for the exact approved proposal version and selected local workspace, then sends the capability and exact file operation back to that companion.
+- The companion binds the challenge to the current pairing-session token and workspace, consumes it once, independently validates the issuer/audience/key ID/expiry/resource claims/patch digest/challenge, and rejects capability replay. Companion restart clears outstanding challenges.
+- The companion rechecks the current base hash and uses a handle-relative atomic one-file operation. The Studio reloads the file and Explorer after success. When the companion has no pinned public key configuration, it stays read-only and does not advertise `patch:apply`.
+- Multi-file proposals remain reviewable but are not applicable through this first release. Durable rollback/recovery, multi-file transactions, shell/test execution and Windows 10 build 18362 validation remain outstanding. The code is in stacked PR #23 and is not merged or deployed.
