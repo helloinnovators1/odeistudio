@@ -160,7 +160,7 @@ def test_rejects_windows_device_aliases_and_oversized_components(path: str) -> N
 
 
 def test_rejects_non_nfc_unicode_paths() -> None:
-    decomposed = "cafe\\u0301.txt"
+    decomposed = "cafe\u0301.txt"
     with pytest.raises(PatchProposalError, match="Unicode NFC"):
         build_patch_proposal({}, {decomposed: "content"}, {decomposed: None})
 
