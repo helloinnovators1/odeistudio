@@ -777,6 +777,17 @@ def test_windows_relative_rename_uses_nt_set_information_file(monkeypatch):
 
     captured = {}
 
+    def fake_duplicate_handle(source_process, source_handle, target_process, target_handle, desired_access, inherit, options):
+        ctypes.cast(target_handle, ctypes.POINTER(windows.wintypes.HANDLE)).contents.value = 0x9876
+        captured["desired_access"] = desired_access
+        return 1
+
+    fake_kernel32 = SimpleNamespace(
+        GetCurrentProcess=lambda: 0x1111,
+        DuplicateHandle=fake_duplicate_handle,
+        CloseHandle=lambda handle: captured.setdefault("closed_root", handle.value),
+    )
+
     def fake_nt_set_information_file(handle, io_status, buffer, length, info_class):
         info = ctypes.cast(buffer, ctypes.POINTER(windows._FileRenameInfo)).contents
         name = ctypes.string_at(
@@ -795,15 +806,17 @@ def test_windows_relative_rename_uses_nt_set_information_file(monkeypatch):
 
     monkeypatch.setattr(
         windows, "_apis",
-        lambda: (None, SimpleNamespace(NtSetInformationFile=fake_nt_set_information_file)),
+        lambda: (fake_kernel32, SimpleNamespace(NtSetInformationFile=fake_nt_set_information_file)),
     )
-    windows._rename_relative(None, 0x1234, 0x5678, "created.py", replace=False)
+    windows._rename_relative(fake_kernel32, 0x1234, 0x5678, "created.py", replace=False)
 
     assert captured == {
         "handle": 0x1234,
-        "root": 0x5678,
+        "root": 0x9876,
         "name": "created.py",
         "replace": False,
         "length": windows._FileRenameInfo.FileName.offset + len("created.py".encode("utf-16-le")),
         "info_class": 10,
+        "desired_access": windows.FILE_TRAVERSE | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE,
+        "closed_root": 0x9876,
     }
