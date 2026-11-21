@@ -154,3 +154,27 @@ def test_runner_captures_output_and_exit_code_and_cleans_container(tmp_path: Pat
     assert result.timed_out is False
     assert result.stdout_truncated is False
     assert result.stderr_truncated is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX executable shim used for OCI runtime timeout test")
+def test_runner_terminates_timed_out_runtime(tmp_path: Path) -> None:
+    runtime = tmp_path / "slow-runtime"
+    runtime.write_text(
+        "#!/usr/bin/env python3\\n"
+        "import sys, time\\n"
+        "if len(sys.argv) > 1 and sys.argv[1] == 'run':\\n"
+        " time.sleep(10)\\n"
+        "raise SystemExit(0)\\n",
+        encoding="utf-8",
+    )
+    runtime.chmod(0o755)
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    workspace = root / "job"
+    workspace.mkdir()
+    sandbox = ContainerSandbox(runtime_path=runtime, workspace_root=root)
+
+    result = asyncio.run(sandbox.run(profile(timeout_seconds=1), workspace))
+
+    assert result.timed_out is True
+    assert result.exit_code == 124
