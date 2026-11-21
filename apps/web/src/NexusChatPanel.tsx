@@ -270,7 +270,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         setConversationId(activeConversationId);
         setConversations((current) => [{ conversation_id: created.conversation_id, title: created.title, version: created.version, message_count: created.messages.length, updated_at: created.updated_at }, ...current].slice(0, 30));
       }
-      const response = await sendNexusChat({
+      const assistantId = "stream-" + newMessageId();
+      let assistantStarted = false;
+      const response = await sendNexusChatStream({
         apiBaseUrl: config.apiBaseUrl,
         organizationId,
         projectId,
@@ -280,15 +282,22 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         workspaceFiles: excerpt,
         cloudModelConsent: true,
         signal: controller.signal,
+      }, (delta) => {
+        setMessages((current) => {
+          if (!assistantStarted) {
+            assistantStarted = true;
+            return [...current, { id: assistantId, role: "assistant" as const, content: delta }].slice(-20);
+          }
+          return current.map((message) => message.id === assistantId
+            ? { ...message, content: message.content + delta }
+            : message);
+        });
       });
-      setMessages((current) => [
-        ...current,
-        { id: newMessageId(), role: "assistant" as const, content: response.answer },
-      ].slice(-20));
-      setNotice("Saved response from " + response.model + ". Conversation history is stored in your authorized project.");
+      setNotice("Streaming response saved from " + response.model + ". Conversation history is stored in your authorized project.");
     } catch (cause) {
+      setMessages((current) => current.filter((message) => !message.id.startsWith("stream-")));
       if (controller.signal.aborted) {
-        setNotice("Client request aborted. The current API does not guarantee provider-side cancellation.");
+        setNotice("Stream cancelled. The submitted user turn remains saved; provider cancellation is best-effort.");
       } else {
         setChatError(errorMessage(cause));
       }
