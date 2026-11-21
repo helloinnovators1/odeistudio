@@ -425,6 +425,7 @@ export async function refreshODIDAccessToken(
   if (options.signal?.aborted) controller.abort();
   else options.signal?.addEventListener("abort", forwardAbort, { once: true });
   let response: Response;
+  let payload: Record<string, unknown>;
   try {
     response = await fetcher(metadata.tokenEndpoint, {
       method: "POST",
@@ -438,13 +439,14 @@ export async function refreshODIDAccessToken(
       },
       body: body.toString(),
     });
-  } catch {
+    payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "refresh-token");
+  } catch (error) {
+    if (error instanceof ODidOAuthError) throw error;
     throw new ODidOAuthError("ODID session refresh could not be completed securely.");
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", forwardAbort);
   }
-  const payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "refresh-token");
   if (!response.ok) throw new ODidOAuthError("ODID rejected the session refresh. Sign in again.");
   return parseTokenResponse(payload, options.now ?? Date.now(), currentRefreshToken);
 }
