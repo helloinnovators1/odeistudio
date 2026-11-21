@@ -185,7 +185,10 @@ def _apply_posix(root_fd: int, item: dict[str, Any], parsed) -> dict[str, str | 
                 os.unlink(temp_name, dir_fd=parent_fd)
             except OSError:
                 pass
-        os.close(parent_fd)
+        try:
+            os.close(parent_fd)
+        except OSError:
+            pass
 
 
 def apply_single_file_patch(grant: Any, item: dict[str, Any]) -> dict[str, str | bool]:
