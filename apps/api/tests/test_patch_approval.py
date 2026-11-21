@@ -53,7 +53,7 @@ def _fixture():
 
 
 def test_capability_binds_exact_workspace_proposal_version_and_patch_and_is_one_use():
-    _, _, files = _fixture()
+    settings, public_keys, files = _fixture()
     now = int(time.time())
     token, expires_at, digest = issue_patch_apply_capability(
         settings=settings,
@@ -126,7 +126,7 @@ def test_capability_rejects_changed_content_and_wrong_workspace():
 
 
 def test_capability_rejects_untrusted_keys_and_invalid_workspace_or_file_hash():
-    settings, public_keys, files = _fixture()
+    _, _, files = _fixture()
     with pytest.raises(PatchApprovalNotConfigured):
         verify_patch_apply_capability(
             "x", public_keys={}, issuer="https://api.odei.example",
