@@ -535,7 +535,7 @@ def _build_apply_client(tmp_path):
     original = "print('ODEI')"
     (selected / "main.py").write_text(original, encoding="utf-8")
     registry = WorkspaceHandleRegistry()
-    workspace_id = registry.register_selected_root(selected)
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
     private = Ed25519PrivateKey.generate()
