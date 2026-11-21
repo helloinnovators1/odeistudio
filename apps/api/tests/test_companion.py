@@ -719,3 +719,26 @@ def test_workspace_handle_applies_root_create_and_delete_atomically(tmp_path):
         assert not (selected / "created.py").exists()
     finally:
         registry.close()
+
+
+def test_unconfigured_companion_stays_read_only_and_cannot_issue_apply_challenges(tmp_path):
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        pair_response = client.post(
+            "/v1/pair", headers={"Origin": ORIGIN}, json={"code": code},
+        )
+        assert pair_response.status_code == 200
+        assert pair_response.json()["permissions"] == ["workspace:read"]
+        headers = {
+            "Origin": ORIGIN,
+            "Authorization": f"Bearer {pair_response.json()['access_token']}",
+        }
+        workspace = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]
+        assert workspace["access"] == "read-only"
+        response = client.post(
+            f"/v1/workspaces/{workspace['workspace_id']}/apply-challenge",
+            headers=headers,
+        )
+        assert response.status_code == 503
+    finally:
+        registry.close()
