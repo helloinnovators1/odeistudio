@@ -182,7 +182,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
       : [];
     const next: TranscriptMessage[] = [
       ...messages,
-      { id: newMessageId(), role: "user", content },
+      { id: newMessageId(), role: "user" as const, content },
     ].slice(-20);
     setMessages(next);
     setDraft("");
@@ -204,7 +204,7 @@ export default function NexusChatPanel({ onClose, activeFile = null }: Props) {
       });
       setMessages((current) => [
         ...current,
-        { id: newMessageId(), role: "assistant", content: response.answer },
+        { id: newMessageId(), role: "assistant" as const, content: response.answer },
       ].slice(-20));
       setNotice(`Read-only response from ${response.model}. No tools ran and no conversation was persisted.`);
     } catch (cause) {
