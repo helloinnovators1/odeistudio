@@ -288,3 +288,27 @@ def test_apply_capability_requires_project_owner_and_explicit_confirmation(patch
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "PROJECT_OWNER_REQUIRED"
 
+
+
+def test_apply_capability_fails_closed_without_signing_configuration(patch_state):
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
+        json=_payload(),
+    ).json()
+    path = f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{created['proposal_id']}"
+    client.post(path + "/approve", json={"expected_version": 0})
+    response = client.post(path + "/apply-capability", json={
+        "expected_version": 1,
+        "workspace_id": "workspace_1234567890123456",
+        "confirm_apply": True,
+    })
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "PATCH_APPROVAL_SIGNING_UNAVAILABLE"
+
+    unconfirmed = client.post(path + "/apply-capability", json={
+        "expected_version": 1,
+        "workspace_id": "workspace_1234567890123456",
+        "confirm_apply": False,
+    })
+    assert unconfirmed.status_code == 422
