@@ -165,7 +165,21 @@ export async function sendNexusChat(
     );
   }
 
+  const proposal = payload.patch_proposal;
+  const proposalIsValid = proposal === undefined || proposal === null || (
+    typeof proposal === "object" && !Array.isArray(proposal) &&
+    typeof (proposal as Record<string, unknown>).proposal_id === "string" &&
+    typeof (proposal as Record<string, unknown>).title === "string" &&
+    (proposal as Record<string, unknown>).status === "pending" &&
+    typeof (proposal as Record<string, unknown>).version === "number" &&
+    Number.isInteger((proposal as Record<string, unknown>).version) &&
+    typeof (proposal as Record<string, unknown>).file_count === "number" &&
+    Number.isInteger((proposal as Record<string, unknown>).file_count) &&
+    typeof (proposal as Record<string, unknown>).can_decide === "boolean" &&
+    (proposal as Record<string, unknown>).application_enabled === false
+  );
   if (
+    !proposalIsValid ||
     typeof payload.answer !== "string" || !payload.answer.trim() ||
     typeof payload.model !== "string" || payload.read_only !== true ||
     payload.tools_executed !== 0 || typeof payload.conversation_persisted !== "boolean" ||
@@ -514,6 +528,16 @@ export async function sendNexusChatStream(
 }
 
 
+export interface NexusChatInspectionProposal {
+  proposal_id: string;
+  title: string;
+  status: "pending";
+  version: number;
+  file_count: number;
+  can_decide: boolean;
+  application_enabled: false;
+}
+
 export interface NexusChatInspectionResponse {
   answer: string;
   model: string;
@@ -522,6 +546,7 @@ export interface NexusChatInspectionResponse {
   tool_names: string[];
   conversation_persisted: true;
   conversation_id: string;
+  patch_proposal?: NexusChatInspectionProposal | null;
 }
 
 export async function sendNexusChatInspection(
@@ -604,6 +629,7 @@ export async function sendNexusChatInspection(
   }
   const allowedTools = new Set([
     "list_attached_excerpts", "read_attached_excerpt", "search_attached_excerpts",
+    "propose_attached_file_change",
   ]);
   if (
     typeof payload.answer !== "string" || !payload.answer.trim() ||
