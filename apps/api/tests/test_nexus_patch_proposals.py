@@ -127,7 +127,7 @@ def _payload():
 
 
 def test_patch_proposal_is_persisted_redacted_and_owner_approved(patch_state):
-    _, audit, store = patch_state
+    _, audit, _ = patch_state
     client = TestClient(app)
     response = client.post(
         "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
