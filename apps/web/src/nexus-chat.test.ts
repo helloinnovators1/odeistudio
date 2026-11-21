@@ -3,6 +3,7 @@ import {
   NexusChatTransportError,
   sendNexusChat,
   createNexusConversation,
+  deleteNexusConversation,
   listNexusConversations,
   getNexusConversation,
   type NexusChatRequest,
@@ -83,6 +84,15 @@ describe("NEXUS chat transport", () => {
       expect(init?.cache).toBe("no-store");
       expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer ephemeral-token");
     }
+  });
+
+  it("deletes only the selected owner-scoped conversation and requires confirmation", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      conversation_id: "conversation-1", deleted: true,
+    }), { status: 200 }));
+    await expect(deleteNexusConversation(base.apiBaseUrl, base.organizationId, base.projectId, base.accessToken, "conversation-1", fetcher)).resolves.toBeUndefined();
+    expect(fetcher.mock.calls[0][1]?.method).toBe("DELETE");
+    expect(fetcher.mock.calls[0][1]?.credentials).toBe("omit");
   });
 
   it("allows HTTP only for loopback development endpoints", async () => {
