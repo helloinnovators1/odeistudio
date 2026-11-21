@@ -142,7 +142,7 @@ export function approveNexusTask(
 export function cancelNexusTask(
   apiBaseUrl: string, organizationId: string, projectId: string,
   accessToken: string, taskId: string, expectedVersion: number,
-  fetcher: typeof fetch = fetch,
+  fetcher: typeof fetch = fetch, signal?: AbortSignal,
 ): Promise<NexusTask> {
   return taskRequest(
     apiBaseUrl, organizationId, projectId, accessToken,
