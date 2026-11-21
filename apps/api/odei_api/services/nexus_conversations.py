@@ -105,6 +105,16 @@ async def create_conversation(
     return _response(document)
 
 
+def _summary(document: dict) -> dict:
+    return {
+        "conversation_id": document["conversation_id"],
+        "title": document["title"],
+        "version": document["version"],
+        "message_count": len(document["messages"]),
+        "updated_at": document["updated_at"].isoformat(),
+    }
+
+
 @router.get(
     f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/conversations",
     tags=["nexus"],
@@ -126,7 +136,7 @@ async def list_conversations(
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "CONVERSATION_READ_FAILED", "message": "NEXUS conversation history is temporarily unavailable."}) from exc
     await _audit(request, principal, organization_id, project_id, "nexus.conversation.list", "success", metadata={"count": len(documents)})
-    return {"conversations": [_response(item) for item in documents], "limit": limit}
+    return {"conversations": [_summary(item) for item in documents], "limit": limit}
 
 
 @router.get(
