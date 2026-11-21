@@ -6,7 +6,7 @@ import {
   type ODidOAuthConfig,
 } from "./odid-auth";
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
-import { createNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
+import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChat, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -391,10 +391,29 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 <option value="">New conversation</option>
                 {conversations.map((item) => <option key={item.conversation_id} value={item.conversation_id}>{item.title}</option>)}
               </select>
-              <button type="button" className="nexus-link-button" disabled={sending || conversationBusy}
-                onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setChatError(""); }}>
-                New
-              </button>
+              <div className="nexus-conversation-actions">
+                <button type="button" className="nexus-link-button" disabled={sending || conversationBusy}
+                  onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setChatError(""); }}>
+                  New
+                </button>
+                {conversationId && (
+                  <button type="button" className="nexus-link-button" disabled={sending || conversationBusy}
+                    onClick={async () => {
+                      if (!window.confirm("Delete this saved conversation permanently?")) return;
+                      setConversationBusy(true);
+                      try {
+                        await deleteNexusConversation(config.apiBaseUrl, organizationId, projectId, access!.accessToken, conversationId);
+                        setConversations((items) => items.filter((item) => item.conversation_id !== conversationId));
+                        setConversationId("");
+                        setMessages([]);
+                        setNotice("Saved conversation deleted.");
+                      } catch (cause) { setChatError(errorMessage(cause)); }
+                      finally { setConversationBusy(false); }
+                    }}>
+                    Delete
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </section>
