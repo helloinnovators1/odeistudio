@@ -48,5 +48,8 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 5. Never place credentials, tokens, connection strings or private customer data in documentation.
 
 - [NEXUS Task Planning and Approval](NEXUS_TASKS.md) — task planning, ownership, approval semantics and execution boundaries.
+- [NEXUS Isolated Execution Engine](EXECUTION_ENGINE.md) — OCI sandbox boundaries, worker lifecycle, execution policy and acceptance gates.
 
 - [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization and verification contract for the merged one-file local companion apply path, plus rollback and production release limits.
+
+- [Ecosystem integration and release gates](ECOSYSTEM_INTEGRATION_RELEASE_GATES.md) — dependency-ordered execution integration, NEXUS/ODID acceptance, MAC/MAD completion, Windows device validation and production release gates.
