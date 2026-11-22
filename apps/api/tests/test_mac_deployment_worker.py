@@ -86,6 +86,7 @@ async def test_worker_resolves_secrets_only_in_memory_and_verifies_provider_resu
     assert store.claimed["worker_id"] == "worker-1"
     assert provider.deployed[0]["database_password"] == "sensitive-runtime-value"
     assert provider.deployed[0]["region"] == "eu-west-1"
+    assert provider.deployed[2] == "stable-request-123"
     assert secrets.calls == [("secret://vault/staging/db", "staging", "aws")]
     assert store.finished["provider_deployment_id"] == "provider-deployment-123"
     assert "sensitive-runtime-value" not in repr(store.finished)
@@ -173,3 +174,51 @@ async def test_worker_cancels_secret_resolution_when_operation_deadline_expires(
     assert result["state"] == "failed"
     assert secrets.cancelled is True
     assert store.failed is not None
+
+
+@pytest.mark.asyncio
+async def test_worker_reuses_provider_idempotency_key_after_crash_before_receipt_persistence():
+    class CrashOnceStore(FakeStore):
+        def __init__(self, value):
+            super().__init__(value)
+            self.crash_once = True
+            self.record_attempts = []
+
+        async def record_provider_deployment(self, **kwargs):
+            self.record_attempts.append(kwargs["provider_deployment_id"])
+            if self.crash_once:
+                self.crash_once = False
+                raise asyncio.CancelledError
+            return await super().record_provider_deployment(**kwargs)
+
+    class CountingProvider(FakeProvider):
+        def __init__(self):
+            super().__init__()
+            self.idempotency_keys = []
+
+        async def deploy(self, config, *, environment, idempotency_key):
+            self.idempotency_keys.append(idempotency_key)
+            return await super().deploy(
+                config, environment=environment, idempotency_key=idempotency_key,
+            )
+
+    store = CrashOnceStore(attempt())
+    provider = CountingProvider()
+    first_worker = MacDeploymentWorker(
+        store=store, environment_store=FakeEnvironmentStore(),
+        secret_resolver=FakeSecrets(), providers={"aws": provider},
+        worker_id="worker-before-crash",
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await first_worker.run_once()
+
+    second_worker = MacDeploymentWorker(
+        store=store, environment_store=FakeEnvironmentStore(),
+        secret_resolver=FakeSecrets(), providers={"aws": provider},
+        worker_id="worker-after-reclaim",
+    )
+    result = await second_worker.run_once()
+
+    assert result["state"] == "succeeded"
+    assert provider.idempotency_keys == ["stable-request-123", "stable-request-123"]
+    assert store.record_attempts == ["provider-deployment-123", "provider-deployment-123"]
