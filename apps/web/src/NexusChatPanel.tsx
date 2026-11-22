@@ -38,6 +38,7 @@ import {
 } from "./nexus-patch-proposals";
 import { getMadExecutionMetrics, listMadIncidents, transitionMadIncident, type MadIncident, type MadMetrics } from "./mad-operations";
 import { RequestGeneration } from "./request-generation";
+import { approveMacEnvironment, createMacEnvironmentDraft, getMacEnvironment, promoteMacEnvironment, rollbackMacEnvironment, submitMacEnvironment, updateMacEnvironmentDraft, type MacEnvironmentRecord } from "./mac-environments";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -97,6 +98,7 @@ export default function NexusChatPanel({
   const [organizationError, setOrganizationError] = useState("");
   const [projects, setProjects] = useState<NexusProject[]>([]);
   const projectLoadGenerationRef = useRef(new RequestGeneration());
+  const macRequestGenerationRef = useRef(new RequestGeneration());
   const [projectId, setProjectId] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
@@ -118,6 +120,13 @@ export default function NexusChatPanel({
   const [madError, setMadError] = useState("");
   const [madIncludeResolved, setMadIncludeResolved] = useState(false);
   const [madAssignee, setMadAssignee] = useState("");
+  const [macOpen, setMacOpen] = useState(false);
+  const [macEnvironmentId, setMacEnvironmentId] = useState<"development" | "staging" | "production">("staging");
+  const [macRecord, setMacRecord] = useState<MacEnvironmentRecord | null>(null);
+  const [macBusy, setMacBusy] = useState(false);
+  const [macError, setMacError] = useState("");
+  const [macConfigText, setMacConfigText] = useState("{\n  \"replicas\": 2\n}");
+  const [macChangeSummary, setMacChangeSummary] = useState("");
   const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState("");
@@ -264,6 +273,9 @@ export default function NexusChatPanel({
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+    setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
+      macRequestGenerationRef.current.invalidate();
+      setMacOpen(false); setMacRecord(null); setMacError(""); setMacBusy(false);
       setNotice(message);
     };
     const remaining = access.expiresAt - Date.now();
@@ -775,6 +787,8 @@ export default function NexusChatPanel({
   }
 
   function signOut() {
+    macRequestGenerationRef.current.invalidate();
+    setMacBusy(false);
     projectLoadGenerationRef.current.invalidate();
     setProjectBusy(false);
     const currentAccess = access;
@@ -1009,7 +1023,7 @@ export default function NexusChatPanel({
       <div className="pane-heading">
         <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
         <div className="nexus-header-actions">
-          {access && <><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
+          {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>
       </div>
@@ -1150,6 +1164,61 @@ export default function NexusChatPanel({
       )}
 
       <div className="nexus-transcript" role="log" aria-label="Conversation" aria-live="polite">
+      {access && macOpen && (
+        <section className="mac-environment-panel" aria-label="MAC environment governance">
+          <div className="nexus-task-heading">
+            <strong>MAC ENVIRONMENT GOVERNANCE</strong>
+            <button type="button" className="nexus-link-button" onClick={() => void refreshMacEnvironment()} disabled={macBusy}>
+              {macBusy ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+          <p className="nexus-muted">Versioned configuration, independent approval and promotion. Provider deployments are not executed by this panel.</p>
+          <label className="mac-field" htmlFor="mac-environment">ENVIRONMENT
+            <select id="mac-environment" value={macEnvironmentId} disabled={macBusy}
+              onChange={(event) => { setMacEnvironmentId(event.target.value as typeof macEnvironmentId); setMacRecord(null); setMacError(""); }}>
+              <option value="development">Development</option>
+              <option value="staging">Staging</option>
+              <option value="production">Production</option>
+            </select>
+          </label>
+          {macError && <p className="nexus-error" role="alert">{macError}</p>}
+          {macRecord && (
+            <div className="mac-state-summary">
+              <span>Latest revision: <strong>{macRecord.latest_version}</strong></span>
+              <span>Active revision: <strong>{macRecord.active_version || "None"}</strong></span>
+              <span>Current state: <strong>{macRecord.versions.find((item) => item.version === macRecord.latest_version)?.status ?? "Unknown"}</strong></span>
+            </div>
+          )}
+          <label className="mac-field" htmlFor="mac-config">CONFIGURATION JSON
+            <textarea id="mac-config" rows={7} spellCheck={false} value={macConfigText}
+              onChange={(event) => setMacConfigText(event.target.value)} disabled={macBusy} />
+          </label>
+          <label className="mac-field" htmlFor="mac-change-summary">CHANGE SUMMARY
+            <input id="mac-change-summary" value={macChangeSummary} maxLength={500}
+              onChange={(event) => setMacChangeSummary(event.target.value)} disabled={macBusy} />
+          </label>
+          <div className="mad-incident-actions">
+            <button type="button" disabled={macBusy || !macChangeSummary.trim()} onClick={() => void saveMacDraft()}>Save draft</button>
+            {macRecord?.versions.find((item) => item.version === macRecord.latest_version)?.status === "draft" &&
+              <button type="button" disabled={macBusy} onClick={() => void runMacTransition("submit")}>Submit for approval</button>}
+            {macRecord?.versions.find((item) => item.version === macRecord.latest_version)?.status === "pending_approval" &&
+              <button type="button" disabled={macBusy} onClick={() => void runMacTransition("approve")}>Approve</button>}
+            {macRecord?.versions.find((item) => item.version === macRecord.latest_version)?.status === "approved" &&
+              <button type="button" disabled={macBusy} onClick={() => void runMacTransition("promote")}>Promote config</button>}
+            {(macRecord?.active_version ?? 0) > 0 &&
+              <button type="button" disabled={macBusy || !macChangeSummary.trim()} onClick={() => void runMacTransition("rollback")}>Create rollback draft</button>}
+          </div>
+          {macRecord && (
+            <details className="mac-history">
+              <summary>Revision history ({macRecord.versions.length})</summary>
+              <ol>{macRecord.versions.slice().reverse().map((item) => (
+                <li key={item.version}>v{item.version} · {item.status} · {item.change_summary}</li>
+              ))}</ol>
+            </details>
+          )}
+          <p className="nexus-disclaimer">API authorization and audit are authoritative. Approval is separate from deployment. Promotion changes the active configuration pointer only; use a separately configured and verified deployment executor for infrastructure changes.</p>
+        </section>
+      )}
       {access && madOpen && (
         <section className="mad-operator-panel" aria-label="Master Admin Dashboard">
           <div className="nexus-task-heading">
