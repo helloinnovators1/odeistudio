@@ -47,6 +47,8 @@ class Attempts:
                         return False
                     if "$gt" in value and not (actual is not None and actual > value["$gt"]):
                         return False
+                    if "$gte" in value and not (actual is not None and actual >= value["$gte"]):
+                        return False
                 elif candidate.get(key) != value:
                     return False
             return True
@@ -177,3 +179,41 @@ async def test_worker_lease_and_retry_limits_reject_invalid_values():
         await store.claim(attempt_id=attempt["_id"], worker_id="worker-1", lease_seconds=True)
     with pytest.raises(MacDeploymentError):
         await store.claim(attempt_id=attempt["_id"], worker_id="worker-1", max_attempts=0)
+
+
+
+@pytest.mark.asyncio
+async def test_claim_next_reclaims_expired_lease_and_terminalizes_retry_exhaustion():
+    attempts = Attempts()
+    store = MongoMacDeploymentStore(attempts, Environments())
+    queued = await store.create_attempt(
+        environment="staging", version=7, provider="aws",
+        idempotency_key="queue-recovery-123", actor="oidc-operator",
+    )
+    first = await store.claim(
+        attempt_id=queued["_id"], worker_id="worker-crashed",
+        lease_seconds=15, max_attempts=2,
+    )
+    assert first["attempt_count"] == 1
+    attempts.items[queued["_id"]]["lease_expires_at"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+    recovered = await store.claim_next(
+        worker_id="worker-recovered", lease_seconds=30, max_attempts=2,
+    )
+    assert recovered["_id"] == queued["_id"]
+    assert recovered["attempt_count"] == 2
+    assert recovered["worker_id"] == "worker-recovered"
+
+    attempts.items[queued["_id"]]["lease_expires_at"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+    exhausted = await store.claim_next(
+        worker_id="worker-last", lease_seconds=30, max_attempts=2,
+    )
+    assert exhausted is None
+    terminal = attempts.items[queued["_id"]]
+    assert terminal["state"] == "failed"
+    assert terminal["verified"] is False
+    assert terminal["lease_expires_at"] is None
+    assert terminal["attempt_count"] == 2
