@@ -161,6 +161,7 @@ def test_mad_metrics_endpoint_rejects_invalid_token_and_returns_safe_metrics(mon
     assert denied.status_code == 401
     assert allowed.status_code == 200
     assert allowed.json()["workers"]["state"] == "unknown"
+    assert allowed.json()["alerts"] == []
     assert "tenant" not in allowed.text.lower()
 
 
@@ -210,3 +211,51 @@ async def test_mad_queue_degrades_when_active_runs_have_no_fresh_workers():
     ))
     assert metrics["workers"]["state"] == "degraded"
     assert metrics["queue"] == {"state": "degraded", "queued": 0, "active": 1, "oldest_queued_at": None}
+
+
+def test_mad_alerts_detect_unavailable_workers_and_aged_queue_without_sensitive_data():
+    from odei_api.services.mad_telemetry import evaluate_mad_alerts
+    metrics = {
+        "observed_at": "2026-11-22T12:00:00+00:00",
+        "workers": {"state": "degraded", "known": 1, "fresh": 0, "stale": 1, "stopping": 0},
+        "queue": {"state": "degraded", "queued": 2, "active": 1,
+                  "oldest_queued_at": "2026-11-22T11:30:00+00:00"},
+        "executions_24h": {"completed": 0, "failed": 0, "cancelled": 0},
+        "private_tenant": "must-not-be-copied",
+    }
+    alerts = evaluate_mad_alerts(metrics)
+    assert [alert["id"] for alert in alerts] == [
+        "mad.execution.worker_pool_unavailable", "mad.execution.queue_backlog",
+    ]
+    assert alerts[0]["severity"] == "critical"
+    assert alerts[1]["age_seconds"] == 1800
+    assert all(alert["status"] == "firing" for alert in alerts)
+    assert "must-not-be-copied" not in repr(alerts)
+
+
+def test_mad_alerts_detect_failure_burst_and_worker_degradation():
+    from odei_api.services.mad_telemetry import evaluate_mad_alerts
+    alerts = evaluate_mad_alerts({
+        "observed_at": "2026-11-22T12:00:00+00:00",
+        "workers": {"state": "degraded", "fresh": 1},
+        "queue": {"queued": 0, "active": 0, "oldest_queued_at": None},
+        "executions_24h": {"failed": 5},
+    })
+    assert {alert["id"] for alert in alerts} == {
+        "mad.execution.worker_pool_degraded", "mad.execution.failure_burst",
+    }
+
+
+def test_mad_alerts_do_not_fire_for_healthy_platform_or_malformed_queue_time():
+    from odei_api.services.mad_telemetry import evaluate_mad_alerts
+    healthy = {
+        "observed_at": "2026-11-22T12:00:00+00:00",
+        "workers": {"state": "healthy", "fresh": 2},
+        "queue": {"queued": 0, "active": 0, "oldest_queued_at": None},
+        "executions_24h": {"failed": 0},
+    }
+    assert evaluate_mad_alerts(healthy) == []
+    malformed = {**healthy, "queue": {
+        "queued": 1, "active": 0, "oldest_queued_at": "not-a-time",
+    }}
+    assert evaluate_mad_alerts(malformed) == []

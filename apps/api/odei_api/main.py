@@ -26,7 +26,7 @@ from odei_api.services.conversation_store import MongoConversationStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
-from odei_api.services.mad_telemetry import collect_mad_execution_metrics
+from odei_api.services.mad_telemetry import collect_mad_execution_metrics, evaluate_mad_alerts
 from odei_api.services.nexus_conversations import router as nexus_conversations_router
 from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
@@ -217,7 +217,9 @@ async def mad_execution_metrics(
             detail={"code": "MAD_METRICS_UNAVAILABLE", "message": "Operational metrics storage is unavailable."},
         )
     try:
-        return await collect_mad_execution_metrics(database)
+        metrics = await collect_mad_execution_metrics(database)
+        metrics["alerts"] = evaluate_mad_alerts(metrics)
+        return metrics
     except PyMongoError as exc:
         logger.warning("MAD metrics collection failed: %s", type(exc).__name__)
         raise HTTPException(
