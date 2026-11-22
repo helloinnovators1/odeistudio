@@ -248,8 +248,6 @@ export default function NexusChatPanel({
       setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false); setChatError("");
       setTaskPlan(null); setTaskError(""); setPatchProposals([]); setSelectedPatch(null); setPatchError("");
       setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
-    setExecutionHistory([]); setExecutionHistoryCursor(null); setExecutionHistoryHasMore(false); setExecutionHistoryError("");
-    setExecutionHistoryBusy(false);
       setExecutionHistory([]); setExecutionHistoryCursor(null); setExecutionHistoryHasMore(false); setExecutionHistoryError("");
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
