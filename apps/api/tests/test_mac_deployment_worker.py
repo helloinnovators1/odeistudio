@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from odei_api.services.mac_deployment_worker import MacDeploymentWorker
