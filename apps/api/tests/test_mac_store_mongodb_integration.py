@@ -220,3 +220,81 @@ async def test_mac_deployment_lease_reclaim_fences_stale_worker_on_mongodb():
     finally:
         await client.drop_database(database_name)
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_mac_revision_backfill_is_transactional_idempotent_and_read_only_in_dry_run():
+    from odei_api.services.mac_environment_migrations import (
+        MacRevisionMigrationConflict,
+        backfill_mac_environment_revisions,
+        initialize_mac_revision_collection,
+    )
+
+    uri = os.getenv("MONGODB_TEST_URI")
+    if not uri:
+        pytest.skip("MONGODB_TEST_URI is not configured")
+
+    client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
+    database_name = f"odei_mac_revision_migration_test_{uuid4().hex}"
+    database = client[database_name]
+    environments = database["mac_environments"]
+    revisions = database["mac_environment_revisions"]
+    try:
+        topology = await client.admin.command("hello")
+        assert topology.get("setName") or topology.get("msg") == "isdbgrid"
+        await initialize_mac_revision_collection(revisions)
+        legacy = {
+            "_id": "staging",
+            "environment": "staging",
+            "latest_version": 2,
+            "active_version": 1,
+            "versions": [
+                {"version": 1, "status": "promoted", "config": {"replicas": 2}},
+                {"version": 2, "status": "draft", "config": {"replicas": 3}},
+            ],
+        }
+        await environments.insert_one(legacy)
+
+        async with client.start_session() as session:
+            async def dry_run(active_session):
+                return await backfill_mac_environment_revisions(
+                    environments, revisions, session=active_session, dry_run=True,
+                )
+            dry_result = await session.with_transaction(dry_run)
+        assert dry_result == {"copied": 2, "already_present": 0}
+        assert await revisions.count_documents({}) == 0
+
+        async with client.start_session() as session:
+            async def apply(active_session):
+                return await backfill_mac_environment_revisions(
+                    environments, revisions, session=active_session,
+                )
+            applied = await session.with_transaction(apply)
+        assert applied == {"copied": 2, "already_present": 0}
+        assert await revisions.count_documents({"environment": "staging"}) == 2
+
+        async with client.start_session() as session:
+            async def retry(active_session):
+                return await backfill_mac_environment_revisions(
+                    environments, revisions, session=active_session,
+                )
+            repeated = await session.with_transaction(retry)
+        assert repeated == {"copied": 0, "already_present": 2}
+
+        # A divergent pre-existing revision must abort the entire transaction;
+        # neither source history nor the conflicting immutable target is changed.
+        await revisions.update_one(
+            {"_id": "staging:2"}, {"$set": {"config.replicas": 99}},
+        )
+        with pytest.raises(MacRevisionMigrationConflict):
+            async with client.start_session() as session:
+                async def conflict(active_session):
+                    return await backfill_mac_environment_revisions(
+                        environments, revisions, session=active_session,
+                    )
+                await session.with_transaction(conflict)
+        assert (await revisions.find_one({"_id": "staging:2"}))["config"]["replicas"] == 99
+        assert (await environments.find_one({"_id": "staging"}))["versions"][1]["config"]["replicas"] == 3
+    finally:
+        await client.drop_database(database_name)
+        await client.close()
