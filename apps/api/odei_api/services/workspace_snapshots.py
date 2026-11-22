@@ -5,6 +5,7 @@ import hashlib
 import io
 import os
 import pathlib
+import re
 import shutil
 import stat
 import zipfile
@@ -22,6 +23,19 @@ _RESERVED_WINDOWS = {"CON", "PRN", "AUX", "NUL"} | {
 }
 _SENSITIVE_DIRECTORIES = {".git", ".ssh", ".aws", ".azure", ".kube", ".gnupg"}
 _ALLOWED_ENV_TEMPLATES = {".env.example", ".env.sample", ".env.template", ".env.dist"}
+_SECRET_PATTERNS = (
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", re.IGNORECASE),
+    re.compile(r"\\bAKIA[0-9A-Z]{16}\\b"),
+    re.compile(r"\\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})\\b"),
+    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{20,}\\b"),
+    re.compile(r"\\bAIza[0-9A-Za-z_-]{35}\\b"),
+    re.compile(
+        r"\\b(?:aws_secret_access_key|client_secret|api_key|secret_key|access_token|refresh_token|password)"
+        r"\\s*[:=]\\s*['\\\"]?[A-Za-z0-9/+_=-]{24,}",
+        re.IGNORECASE,
+    ),
+)
+_SECRET_SCAN_TAIL_BYTES = 512
 _SENSITIVE_NAMES = {
     ".npmrc", ".pypirc", ".netrc", ".git-credentials", "credentials",
     "credentials.json", "secrets.json", "id_rsa", "id_ed25519",
@@ -191,6 +205,7 @@ class WorkspaceSnapshotIngestor:
                 descriptor = os.open(target, flags, 0o600)
                 digest = hashlib.sha256()
                 written = 0
+                scan_tail = b""
                 try:
                     with archive.open(info, "r") as source, os.fdopen(descriptor, "wb") as output:
                         while True:
@@ -201,6 +216,10 @@ class WorkspaceSnapshotIngestor:
                             total_written += len(chunk)
                             if written > self.max_file_bytes or total_written > self.max_total_bytes:
                                 raise SnapshotError("expanded snapshot exceeded its size limit")
+                            scan_window = (scan_tail + chunk).decode("latin-1")
+                            if any(pattern.search(scan_window) for pattern in _SECRET_PATTERNS):
+                                raise SnapshotError("snapshot contains likely credential material")
+                            scan_tail = (scan_tail + chunk)[-_SECRET_SCAN_TAIL_BYTES:]
                             digest.update(chunk)
                             output.write(chunk)
                     if written != info.file_size:
