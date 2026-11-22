@@ -9,8 +9,6 @@ from odei_api.services.execution_runs import (
 )
 
 
-
-
 def make_run(**overrides):
     values = {"id": "run-1", "organization_id": "org-1", "project_id": "project-1",
         "task_id": "task-1", "requester_issuer": "https://identity.example",
@@ -28,8 +26,7 @@ def test_new_run_is_queued_and_hides_lease_token():
 @pytest.mark.parametrize("overrides", [
     {"profile_id": "../python"}, {"snapshot_sha256": "A" * 64},
     {"snapshot_sha256": "not-a-digest"}, {"arguments": "python -m pytest"},
-    {"arguments": ("x
-malicious",)}, {"arguments": ("x" * 1025,)},
+    {"arguments": ("x\nmalicious",)}, {"arguments": ("x" * 1025,)},
     {"arguments": tuple(str(i) for i in range(33))},
     {"organization_id": "../other-tenant"}, {"requester_issuer": "http://identity.example"},
 ])
