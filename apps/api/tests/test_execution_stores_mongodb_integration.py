@@ -18,6 +18,7 @@ from odei_api.services.execution_runs import (
     ExecutionRunStatus,
     MongoExecutionRunStore,
 )
+from odei_api.services.mad_telemetry import MongoWorkerHeartbeatStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
 
@@ -232,6 +233,46 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         assert await database["workspace_snapshots"].count_documents(
             {"_id": snapshot["snapshot_id"]}
         ) == 0
+    finally:
+        await client.drop_database(database_name)
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_heartbeat_persists_lifecycle_and_ttl_index():
+    uri = os.getenv("MONGODB_TEST_URI")
+    if not uri:
+        pytest.skip("MONGODB_TEST_URI is not configured")
+    client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
+    database_name = f"odei_worker_hb_{uuid4().hex}"
+    collection = client[database_name]["execution_worker_heartbeats"]
+    store = MongoWorkerHeartbeatStore(collection)
+    worker_id = "worker-" + uuid4().hex
+    try:
+        await store.initialize()
+        started = await store.heartbeat(worker_id=worker_id, status="idle")
+        idle = await collection.find_one({"_id": worker_id})
+        assert idle["status"] == "idle"
+        assert abs((idle["started_at"].replace(tzinfo=timezone.utc) - started).total_seconds()) < 0.001
+        assert abs((idle["last_seen_at"].replace(tzinfo=timezone.utc) - started).total_seconds()) < 0.001
+
+        busy = await store.heartbeat(
+            worker_id=worker_id, status="busy", active_run_id=uuid4().hex,
+        )
+        running = await collection.find_one({"_id": worker_id})
+        assert running["status"] == "busy"
+        assert abs((running["last_seen_at"].replace(tzinfo=timezone.utc) - busy).total_seconds()) < 0.001
+        assert abs((running["started_at"].replace(tzinfo=timezone.utc) - started).total_seconds()) < 0.001
+
+        stopped = await store.mark_stopped(worker_id=worker_id)
+        offline = await collection.find_one({"_id": worker_id})
+        assert offline["status"] == "stopping"
+        assert abs((offline["last_seen_at"].replace(tzinfo=timezone.utc) - stopped).total_seconds()) < 0.001
+        indexes = await collection.index_information()
+        assert any(
+            index.get("expireAfterSeconds") == 30 * 24 * 60 * 60
+            for index in indexes.values()
+        )
     finally:
         await client.drop_database(database_name)
         await client.close()
