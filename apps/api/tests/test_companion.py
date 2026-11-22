@@ -914,3 +914,91 @@ def test_companion_environment_diagnostics_reject_invalid_public_http_origin():
 
     report = diagnose_companion_environment(port=8765, allowed_origins=["http://studio.example.test"])
     assert report["checks"]["browser_origins"]["ok"] is False
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "pwrite"),
+    reason="POSIX concurrent-write snapshot regression",
+)
+def test_posix_patch_read_rejects_file_modified_during_snapshot(tmp_path, monkeypatch):
+    from odei_api.services import workspace_patch_apply
+
+    target = tmp_path / "target.txt"
+    target.write_bytes(b"before")
+    parent_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    real_read = os.read
+    changed = False
+
+    def racing_read(descriptor, size):
+        nonlocal changed
+        data = real_read(descriptor, size)
+        if not changed:
+            changed = True
+            writer = os.open(target, os.O_WRONLY)
+            try:
+                # Same-length replacement ensures the regression is detected
+                # by inode metadata, not only by a size mismatch.
+                os.pwrite(writer, b"change", 0)
+            finally:
+                os.close(writer)
+        return data
+
+    monkeypatch.setattr(workspace_patch_apply.os, "read", racing_read)
+    try:
+        with pytest.raises(
+            workspace_patch_apply.WorkspacePatchApplyError,
+            match="changed while being read",
+        ):
+            workspace_patch_apply._read_posix(parent_fd, "target.txt")
+    finally:
+        os.close(parent_fd)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows concurrent-write snapshot regression")
+def test_windows_patch_read_rejects_file_modified_during_snapshot(tmp_path, monkeypatch):
+    from odei_api.services import windows_file_handles
+
+    target = tmp_path / "target.txt"
+    target.write_bytes(b"before")
+    descriptor = os.open(
+        target, os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    )
+    metadata = os.fstat(descriptor)
+    real_read = os.read
+    changed = False
+
+    def racing_read(fd, size):
+        nonlocal changed
+        data = real_read(fd, size)
+        if not changed:
+            changed = True
+            writer = os.open(
+                target, os.O_WRONLY | getattr(os, "O_BINARY", 0)
+            )
+            try:
+                # Same-length replacement exercises timestamp/identity checks.
+                os.write(writer, b"change")
+            finally:
+                os.close(writer)
+            # Set a deterministic, distinct mtime instead of relying on the
+            # runner filesystem's timestamp tick resolution.
+            os.utime(
+                target,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1_000_000_000),
+            )
+        return data
+
+    monkeypatch.setattr(
+        windows_file_handles,
+        "open_readonly_file_from_handle",
+        lambda _root, _parts: (descriptor, metadata),
+    )
+    monkeypatch.setattr(windows_file_handles.os, "read", racing_read)
+    with pytest.raises(
+        windows_file_handles.UnsafeWindowsPath,
+        match="changed while being read",
+    ):
+        windows_file_handles._read_windows_file(None, ("target.txt",))

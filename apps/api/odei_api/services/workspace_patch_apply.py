@@ -83,6 +83,19 @@ def _read_posix(parent_fd: int, name: str) -> tuple[str, os.stat_result] | None:
             chunks.extend(chunk)
         if len(chunks) > MAX_FILE_BYTES or b"\x00" in chunks:
             raise WorkspacePatchApplyError("Target is binary or exceeds the safe read limit")
+        # A retained descriptor prevents path substitution, but it does not
+        # prevent another process from modifying the same inode while we read.
+        # Compare stable file identity/metadata before and after the read so a
+        # hash is never calculated over a torn or mixed-version snapshot.
+        after = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns",
+        )
+        if (
+            any(getattr(metadata, field) != getattr(after, field) for field in stable_fields)
+            or len(chunks) != after.st_size
+        ):
+            raise WorkspacePatchApplyError("Target changed while being read")
         try:
             return chunks.decode("utf-8"), metadata
         except UnicodeDecodeError as exc:

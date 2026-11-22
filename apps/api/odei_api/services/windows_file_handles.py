@@ -706,6 +706,18 @@ def _read_windows_file(root_handle, parts: tuple[str, ...]) -> str | None:
             data.extend(chunk)
         if len(data) > 1_000_000 or b"\\x00" in data:
             raise UnsafeWindowsPath("Target is binary or exceeds the safe read limit")
+        # Windows opens deliberately allow other handles to read, write and
+        # rename. Detect a same-inode write during this read before trusting
+        # the bytes as the approved base snapshot.
+        after = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns",
+        )
+        if (
+            any(getattr(metadata, field) != getattr(after, field) for field in stable_fields)
+            or len(data) != after.st_size
+        ):
+            raise UnsafeWindowsPath("Target changed while being read")
         try:
             return data.decode("utf-8")
         except UnicodeDecodeError as exc:
