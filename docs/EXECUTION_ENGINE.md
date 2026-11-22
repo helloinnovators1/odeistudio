@@ -69,3 +69,8 @@ A bounded ZIP ingestion module is implemented on the stacked workspace-snapshot 
 ## Authenticated API and snapshot storage
 
 The API now provides authenticated project/task-scoped execution profile listing, execution creation with separate upload and execution consent, run reads, cursor-paginated events and cancellation requests. GridFS stores archive bytes; metadata and run records are tenant scoped. Creation atomically consumes the approved task and creates the run/event/audit records. See EXECUTION_API.md. This is still not a live worker deployment.
+
+
+## Standalone worker and result lifecycle
+
+A separate `odei-execution-worker` process is implemented. It claims and heartbeats leases, validates snapshot tenant bindings and content digest, runs only the configured OCI profile, polls cancellation, persists redacted bounded stdout/stderr, finalizes run/task state, fails exhausted attempts and schedules snapshot/artifact retention cleanup. It is not deployed or operational until a dedicated host, OCI runtime, reviewed profile digests and environment are configured. See EXECUTION_WORKER.md.
