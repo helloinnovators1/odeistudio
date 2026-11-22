@@ -191,8 +191,8 @@ def test_mac_lifecycle_routes_forward_verified_actor_and_compare_and_set_version
 
 
 def test_mac_success_audit_uses_same_mongo_transaction_session():
-    from types import SimpleNamespace
     import asyncio
+    from types import SimpleNamespace
     from odei_api.security.auth import Principal
     from odei_api.services.mac_environment_api import _mutate_with_audit
 
