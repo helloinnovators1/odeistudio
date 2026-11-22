@@ -162,8 +162,6 @@ async def test_worker_cancels_secret_resolution_when_operation_deadline_expires(
                 self.cancelled = True
                 raise
 
-    import asyncio
-
     store = FakeStore(attempt())
     secrets = HangingSecrets()
     worker = MacDeploymentWorker(
