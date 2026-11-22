@@ -110,7 +110,7 @@ async def test_mad_metrics_are_aggregated_and_do_not_expose_tenant_or_artifact_d
         ],
     )
     metrics = await collect_mad_execution_metrics(database)
-    assert metrics["workers"] == {"state": "degraded", "known": 2, "fresh": 1, "stale": 1}
+    assert metrics["workers"] == {"state": "degraded", "known": 2, "fresh": 1, "stale": 1, "stopping": 0}
     assert metrics["queue"]["queued"] == 1
     assert metrics["queue"]["active"] == 1
     assert metrics["queue"]["oldest_queued_at"] == (now - timedelta(minutes=20)).isoformat()
@@ -144,7 +144,7 @@ def test_mad_metrics_endpoint_rejects_invalid_token_and_returns_safe_metrics(mon
     from odei_api.main import app, settings
 
     previous_database = getattr(app.state, "mongo_database", None)
-    monkeypatch.setattr(settings, "mad_metrics_token", SecretStr("operations-secret"))
+    monkeypatch.setattr(settings, "mad_metrics_token", SecretStr("operations-secret-value-with-32-chars-minimum"))
     app.state.mongo_database = MetricsDatabase([], [])
     try:
         client = TestClient(app)
@@ -154,7 +154,7 @@ def test_mad_metrics_endpoint_rejects_invalid_token_and_returns_safe_metrics(mon
         )
         allowed = client.get(
             "/api/v1/internal/mad/execution-metrics",
-            headers={"X-ODEI-MAD-Token": "operations-secret"},
+            headers={"X-ODEI-MAD-Token": "operations-secret-value-with-32-chars-minimum"},
         )
     finally:
         app.state.mongo_database = previous_database
