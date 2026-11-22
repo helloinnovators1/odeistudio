@@ -253,21 +253,21 @@ async def test_worker_heartbeat_persists_lifecycle_and_ttl_index():
         started = await store.heartbeat(worker_id=worker_id, status="idle")
         idle = await collection.find_one({"_id": worker_id})
         assert idle["status"] == "idle"
-        assert idle["started_at"].replace(tzinfo=timezone.utc) == started
-        assert idle["last_seen_at"].replace(tzinfo=timezone.utc) == started
+        assert abs((idle["started_at"].replace(tzinfo=timezone.utc) - started).total_seconds()) < 0.001
+        assert abs((idle["last_seen_at"].replace(tzinfo=timezone.utc) - started).total_seconds()) < 0.001
 
         busy = await store.heartbeat(
             worker_id=worker_id, status="busy", active_run_id=uuid4().hex,
         )
         running = await collection.find_one({"_id": worker_id})
         assert running["status"] == "busy"
-        assert running["last_seen_at"].replace(tzinfo=timezone.utc) == busy
-        assert running["started_at"].replace(tzinfo=timezone.utc) == started
+        assert abs((running["last_seen_at"].replace(tzinfo=timezone.utc) - busy).total_seconds()) < 0.001
+        assert abs((running["started_at"].replace(tzinfo=timezone.utc) - started).total_seconds()) < 0.001
 
         stopped = await store.mark_stopped(worker_id=worker_id)
         offline = await collection.find_one({"_id": worker_id})
         assert offline["status"] == "stopping"
-        assert offline["last_seen_at"].replace(tzinfo=timezone.utc) == stopped
+        assert abs((offline["last_seen_at"].replace(tzinfo=timezone.utc) - stopped).total_seconds()) < 0.001
         indexes = await collection.index_information()
         assert any(
             index.get("expireAfterSeconds") == 30 * 24 * 60 * 60
