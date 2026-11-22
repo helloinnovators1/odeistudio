@@ -113,7 +113,7 @@ async def run_worker(*, once: bool = False, poll_interval: float = 2.0) -> None:
                     return
                 try:
                     await asyncio.wait_for(stop.wait(), timeout=poll_interval)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     pass
         finally:
             for signum in (signal.SIGINT, signal.SIGTERM):
