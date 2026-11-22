@@ -22,7 +22,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS patch proposals](PATCH_PROPOSALS.md) — bounded multi-file patch validation, content hashes, diff output and review workflow.
 - [Local approved patch application](LOCAL_PATCH_APPLICATION.md) — signed, challenge-bound one-file local apply flow, companion verification and remaining rollback/recovery limits.
 - [Master Admin Console requirements](MAC_REQUIREMENTS.md) — central configuration and governance plane.
-- [Master Admin Dashboard](MAD.md) — operational and executive visibility.
+- [Master Admin Dashboard](MAD.md) — operational and executive visibility, current execution telemetry API, security boundary and outstanding dashboard/MAC gates.
 - [Data model](DATA_MODEL.md) — canonical entities, tenancy and persistence rules.
 - [API and event contracts](API_AND_EVENTS.md) — API conventions and asynchronous event model.
 
