@@ -174,3 +174,13 @@ def test_mad_metrics_token_configuration_requires_32_ascii_characters():
     with pytest.raises(ValidationError):
         Settings(mad_metrics_token=SecretStr("non-ascii-" + "é" * 30))
     assert Settings(mad_metrics_token=SecretStr("x" * 32)).mad_metrics_token is not None
+
+
+@pytest.mark.asyncio
+async def test_mad_metrics_normalize_naive_mongodb_timestamps_to_utc():
+    naive_timestamp = datetime(2026, 1, 2, 3, 4, 5)
+    metrics = await collect_mad_execution_metrics(MetricsDatabase(
+        runs=[{"status": "queued", "created_at": naive_timestamp}],
+        workers=[],
+    ))
+    assert metrics["queue"]["oldest_queued_at"] == "2026-01-02T03:04:05+00:00"
