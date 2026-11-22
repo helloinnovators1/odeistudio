@@ -9,6 +9,11 @@ class FakeStore:
         self.finished = None
         self.failed = None
         self.claimed = None
+        self.recorded_provider_id = None
+
+    async def record_provider_deployment(self, **kwargs):
+        self.recorded_provider_id = kwargs["provider_deployment_id"]
+        return {"provider_deployment_id": self.recorded_provider_id}
 
     async def claim_next(self, **kwargs):
         self.claimed = kwargs
@@ -117,3 +122,23 @@ async def test_worker_returns_none_when_no_deployment_is_queued():
         secret_resolver=FakeSecrets(), providers={}, worker_id="worker-4",
     )
     assert await worker.run_once() is None
+
+
+
+@pytest.mark.asyncio
+async def test_worker_reclaims_persisted_provider_deployment_and_only_reverifies():
+    queued = attempt()
+    queued["provider_deployment_id"] = "provider-existing-123"
+    store = FakeStore(queued)
+    secrets = FakeSecrets()
+    provider = FakeProvider()
+    worker = MacDeploymentWorker(
+        store=store, environment_store=FakeEnvironmentStore(),
+        secret_resolver=secrets, providers={"aws": provider}, worker_id="worker-recovery",
+    )
+    result = await worker.run_once()
+    assert result["state"] == "succeeded"
+    assert provider.deployed is None
+    assert secrets.calls == []
+    assert provider.verified_id == ("provider-existing-123", "staging")
+    assert store.finished["provider_deployment_id"] == "provider-existing-123"
