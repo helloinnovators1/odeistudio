@@ -2,7 +2,7 @@
 
 ## Implemented service boundary
 
-`MongoMacEnvironmentStore` provides versioned environment configuration records for
+`MongoMacRevisionEnvironmentStore` provides versioned environment configuration records for
 `development`, `staging`, and `production`. It supports draft creation and editing,
 author submission, approval by a distinct verified identity, compare-and-set promotion,
 and rollback as a new reviewable draft. Existing revision history is retained.
@@ -44,7 +44,7 @@ for loading revisions, saving drafts, submitting, approving, promoting the activ
 configuration pointer, and creating rollback drafts. Browser controls are convenience
 only: the API remains authoritative for every permission and lifecycle transition.
 
-This increment provides a durable deployment-attempt ledger and a provider-neutral worker orchestration contract, but it does **not** provide a configured external secret-manager connector, concrete provider adapter, staging identity provisioning, or production infrastructure changes. Promotion changes the approved active configuration pointer only; it is not evidence that a cloud deployment ran. The current revision history is embedded in one environment document, so a separate revision collection and retention/archival policy are required before unbounded production history can be supported safely.
+This increment now uses a separately indexed `mac_environment_revisions` collection for runtime history. Environment metadata stores only active/latest pointers; revision configuration and provenance are stored as separate documents keyed by environment/version. Lifecycle metadata changes are coordinated with revision writes by the API's MongoDB transaction. Promotion changes the approved active configuration pointer only; it is not evidence that a cloud deployment ran. No automatic pruning is enabled. A formally approved retention/archival policy, immutable backup verification and restore drills remain required before production history can be treated as fully governed.
 
 
 ## Additional hardening and explicit production boundaries
@@ -52,7 +52,7 @@ This increment provides a durable deployment-attempt ledger and a provider-neutr
 - Sensitive-key detection covers secret, password/passwd, token, API/access/private/signing/encryption keys and credential names. Every matching value must be a `secret://` reference regardless of its JSON type; plaintext strings, numbers, booleans, null and objects are rejected.
 - Rollback expected-version values use strict integer validation; JSON booleans are rejected.
 - Successful MAC lifecycle mutations and their success audit events now share one MongoDB transaction/session. If the audit insert fails, the configuration mutation is rolled back. Failure/denial audit records are written separately because the failed state change must not commit. This requires a replica set or sharded MongoDB deployment with transaction support; readiness checks explicitly reject standalone MongoDB.
-- Environment revisions remain embedded in one document. Move them to a separately indexed revision collection with retention/archival before the history can grow without bound.
+- Runtime reads and writes now use `mac_environment_revisions`; the environment metadata document no longer grows with revision history. The unique `(environment, version)` index prevents duplicate revision identities. Startup fails closed if a legacy environment's revision sequence has not been backfilled completely. Legacy embedded arrays are retained as a recovery copy and are not automatically pruned.
 - `secret://` validation is not secret resolution. A production secret-manager adapter must authorize each reference against the environment/provider, resolve values only inside the server-side deployment worker, prevent values from entering API responses/logs/audit/events, and support rotation/revocation.
 - Durable deployment attempts, request idempotency, worker leases, health-verification state, and provider-neutral worker orchestration are implemented. Concrete provider deployment adapters, an external secret-manager adapter, provider-specific health probes, provider-side rollback, and a hardened worker deployment remain unconfigured. No cloud deployment is performed by this lifecycle API.
 
@@ -149,7 +149,7 @@ configured production service. No concrete provider adapter, secret-manager
 adapter, hardened worker runtime, credentials, network policy or provider
 environment has been supplied. No cloud infrastructure has been modified.
 
-## Revision-history backfill preparation (implemented; cutover not yet enabled)
+## Revision-history runtime cutover (implemented; operator migration required)
 
 `apps/api/odei_api/services/mac_environment_migrations.py` adds a
 transaction-scoped, repeatable backfill from legacy embedded `versions` arrays
@@ -159,18 +159,7 @@ IDs, validates sequence continuity against `latest_version`, and compares
 pre-existing target documents before accepting a retry. A divergent target
 raises `MacRevisionMigrationConflict`; neither side is overwritten.
 
-The backfill must be invoked by an operator-controlled migration runner inside
-a MongoDB replica-set/sharded transaction using the same session for source
-reads, target reads and inserts. It returns copied/already-present counts.
-The legacy embedded history is intentionally retained. **This is migration
-preparation, not the production storage cutover:** the current runtime store
-still reads and writes embedded history, and the new collection is not yet
-authoritative. Do not run the backfill as an automatic application-startup
-hook, and do not enable revision pruning. Before cutover, implement dual-write
-or a write freeze, migrate all environments, verify counts and content hashes,
-switch reads/writes atomically, and test rollback/recovery on a production-like
-replica set. Immutable history must remain available for approvals, rollback,
-audit correlation and regulatory retention.
+The backfill must be invoked by an operator-controlled migration runner inside a MongoDB replica-set/sharded transaction using the same session for source reads, target reads and inserts. It returns copied/already-present counts. Runtime now reads/writes the separate revision collection. Before deploying this runtime against a database containing legacy environments, operators must arrange a write freeze (or formally approved consistency barrier), take and verify a backup, run the dry run, apply the backfill, reconcile every environment's revision count and sequence, then deploy. Startup validates that every environment has the complete `1..latest_version` sequence and fails closed rather than serving incomplete history. The embedded array remains as a recovery copy; it is not automatically deleted. Do not enable revision pruning until a separately reviewed retention/archival and restore policy exists. Immutable revision content remains available for approvals, rollback, audit correlation and regulatory retention.
 
 ### Running the backfill command
 
@@ -196,7 +185,4 @@ odei-mac-revision-migration --apply
 The dry run performs no database writes or index DDL. With `--apply`, the
 command creates the target indexes and runs the backfill in a MongoDB
 transaction. It exits non-zero on malformed history, gaps, duplicate sequence
-numbers, target conflicts, or database/transaction errors. It does not remove
-legacy embedded history, alter active-version pointers, change API reads/writes,
-or deploy infrastructure. Re-run the dry run after application and reconcile
-the reported `already_present` count before any future storage cutover.
+numbers, target conflicts, or database/transaction errors. It does not remove legacy embedded history, alter active-version pointers, or deploy infrastructure. The runtime cutover is enabled in this branch, so the operator must complete and reconcile this migration before deploying the new API against any database with legacy environment records. Re-run the dry run after application and verify all environment/version sequences before deployment.
