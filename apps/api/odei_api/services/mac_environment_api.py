@@ -49,7 +49,7 @@ class PromotionRequest(RevisionRequest):
 class RollbackRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target_version: StrictInt = Field(ge=1)
-    expected_latest_version: int = Field(ge=1)
+    expected_latest_version: StrictInt = Field(ge=1)
     change_summary: StrictStr = Field(min_length=1, max_length=500)
 
 
