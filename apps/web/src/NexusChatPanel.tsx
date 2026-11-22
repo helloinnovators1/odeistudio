@@ -273,7 +273,6 @@ export default function NexusChatPanel({
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
-    setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
       macRequestGenerationRef.current.invalidate();
       setMacOpen(false); setMacRecord(null); setMacError(""); setMacBusy(false);
       setNotice(message);
