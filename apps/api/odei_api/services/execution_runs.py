@@ -397,7 +397,9 @@ class MongoExecutionRunStore:
         return self._from_document(updated)
 
     async def request_cancel(self, *, organization_id: str, run_id: str, actor_id: str,
-                             audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+                             audit_event: Mapping[str, Any] | None = None,
+                             tasks: Any | None = None, task_events: Any | None = None,
+                             task_audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
         _identifier(actor_id, "actor_id")
         now = datetime.now(timezone.utc)
         async with self._client.start_session() as session, await session.start_transaction():
@@ -422,6 +424,29 @@ class MongoExecutionRunStore:
             await self._events.insert_one(_event(self._from_document(updated),
                 event_type="execution.cancel_requested", version=updated["version"],
                 actor_id=actor_id, from_status=status.value, to_status=target.value), session=session)
+            if target is ExecutionRunStatus.CANCELLED and tasks is not None and task_events is not None:
+                task = await tasks.find_one({
+                    "_id": current["task_id"], "organization_id": organization_id,
+                    "project_id": current["project_id"], "status": "executing",
+                }, session=session)
+                if task is not None:
+                    task_updated = await tasks.find_one_and_update(
+                        {"_id": task["_id"], "organization_id": organization_id,
+                         "version": task["version"], "status": "executing"},
+                        {"$set": {"status": "cancelled", "updated_at": now},
+                         "$inc": {"version": 1}},
+                        return_document=ReturnDocument.AFTER, session=session,
+                    )
+                    if task_updated is None:
+                        raise ExecutionRunConflict("task changed while queued execution was cancelled")
+                    await task_events.insert_one({
+                        "event_id": str(uuid4()), "organization_id": organization_id,
+                        "project_id": current["project_id"], "task_id": current["task_id"],
+                        "actor_id": actor_id, "type": "task.cancelled",
+                        "from_status": "executing", "to_status": "cancelled",
+                        "version": task_updated["version"], "occurred_at": now,
+                    }, session=session)
+                    await self._audit_in_transaction(task_audit_event, session)
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(updated)
 
