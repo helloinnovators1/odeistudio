@@ -72,3 +72,63 @@ async def test_mac_mutation_and_success_audit_commit_or_rollback_together():
     finally:
         await client.drop_database(database_name)
         await client.close()
+
+
+
+@pytest.mark.asyncio
+async def test_mac_deployment_attempt_idempotency_claim_and_verification_on_mongodb():
+    uri = os.getenv("MONGODB_TEST_URI")
+    if not uri:
+        pytest.skip("MONGODB_TEST_URI is not configured")
+
+    from odei_api.services.mac_deployments import MongoMacDeploymentStore
+
+    client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
+    database_name = f"odei_mac_deployment_test_{uuid4().hex}"
+    database = client[database_name]
+    environments = MongoMacEnvironmentStore(database["mac_environments"])
+    deployments = MongoMacDeploymentStore(
+        database["mac_deployment_attempts"], environments
+    )
+    try:
+        topology = await client.admin.command("hello")
+        assert topology.get("setName") or topology.get("msg") == "isdbgrid"
+        await environments.initialize()
+        await deployments.initialize()
+        await environments.create_draft(
+            environment="staging", actor="oidc-author",
+            config={"replicas": 2}, change_summary="Deployment integration setup",
+        )
+        await environments.submit_for_approval(
+            environment="staging", version=1, expected_latest_version=1,
+            actor="oidc-author",
+        )
+        await environments.approve(
+            environment="staging", version=1, expected_latest_version=1,
+            actor="oidc-reviewer",
+        )
+
+        request = {
+            "environment": "staging", "version": 1, "provider": "aws",
+            "idempotency_key": "integration-request-123456",
+            "actor": "oidc-deployer",
+        }
+        first = await deployments.create_attempt(**request)
+        repeated = await deployments.create_attempt(**request)
+        assert repeated["_id"] == first["_id"]
+        assert await database["mac_deployment_attempts"].count_documents({}) == 1
+
+        running = await deployments.claim(
+            attempt_id=first["_id"], worker_id="integration-worker",
+        )
+        assert running["state"] == "running"
+        succeeded = await deployments.finish(
+            attempt_id=first["_id"], worker_id="integration-worker",
+            verified=True, provider_deployment_id="provider-deploy-1",
+            result_summary="Provider health verification passed",
+        )
+        assert succeeded["state"] == "succeeded"
+        assert succeeded["verified"] is True
+    finally:
+        await client.drop_database(database_name)
+        await client.close()
