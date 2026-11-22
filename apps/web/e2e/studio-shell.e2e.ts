@@ -4,7 +4,7 @@ test("IDE shell opens the authenticated NEXUS entry state", async ({ page }) => 
   await page.goto("/");
   await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByText("ODEI STUDIO", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /NEXUS/ }).click();
+  await page.getByRole("button", { name: "NEXUS ⌘ / Ctrl + I" }).click();
   const panel = page.locator('aside[aria-label="NEXUS AI chat panel"]');
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: "Sign in with ODID" })).toBeVisible();
