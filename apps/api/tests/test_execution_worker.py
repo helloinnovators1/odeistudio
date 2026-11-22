@@ -65,6 +65,17 @@ class Artifacts:
         return {"run_id": values["run_id"]}
 
 
+class Heartbeats:
+    def __init__(self):
+        self.values = []
+
+    async def heartbeat(self, **values):
+        self.values.append(values)
+
+    async def mark_stopped(self, **values):
+        self.values.append({**values, "status": "stopping"})
+
+
 class Registry:
     def get(self, profile_id):
         assert profile_id == "python-tests"
@@ -106,7 +117,7 @@ async def test_worker_verifies_snapshot_runs_sandbox_and_persists_result(tmp_pat
     workspace_root = tmp_path / "worker"
     workspace_root.mkdir()
     run = make_run(digest)
-    runs, artifacts = Runs(run), Artifacts()
+    runs, artifacts, heartbeats = Runs(run), Artifacts(), Heartbeats()
     worker = ExecutionWorker(
         worker_id="worker-test", runs=runs,
         snapshots=Snapshots({
@@ -115,11 +126,14 @@ async def test_worker_verifies_snapshot_runs_sandbox_and_persists_result(tmp_pat
         }, archive),
         artifacts=artifacts, registry=Registry(), sandbox=Sandbox(),
         workspace_root=workspace_root, tasks=object(), task_events=object(),
+        heartbeats=heartbeats,
     )
     assert await worker.run_once() is True
     assert runs.finished["outcome"] is ExecutionRunStatus.COMPLETED
     assert runs.finished["tasks"] is worker.tasks
     assert artifacts.values["stdout"] == "passed"
+    assert heartbeats.values[0] == {"worker_id": "worker-test", "status": "busy", "active_run_id": "run-1"}
+    assert heartbeats.values[-1] == {"worker_id": "worker-test", "status": "idle", "active_run_id": None}
     assert list(workspace_root.iterdir()) == []
 
 
