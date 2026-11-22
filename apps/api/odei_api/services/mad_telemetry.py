@@ -7,12 +7,9 @@ from typing import Any
 
 from pymongo import ASCENDING
 
-
 _WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _WORKER_STALE_SECONDS = 60
 _HEARTBEAT_RETENTION_SECONDS = 30 * 24 * 60 * 60
-_ACTIVE_RUN_STATES = ("leased", "running", "collecting")
-_TERMINAL_RUN_STATES = ("completed", "failed", "cancelled", "expired")
 
 
 class MongoWorkerHeartbeatStore:
