@@ -1,5 +1,14 @@
 """Route-level tests for authenticated MAC environment governance."""
 
+import asyncio
+from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+
+from odei_api.security.auth import Principal
+from odei_api.services.mac_environment_api import _mutate_with_audit
+
 
 ISSUER = "https://identity.example.test/"
 OTHER_ISSUER = "https://other-identity.example.test/"
@@ -284,13 +293,6 @@ def test_mac_deployment_request_rejects_boolean_revision(monkeypatch):
 
 
 def test_mac_mutation_fails_closed_without_transaction_support():
-    import asyncio
-    from types import SimpleNamespace
-
-    from fastapi import HTTPException
-    from odei_api.security.auth import Principal
-    from odei_api.services.mac_environment_api import _mutate_with_audit
-
     class Store:
         called = False
         async def create_draft(self, **_kwargs):
