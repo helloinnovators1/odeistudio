@@ -108,3 +108,24 @@ This increment does not implement the MAD dashboard UI, external paging/email
 delivery, configurable thresholds, MAC-managed role provisioning or production
 incident-response staffing. The identity provider must explicitly grant
 `mad:read` and `mad:incident:manage` to approved operator identities.
+
+
+## Browser operator console — implementation increment
+
+The NEXUS authenticated panel now includes a MAD operator view. It calls only the ODID-protected browser endpoints:
+
+- `GET /api/v1/mad/execution-metrics` for aggregate worker, queue, 24-hour execution counters and deterministic alerts.
+- `GET /api/v1/mad/incidents` for a bounded list of persisted platform incidents.
+- `POST /api/v1/mad/incidents/{incident_id}/transitions` for acknowledge, assign, resolve and reopen operations with the current optimistic `expected_version`.
+
+The browser transport validates response contracts and bounded incident counts, uses HTTPS (or loopback HTTP for development), sends bearer credentials only in the Authorization header, disables ambient credentials/cache/redirects, and never calls the internal static-token endpoint. The panel displays observation time, worker/queue state, aggregate counters, alerts, incident status, assignment and bounded audit history. It does not manufacture demo metrics.
+
+The backend remains authoritative: `mad:read` is required for telemetry and incident listing, and `mad:incident:manage` is required for state transitions. Client-side visibility is not treated as authorization. A stale version conflict requires refreshing the incident before retrying. Access and refresh tokens remain in the existing NEXUS in-memory ODID lifecycle and are cleared on sign-out.
+
+### Remaining acceptance
+
+- Configure the real ODID client to request and receive `mad:read` and, for designated operators only, `mad:incident:manage`.
+- Run staging tests with operator, non-operator and read-only identities; verify both permitted and denied audit records.
+- Calibrate alert thresholds against staging telemetry before enabling paging.
+- Add infrastructure, integrations, deployment, model-cost and product-adoption telemetry only when authoritative sources and privacy/retention contracts exist.
+- Alert notification delivery, dashboard visualizations beyond the current operational cards, and MAC-governed configuration remain separate work.
