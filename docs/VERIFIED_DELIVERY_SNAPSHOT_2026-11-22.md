@@ -47,7 +47,7 @@ At exact head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a`:
 
 - Security Scanning passed all four jobs: CodeQL, Python dependency audit, web dependency audit and secret scanning.
 - API CI had passed Ubuntu Python 3.10/3.12, Windows Python 3.12, MongoDB replica-set transaction integration and web unit tests/build/Playwright.
-- Windows Python 3.10 was still running when this snapshot was prepared. Do not describe the full exact-head API CI matrix as complete until that job passes.
+- API CI passed all six jobs on the exact head, including the Windows Python 3.10/3.12 matrix.
 - GitHub reports PR #74 mergeable against current main. It is not merged and has no independent security approval.
 
 ## Open engineering blockers
