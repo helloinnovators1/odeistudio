@@ -84,17 +84,17 @@ class MongoMacEnvironmentStore:
             [("versions.version", ASCENDING)], name="mac_environment_revision_lookup"
         )
 
-    async def get(self, environment: str) -> dict[str, Any]:
+    async def get(self, environment: str, *, session: Any | None = None) -> dict[str, Any]:
         if environment not in _ENVIRONMENTS:
             raise MacEnvironmentError("Environment is invalid")
-        record = await self.collection.find_one({"_id": environment})
+        record = await self.collection.find_one({"_id": environment}, session=session)
         if record is None:
             raise MacEnvironmentNotFound("Environment does not exist")
         return record
 
     async def create_draft(
         self, *, environment: str, actor: str, config: Mapping[str, Any],
-        change_summary: str,
+        change_summary: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
         if not isinstance(change_summary, str) or not 1 <= len(change_summary.strip()) <= 500:
@@ -113,7 +113,7 @@ class MongoMacEnvironmentStore:
                 "active_version": 0, "latest_version": 1,
                 "created_at": now, "updated_at": now,
                 "versions": [revision],
-            })
+            }, session=session)
         except Exception as exc:
             if type(exc).__name__ == "DuplicateKeyError":
                 raise MacEnvironmentConflict("Environment already exists") from exc
@@ -122,7 +122,7 @@ class MongoMacEnvironmentStore:
 
     async def create_revision(
         self, *, environment: str, expected_latest_version: int,
-        actor: str, config: Mapping[str, Any], change_summary: str,
+        actor: str, config: Mapping[str, Any], change_summary: str, session: Any | None = None,
     ) -> dict[str, Any]:
         """Append a new draft revision using a latest-version compare-and-set."""
         _validate_identity(environment, actor)
@@ -140,14 +140,14 @@ class MongoMacEnvironmentStore:
         result = await self.collection.update_one(
             {"_id": environment, "latest_version": expected_latest_version},
             {"$set": {"latest_version": new_version, "updated_at": now},
-             "$push": {"versions": revision}},
+             "$push": {"versions": revision}}, session=session,
         )
         if result.modified_count != 1:
             raise MacEnvironmentConflict("Environment changed; refresh before creating a revision")
         return {"environment": environment, **revision}
     async def update_draft(
         self, *, environment: str, version: int, expected_latest_version: int,
-        actor: str, config: Mapping[str, Any], change_summary: str,
+        actor: str, config: Mapping[str, Any], change_summary: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
         if version != expected_latest_version:
@@ -165,15 +165,15 @@ class MongoMacEnvironmentStore:
                 "versions.$.updated_by": actor,
                 "versions.$.updated_at": now,
                 "updated_at": now,
-            }},
+            }}, session=session,
         )
         if result.modified_count != 1:
             raise MacEnvironmentConflict("Draft is missing, immutable, or stale")
-        return await self.get(environment)
+        return await self.get(environment, session=session)
 
     async def submit_for_approval(
         self, *, environment: str, version: int, expected_latest_version: int,
-        actor: str,
+        actor: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
         now = datetime.now(timezone.utc)
@@ -190,10 +190,10 @@ class MongoMacEnvironmentStore:
 
     async def approve(
         self, *, environment: str, version: int, expected_latest_version: int,
-        actor: str,
+        actor: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
-        record = await self.get(environment)
+        record = await self.get(environment, session=session)
         revision = next((item for item in record["versions"] if item["version"] == version), None)
         if revision is None:
             raise MacEnvironmentNotFound("Revision does not exist")
@@ -217,7 +217,7 @@ class MongoMacEnvironmentStore:
 
     async def promote(
         self, *, environment: str, version: int, expected_active_version: int,
-        expected_latest_version: int, actor: str,
+        expected_latest_version: int, actor: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
         now = datetime.now(timezone.utc)
@@ -238,10 +238,10 @@ class MongoMacEnvironmentStore:
 
     async def create_rollback_draft(
         self, *, environment: str, target_version: int,
-        expected_latest_version: int, actor: str, change_summary: str,
+        expected_latest_version: int, actor: str, change_summary: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
-        record = await self.get(environment)
+        record = await self.get(environment, session=session)
         if record["latest_version"] != expected_latest_version:
             raise MacEnvironmentConflict("Environment has changed; refresh before rollback")
         target = next((item for item in record["versions"] if item["version"] == target_version), None)
@@ -261,7 +261,7 @@ class MongoMacEnvironmentStore:
         result = await self.collection.update_one(
             {"_id": environment, "latest_version": expected_latest_version},
             {"$set": {"latest_version": new_version, "updated_at": now},
-             "$push": {"versions": revision}},
+             "$push": {"versions": revision}}, session=session,
         )
         if result.modified_count != 1:
             raise MacEnvironmentConflict("Environment changed while creating rollback draft")
