@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 
 import pytest
@@ -258,6 +259,7 @@ def test_apply_capability_requires_approved_owner_decision_and_binds_workspace(p
     assert body["capability"] == "signed-capability"
     assert body["workspace_id"] == request["workspace_id"]
     assert body["proposal_version"] == 1
+    assert body["expires_at"] == 1_900_000_000
     assert body["application_enabled"] is False
     assert "signed-capability" not in str(audit.events)
     assert audit.events[-1]["action"] == "nexus.patch_proposal.apply_capability"
@@ -315,3 +317,32 @@ def test_apply_capability_fails_closed_without_signing_configuration(patch_state
         "confirm_apply": False,
     })
     assert unconfirmed.status_code == 422
+
+
+def test_multi_file_apply_capability_is_rejected(patch_state, monkeypatch):
+    client = TestClient(app)
+    payload = _payload()
+    payload["base_files"]["second.py"] = "print('old')"
+    payload["changes"]["second.py"] = "print('new')"
+    payload["expected_base_hashes"]["second.py"] = hashlib.sha256(b"print('old')").hexdigest()
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
+        json=payload,
+    )
+    assert created.status_code == 201, created.text
+    proposal = created.json()
+    path = f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{proposal['proposal_id']}"
+    approved = client.post(path + "/approve", json={"expected_version": 0})
+    assert approved.status_code == 200, approved.text
+    monkeypatch.setattr(
+        "odei_api.services.nexus_patch_proposals.issue_patch_apply_capability",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not sign multi-file proposals")),
+    )
+    response = client.post(path + "/apply-capability", json={
+        "expected_version": 1,
+        "workspace_id": "workspace_1234567890123456",
+        "companion_challenge": "C" * 43,
+        "confirm_apply": True,
+    })
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "PATCH_APPLY_SINGLE_FILE_ONLY"
