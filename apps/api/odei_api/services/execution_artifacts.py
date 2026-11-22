@@ -1,7 +1,7 @@
 """Durable, bounded, secret-redacted execution result storage."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -99,6 +99,20 @@ class MongoExecutionArtifactStore:
             "stdout": stdout.decode("utf-8", errors="replace"),
             "stderr": stderr.decode("utf-8", errors="replace"),
         }
+
+    async def delete_expired(self, *, retention_days: int = 30, limit: int = 100) -> int:
+        if not 1 <= retention_days <= 365 or not 1 <= limit <= 1000:
+            raise ValueError("artifact retention policy is invalid")
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cursor = self._metadata.find({"created_at": {"$lte": cutoff}}).limit(limit)
+        rows = await cursor.to_list(length=limit)
+        deleted = 0
+        for row in rows:
+            await self._stdout.delete(row["stdout_blob_id"])
+            await self._stderr.delete(row["stderr_blob_id"])
+            await self._metadata.delete_one({"_id": row["_id"], "created_at": {"$lte": cutoff}})
+            deleted += 1
+        return deleted
 
     @staticmethod
     def public_metadata(document: dict[str, Any]) -> dict[str, Any]:
