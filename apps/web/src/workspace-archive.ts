@@ -26,6 +26,19 @@ const RESERVED_WINDOWS = new Set([
   "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
 ]);
 
+const SECRET_PATTERNS = [
+  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/i,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})\b/,
+  /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/,
+  /\bAIza[0-9A-Za-z_-]{35}\b/,
+  /\b(?:aws_secret_access_key|client_secret|api_key|secret_key|access_token|refresh_token|password)\s*[:=]\s*['"]?[A-Za-z0-9/+_=-]{24,}/i,
+];
+
+function containsLikelySecret(content: string): boolean {
+  return SECRET_PATTERNS.some((pattern) => pattern.test(content));
+}
+
 export interface WorkspaceArchiveResult {
   base64: string;
   fileCount: number;
@@ -185,7 +198,7 @@ export async function buildWorkspaceArchive(
     const results = await Promise.all(batch.map(async (file) => {
       try {
         const content = await readFile(file.path);
-        if (content.includes("\u0000")) return { file, bytes: null };
+        if (content.includes("\u0000") || containsLikelySecret(content)) return { file, bytes: null };
         return { file, bytes: new TextEncoder().encode(content) };
       } catch {
         return { file, bytes: null };
