@@ -97,9 +97,11 @@ requires `mac:read`. Both request and read actions are audited. Attempt records
 store provider deployment identifiers and bounded summaries, not resolved secret
 material or provider logs.
 
-**Not yet implemented:** a worker process/queue consumer, cloud-provider adapters,
-secret-manager resolution, provider health probes, retry/backoff policy, automatic
-compensation/rollback, and deployment UI. A queued record is not a deployment;
+**Not yet implemented:** a deployed worker process/queue consumer, concrete cloud-provider adapters,
+production secret-manager integration, provider-specific health probes, durable retry/backoff
+orchestration, automatic compensation/rollback, and deployment UI. The provider-neutral
+worker orchestration contract is implemented but must be wired to reviewed adapters and
+run in a hardened worker deployment. A queued record is not a deployment;
 neither API acceptance nor a worker claim is evidence that infrastructure changed.
 Provider credentials and a concrete provider/environment configuration are required
 before a real deployment can be executed safely.
@@ -122,3 +124,29 @@ provider idempotency token and reconcile ambiguous provider outcomes before
 retrying, otherwise a timeout after a provider accepted a request could create
 duplicate infrastructure changes. No worker process or provider adapter is
 configured by this change.
+
+
+### Provider-neutral worker orchestration (implemented; adapters not provisioned)
+
+`apps/api/odei_api/services/mac_deployment_worker.py` implements a provider-neutral
+worker runner. It atomically claims the oldest queued attempt, loads the approved
+revision, resolves only sensitive-key `secret://` references through an injected
+environment/provider-aware secret resolver, and calls an injected provider adapter.
+Resolved secret material exists only in worker memory and is never included in
+ledger summaries or API responses. Provider exceptions are deliberately sanitized
+before persistence.
+
+The adapter receives the stable deployment idempotency key. Once the provider
+returns a deployment identifier, the worker persists that identifier in the
+attempt ledger before health verification. If the worker crashes after that point,
+a reclaimed worker resumes verification against the existing provider deployment
+instead of issuing another apply. Long-running secret resolution, deployment and
+verification calls renew the worker lease; lease loss fences the worker from
+subsequent ledger writes. Verification failures and timeouts are recorded as
+`verification_failed`, retaining the provider deployment identifier for
+operator reconciliation.
+
+This is an orchestration interface and tested worker implementation, not a
+configured production service. No concrete provider adapter, secret-manager
+adapter, hardened worker runtime, credentials, network policy or provider
+environment has been supplied. No cloud infrastructure has been modified.
