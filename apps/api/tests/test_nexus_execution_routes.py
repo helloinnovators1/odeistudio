@@ -288,7 +288,7 @@ def test_cross_identity_cannot_access_execution(execution_state):
     assert response.status_code == 403
 
 def test_execution_artifact_route_is_tenant_and_task_scoped(execution_state):
-    _database, audit, _tasks, _snapshots, runs = execution_state
+    _database, audit, _tasks, _snapshots, _runs = execution_state
     client = TestClient(app)
     created = client.post(
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
