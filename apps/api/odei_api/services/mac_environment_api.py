@@ -52,7 +52,7 @@ class RollbackRequest(BaseModel):
     change_summary: StrictStr = Field(min_length=1, max_length=500)
 
 
-async def _context(request: Request, principal: Principal, permission: str):
+async def _context(request: Request, principal: Principal, permission: str, environment: str):
     settings = get_settings()
     if not settings.mac_platform_operators_json.strip():
         raise HTTPException(status_code=503, detail={
@@ -66,6 +66,13 @@ async def _context(request: Request, principal: Principal, permission: str):
             subject=principal.subject,
         )
         require_mac_permission(access, permission)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            audit = getattr(request.app.state, "audit_event_store", None)
+            if audit is not None:
+                await _audit(audit, principal, "mac.environment.authorization", environment, "denied",
+                             {"required_permission": permission})
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=503, detail={
             "code": "MAC_OPERATOR_REGISTRY_INVALID",
@@ -126,7 +133,7 @@ def _translate(exc: Exception) -> HTTPException:
 @router.get("/{environment}")
 async def read_environment(environment: str, request: Request,
                            principal: Principal = principal_dependency):
-    store, audit = await _context(request, principal, "mac:read")
+    store, audit = await _context(request, principal, "mac:read", environment)
     try:
         record = await store.get(environment)
     except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
@@ -140,7 +147,7 @@ async def read_environment(environment: str, request: Request,
 @router.post("/{environment}/drafts", status_code=201)
 async def create_environment_draft(environment: str, payload: EnvironmentDraftRequest,
                                    request: Request, principal: Principal = principal_dependency):
-    store, audit = await _context(request, principal, "mac:environment:manage")
+    store, audit = await _context(request, principal, "mac:environment:manage", environment)
     try:
         if payload.expected_latest_version is None:
             result = await store.create_draft(
@@ -168,7 +175,7 @@ async def create_environment_draft(environment: str, payload: EnvironmentDraftRe
 async def update_environment_draft(environment: str, version: int,
                                    payload: EnvironmentDraftRequest, request: Request,
                                    principal: Principal = principal_dependency):
-    store, audit = await _context(request, principal, "mac:environment:manage")
+    store, audit = await _context(request, principal, "mac:environment:manage", environment)
     if payload.expected_latest_version is None:
         raise HTTPException(status_code=422, detail={"code": "EXPECTED_VERSION_REQUIRED", "message": "expected_latest_version is required."})
     try:
@@ -188,7 +195,7 @@ async def update_environment_draft(environment: str, version: int,
 @router.post("/{environment}/submit")
 async def submit_environment(environment: str, payload: RevisionRequest,
                              request: Request, principal: Principal = principal_dependency):
-    store, audit = await _context(request, principal, "mac:environment:manage")
+    store, audit = await _context(request, principal, "mac:environment:manage", environment)
     try:
         result = await store.submit_for_approval(
             environment=environment, version=payload.version,
@@ -204,7 +211,7 @@ async def submit_environment(environment: str, payload: RevisionRequest,
 @router.post("/{environment}/approve")
 async def approve_environment(environment: str, payload: RevisionRequest,
                               request: Request, principal: Principal = principal_dependency):
-    store, audit = await _context(request, principal, "mac:deployments:approve")
+    store, audit = await _context(request, principal, "mac:deployments:approve", environment)
     try:
         result = await store.approve(
             environment=environment, version=payload.version,
@@ -220,7 +227,7 @@ async def approve_environment(environment: str, payload: RevisionRequest,
 @router.post("/{environment}/promote")
 async def promote_environment(environment: str, payload: PromotionRequest,
                               request: Request, principal: Principal = principal_dependency):
-    store, audit = await _context(request, principal, "mac:deployments:approve")
+    store, audit = await _context(request, principal, "mac:deployments:approve", environment)
     try:
         result = await store.promote(
             environment=environment, version=payload.version,
@@ -237,7 +244,7 @@ async def promote_environment(environment: str, payload: PromotionRequest,
 @router.post("/{environment}/rollback-drafts", status_code=201)
 async def rollback_environment(environment: str, payload: RollbackRequest,
                                request: Request, principal: Principal = principal_dependency):
-    store, audit = await _context(request, principal, "mac:environment:manage")
+    store, audit = await _context(request, principal, "mac:environment:manage", environment)
     try:
         result = await store.create_rollback_draft(
             environment=environment, target_version=payload.target_version,
