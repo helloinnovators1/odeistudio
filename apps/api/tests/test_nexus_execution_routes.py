@@ -42,7 +42,11 @@ class Database:
                 "status": "active", "owner_issuer": "https://identity.example/",
                 "owner_subject": "project-owner",
             }),
-            "project_memberships": Collection(None),
+            "project_memberships": Collection({
+                "organization_id": "org-1", "project_id": "project-1",
+                "identity_issuer": "https://identity.example/",
+                "identity_subject": "task-owner", "status": "active",
+            }),
             "tasks": Collection(None),
         }
 
@@ -268,4 +272,4 @@ def test_cross_identity_cannot_access_execution(execution_state):
     response = TestClient(app).get(
         f"/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions/{created['run_id']}"
     )
-    assert response.status_code == 404
+    assert response.status_code == 403
