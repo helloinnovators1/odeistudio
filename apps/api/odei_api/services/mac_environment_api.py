@@ -23,6 +23,11 @@ router = APIRouter(prefix="/api/v1/mac/environments", tags=["mac"])
 principal_dependency = Depends(get_current_principal)
 
 
+def _actor_id(principal: Principal) -> str:
+    """Bind lifecycle authorship to the complete verified issuer/subject pair."""
+    return f"{principal.issuer}::{principal.subject}"
+
+
 class EnvironmentDraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     config: dict[str, Any]
@@ -139,7 +144,7 @@ async def create_environment_draft(environment: str, payload: EnvironmentDraftRe
     try:
         if payload.expected_latest_version is None:
             result = await store.create_draft(
-                environment=environment, actor=principal.subject,
+                environment=environment, actor=_actor_id(principal),
                 config=payload.config, change_summary=payload.change_summary,
             )
         else:
