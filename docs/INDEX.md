@@ -55,3 +55,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS Durable Execution Runs](EXECUTION_RUNS.md) — durable run lifecycle, transactional events, worker leases and cancellation intent.
 
 - [Safe Workspace Snapshots](WORKSPACE_SNAPSHOTS.md) — bounded ZIP ingestion, path validation, content hashing and disposable workspace extraction.
+
+- [NEXUS Execution API](EXECUTION_API.md) — authenticated, approval-gated run creation, GridFS snapshot storage, task/run transactions and API deployment gates.
