@@ -219,11 +219,9 @@ def test_mac_lifecycle_routes_forward_verified_actor_and_compare_and_set_version
     assert [event["outcome"] for event in audit.events] == ["success"] * 5
 
 
-def test_mac_success_audit_uses_same_mongo_transaction_session():
+@pytest.mark.asyncio
+async def test_mac_success_audit_uses_same_mongo_transaction_session():
     from types import SimpleNamespace
-
-    from odei_api.security.auth import Principal
-    from odei_api.services.mac_environment_api import _mutate_with_audit
 
     class Session:
         async def __aenter__(self): return self
