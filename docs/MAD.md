@@ -78,3 +78,32 @@ Every permitted or denied request is written to the append-only audit store unde
 The existing `/api/v1/internal/mad/execution-metrics` endpoint remains a separate server-to-server path protected by `MAD_METRICS_TOKEN` and private network policy. Never expose that token to browser JavaScript.
 
 **Remaining:** this is an authenticated read API, not the MAD dashboard or complete operator authorization system. The real ODID issuer must configure and issue `mad:read`; staging authorization/audit tests, a dashboard UI, persisted incident workflows and alert delivery remain acceptance gates.
+
+
+## Persisted incident lifecycle — implementation increment
+
+The API now persists deterministic execution alerts in the `mad_incidents`
+collection when the authenticated operator metrics route observes them. The
+deduplication key is the incident ID; repeated observations update the active
+incident rather than creating a new record. If a resolved alert fires again,
+the incident reopens and its version/history advances.
+
+Authenticated endpoints:
+
+- `GET /api/v1/mad/incidents?include_resolved=false&limit=100` requires the
+  verified `mad:read` scope and returns bounded platform incident records.
+- `POST /api/v1/mad/incidents/{incident_id}/transitions` requires the
+  verified `mad:incident:manage` scope. Supported actions are
+  `acknowledge`, `assign`, `resolve` and `reopen`; each request supplies
+  `expected_version` to prevent stale concurrent updates.
+
+Every successful or denied read/transition is written to the append-only
+platform audit store. State transitions also append an incident history item
+with actor, action, timestamp and version. The compare-and-set update rejects
+stale versions with HTTP 409. No tenant IDs, prompts, command output, artifact
+contents, hostnames or secrets are stored in incident records.
+
+This increment does not implement the MAD dashboard UI, external paging/email
+delivery, configurable thresholds, MAC-managed role provisioning or production
+incident-response staffing. The identity provider must explicitly grant
+`mad:read` and `mad:incident:manage` to approved operator identities.
