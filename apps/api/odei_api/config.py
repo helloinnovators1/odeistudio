@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     execution_runtime_path: str | None = None
     execution_workspace_root: str | None = None
     execution_worker_id: str | None = None
+    mad_metrics_token: SecretStr | None = None
     auth_issuer: str | None = None
     auth_audience: str | None = None
     auth_jwks_url: str | None = None
