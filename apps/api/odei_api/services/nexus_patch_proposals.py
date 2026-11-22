@@ -459,6 +459,11 @@ async def create_patch_apply_capability(
         raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is temporarily unavailable."}) from exc
     if item is None:
         raise HTTPException(status_code=404, detail={"code": "PATCH_PROPOSAL_NOT_FOUND", "message": "Patch proposal was not found."})
+    if len(item["files"]) != 1:
+        raise HTTPException(status_code=409, detail={
+            "code": "PATCH_APPLY_SINGLE_FILE_ONLY",
+            "message": "Local application currently supports exactly one file per approved proposal. Multi-file transactions remain disabled.",
+        })
     if item["status"] != "approved" or item["version"] != payload.expected_version:
         raise HTTPException(status_code=409, detail={"code": "PATCH_PROPOSAL_NOT_APPROVED", "message": "The proposal must be approved at the expected version before a capability can be issued."})
     try:
@@ -494,7 +499,7 @@ async def create_patch_apply_capability(
     return {
         "capability": capability,
         "token_type": "Bearer",
-        "expires_at": datetime.fromtimestamp(expires_at, timezone.utc).isoformat(),
+        "expires_at": int(expires_at),
         "expires_in": settings.patch_approval_ttl_seconds,
         "proposal_id": proposal_id,
         "proposal_version": item["version"],
