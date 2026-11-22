@@ -142,11 +142,17 @@ def test_mac_revision_api_rejects_boolean_version_values(monkeypatch):
 
     principal = Principal(subject="operator-1", issuer=ISSUER)
     client, store, _audit = _client(monkeypatch, principal)
-    response = client.post(
+    submit = client.post(
         "/api/v1/mac/environments/staging/submit",
         json={"version": True, "expected_latest_version": 1},
     )
-    assert response.status_code == 422
+    rollback = client.post(
+        "/api/v1/mac/environments/staging/rollback-drafts",
+        json={"target_version": 1, "expected_latest_version": True,
+              "change_summary": "Reject boolean as a revision"},
+    )
+    assert submit.status_code == 422
+    assert rollback.status_code == 422
     assert store.calls == []
 
 
