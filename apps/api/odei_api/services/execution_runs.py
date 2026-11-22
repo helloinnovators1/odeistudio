@@ -98,8 +98,6 @@ class ExecutionRun:
         validate_execution_request(profile_id=self.profile_id,
                                    snapshot_sha256=self.snapshot_sha256,
                                    arguments=self.arguments)
-        if self.status is not ExecutionRunStatus.QUEUED or self.version != 0 or self.attempts != 0:
-            raise ValueError("new execution runs must begin queued at version and attempt zero")
 
 def _event(run: ExecutionRun, *, event_type: str, version: int,
            actor_id: str, **fields: Any) -> dict[str, Any]:
@@ -139,6 +137,8 @@ class MongoExecutionRunStore:
                 "cancel_requested": False, "available_at": now, "created_at": now, "updated_at": now}
 
     async def create(self, run: ExecutionRun, *, audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+        if run.status is not ExecutionRunStatus.QUEUED or run.version != 0 or run.attempts != 0:
+            raise ValueError("new execution runs must begin queued at version and attempt zero")
         now = datetime.now(timezone.utc)
         document = self._document(run, now)
         async with self._client.start_session() as session, await session.start_transaction():
@@ -200,6 +200,11 @@ class MongoExecutionRunStore:
         return await self._worker_transition(organization_id=organization_id, run_id=run_id,
             worker_id=worker_id, lease_token=lease_token, next_status=ExecutionRunStatus.RUNNING)
 
+    async def mark_collecting(self, *, organization_id: str, run_id: str,
+                              worker_id: str, lease_token: str) -> ExecutionRun:
+        return await self._worker_transition(organization_id=organization_id, run_id=run_id,
+            worker_id=worker_id, lease_token=lease_token, next_status=ExecutionRunStatus.COLLECTING)
+
     async def finish(self, *, organization_id: str, run_id: str, worker_id: str,
                      lease_token: str, outcome: ExecutionRunStatus,
                      audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
@@ -225,6 +230,8 @@ class MongoExecutionRunStore:
             if current is None:
                 raise ExecutionRunConflict("worker lease is missing, expired or no longer owned")
             current_status = ExecutionRunStatus(current["status"])
+            if current.get("cancel_requested") and next_status is not ExecutionRunStatus.CANCELLED:
+                raise ExecutionRunConflict("cancellation has been requested; worker must stop and clean up")
             if next_status not in _TRANSITIONS[current_status]:
                 raise ExecutionRunConflict("execution run transition is not allowed")
             updated = await self._runs.find_one_and_update(
@@ -246,8 +253,9 @@ class MongoExecutionRunStore:
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(updated)
 
-    async def request_cancel(self, *, organization_id: str, run_id: str,
+    async def request_cancel(self, *, organization_id: str, run_id: str, actor_id: str,
                              audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+        _identifier(actor_id, "actor_id")
         now = datetime.now(timezone.utc)
         async with self._client.start_session() as session, await session.start_transaction():
             current = await self._runs.find_one({"_id": run_id, "organization_id": organization_id}, session=session)
@@ -269,7 +277,7 @@ class MongoExecutionRunStore:
                 raise ExecutionRunConflict("execution run changed concurrently")
             await self._events.insert_one(_event(self._from_document(updated),
                 event_type="execution.cancel_requested", version=updated["version"],
-                actor_id="system", from_status=status.value, to_status=target.value), session=session)
+                actor_id=actor_id, from_status=status.value, to_status=target.value), session=session)
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(updated)
 
