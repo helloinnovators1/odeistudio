@@ -150,3 +150,37 @@ def test_mac_revision_api_rejects_boolean_version_values(monkeypatch):
     )
     assert response.status_code == 422
     assert store.calls == []
+
+
+def test_mac_lifecycle_routes_forward_verified_actor_and_compare_and_set_versions(monkeypatch):
+    from odei_api.security.auth import Principal
+    from odei_api.services.mac_environment_api import _actor_id
+
+    principal = Principal(subject="operator-1", issuer=ISSUER)
+    client, store, audit = _client(monkeypatch, principal)
+    update = client.put(
+        "/api/v1/mac/environments/staging/drafts/1",
+        json={"config": {"replicas": 3}, "change_summary": "Update",
+              "expected_latest_version": 1},
+    )
+    submit = client.post(
+        "/api/v1/mac/environments/staging/submit",
+        json={"version": 1, "expected_latest_version": 1},
+    )
+    approve = client.post(
+        "/api/v1/mac/environments/staging/approve",
+        json={"version": 1, "expected_latest_version": 1},
+    )
+    promote = client.post(
+        "/api/v1/mac/environments/staging/promote",
+        json={"version": 1, "expected_latest_version": 1,
+              "expected_active_version": 0},
+    )
+    rollback = client.post(
+        "/api/v1/mac/environments/staging/rollback-drafts",
+        json={"target_version": 1, "expected_latest_version": 1,
+              "change_summary": "Restore"},
+    )
+    assert [item.status_code for item in (update, submit, approve, promote, rollback)] == [200] * 5
+    assert all(call[1]["actor"] == _actor_id(principal) for call in store.calls)
+    assert [event["outcome"] for event in audit.events] == ["success"] * 5
