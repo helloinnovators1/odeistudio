@@ -9,11 +9,14 @@ import asyncio
 import logging
 import os
 import shutil
+import subprocess
 import time
 import uuid
 from pathlib import Path
 
 from odei_api.config import get_settings
+from pymongo.errors import PyMongoError
+
 from odei_api.mongo_client import create_mongo_client
 from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
@@ -161,7 +164,7 @@ class ExecutionWorker:
                 except asyncio.CancelledError:
                     pass
             raise
-        except Exception as exc:
+        except (PyMongoError, OSError, RuntimeError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as exc:
             logger.warning("Execution run %s failed (%s)", run.id, type(exc).__name__)
             try:
                 current = await self.runs.get(organization_id=run.organization_id, run_id=run.id)
@@ -174,7 +177,7 @@ class ExecutionWorker:
                                                 outcome="failure", metadata={"error_type": type(exc).__name__}),
                         tasks=self.tasks, task_events=self.task_events,
                     )
-            except Exception as finish_error:
+            except (PyMongoError, OSError, RuntimeError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as finish_error:
                 logger.warning("Could not finalize execution run %s (%s)", run.id, type(finish_error).__name__)
             return True
         finally:
