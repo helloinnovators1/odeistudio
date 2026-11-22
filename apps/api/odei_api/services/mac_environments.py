@@ -149,7 +149,7 @@ class MongoMacEnvironmentStore:
         now = datetime.now(timezone.utc)
         result = await self.collection.update_one(
             {"_id": environment, "latest_version": expected_latest_version,
-             "versions": {"$elemMatch": {"version": version, "status": "draft"}}},
+             "versions": {"$elemMatch": {"version": version, "status": "draft", "created_by": actor}}},
             {"$set": {
                 "versions.$.config": safe_config,
                 "versions.$.change_summary": change_summary.strip(),
