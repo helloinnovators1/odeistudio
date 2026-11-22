@@ -125,6 +125,26 @@ class MongoMacDeploymentStore:
                 ) from exc
             return existing
 
+    async def claim_next(
+        self, *, worker_id: str, lease_seconds: int = 120, max_attempts: int = 5,
+    ) -> dict[str, Any] | None:
+        if not isinstance(worker_id, str) or not _WORKER.fullmatch(worker_id):
+            raise MacDeploymentError("Worker identity is invalid")
+        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 15 <= lease_seconds <= 900:
+            raise MacDeploymentError("Worker lease must be between 15 and 900 seconds")
+        if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 20:
+            raise MacDeploymentError("Maximum attempts must be between 1 and 20")
+        now = datetime.now(timezone.utc)
+        return await self.attempts.find_one_and_update(
+            {"state": "queued", "attempt_count": {"$lt": max_attempts}},
+            {"$set": {"state": "running", "worker_id": worker_id,
+                      "lease_expires_at": now + timedelta(seconds=lease_seconds),
+                      "started_at": now, "updated_at": now},
+             "$inc": {"attempt_count": 1}},
+            sort=[("created_at", ASCENDING)],
+            return_document=True,
+        )
+
     async def claim(
         self, *, attempt_id: str, worker_id: str, lease_seconds: int = 120,
         max_attempts: int = 5,
