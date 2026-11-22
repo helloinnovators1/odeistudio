@@ -1,5 +1,33 @@
 # Implementation Status
 
+## Verified repository snapshot — 2026-11-22
+
+This top-level snapshot supersedes older status statements in the historical notes below. It distinguishes code on `main`, open pull requests, CI verification, independent review, merge, deployment and external acceptance.
+
+| Workstream | Verified state | Remaining gates |
+|---|---|---|
+| Mainline foundation | PR #49 MAD dashboard merged to `main` as `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db`; authenticated NEXUS dashboard integration and `docs/MAD.md` included. | Post-merge production configuration, real telemetry and alert delivery are not established. |
+| MAC environment governance | PR #50 open, unmerged; head `162be8693d517aa004a17ed1d3129f218b3feb93`. Exact-head API CI [45034255399](https://github.com/helloinnovators1/odeistudio/actions/runs/45034255399) and Security Scanning [45034255243](https://github.com/helloinnovators1/odeistudio/actions/runs/45034255243) passed. | Independent review; concrete cloud-provider and external secret-manager adapters; provider-side reconciliation/rollback; deployed worker; staging acceptance; operator-run database migration. |
+| MAD transactional audit | PR #51 open, unmerged; head `5051aa822ffee68722c389bb168d8eafc38d756a`. Exact-head API CI [45038201012](https://github.com/helloinnovators1/odeistudio/actions/runs/45038201012) and Security Scanning [45038201058](https://github.com/helloinnovators1/odeistudio/actions/runs/45038201058) passed. Includes transactional incident transitions and alert-observation persistence plus success audit, with MongoDB replica-set integration coverage. | Independent review; real telemetry source coverage; external alert delivery; ODID scope provisioning; staging acceptance. |
+| NEXUS local companion | Mainline approved apply remains single-file, signed-capability and fresh-challenge gated. | Multi-file atomic apply, durable journal, rollback and crash recovery. |
+| NEXUS execution | Earlier execution, worker, snapshots, artifact and history increments are integrated. | Hardened hostile-code isolation, production worker/storage/secrets, cancellation/recovery drills and staging E2E. |
+| ODID | Browser PKCE foundation exists. | Real issuer/client/redirect/resource/scopes, API issuer/JWKS, callback and staging identity acceptance. |
+| Windows | Cross-platform CI exists; companion diagnostic is available. | Actual Windows 10 build 18362.1256 device acceptance, signed installer/update and key rotation. |
+| Agents | Not complete as a product workflow. | Agents Window, CLI, policy-controlled lifecycle, background orchestration and observability. |
+| Production release | No production deployment is claimed. | Approved staging evidence, production credentials/providers, backup/restore, release approval, monitored rollout and rollback. |
+
+### Integration and release rules
+
+- PR #49 is merged. PRs #50 and #51 are still open and unmerged; green CI is not independent review or production acceptance.
+- Do not merge security-sensitive PRs without the repository's required independent review and checks.
+- MAC's revision-store migration is an operator-controlled production procedure: backup, freeze writes, dry-run, explicit apply, reconcile counts/content/pointers, then deploy. No production migration was performed by the PR.
+- A packaged MAC worker is not a deployed worker. A queued or verified test deployment attempt is not proof of a cloud infrastructure change.
+- MAD transactional code in PR #51 is not yet on `main`; the merged dashboard in PR #49 does not itself provide production telemetry or external notification delivery.
+- No actual Windows 10 target device, ODID staging issuer, production provider, external secret manager or production environment was available for acceptance in this repository session.
+- NEXUS multi-file writes remain disabled until cross-platform transaction semantics, rollback/recovery and adversarial filesystem tests pass.
+
+---
+
 ## Current verified repository snapshot — 2026-11-22
 
 This is the authoritative current status. Sections after the historical separator record prior implementation increments and must not override this snapshot.
