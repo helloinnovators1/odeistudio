@@ -1,11 +1,14 @@
 """Durable, tenant-scoped NEXUS execution-run lifecycle and worker leasing."""
 from __future__ import annotations
+
 import dataclasses
 import re
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 from uuid import uuid4
+
 from pymongo import ReturnDocument
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
