@@ -118,3 +118,36 @@ def test_enforces_entry_count_and_aggregate_expanded_size(tmp_path):
     expanded = make_zip([("a.txt", b"a" * 40), ("b.txt", b"b" * 40)])
     with pytest.raises(SnapshotError, match="aggregate"):
         WorkspaceSnapshotIngestor(root, max_total_bytes=64).ingest(expanded)
+
+@pytest.mark.parametrize("secret", [
+    b"AKIA1234567890ABCDEF",
+    b"github_pat_abcdefghijklmnopqrstuvwxyz1234567890",
+    b"client_secret=super_secret_value_that_is_long_enough",
+    b"-----BEGIN RSA PRIVATE KEY-----",
+    b"xoxb-12345678901234567890",
+])
+def test_rejects_likely_credential_material_inside_file_content(tmp_path, secret):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    archive = make_zip([("src/config.txt", secret)])
+    with pytest.raises(SnapshotError, match="likely credential"):
+        WorkspaceSnapshotIngestor(root).ingest(archive)
+    assert list(root.iterdir()) == []
+
+
+def test_secret_scanner_detects_patterns_split_across_stream_chunks(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    archive = make_zip([("src/config.txt", b"A" * 65_530 + b"api_key=" + b"x" * 40)])
+    with pytest.raises(SnapshotError, match="likely credential"):
+        WorkspaceSnapshotIngestor(root).ingest(archive)
+    assert list(root.iterdir()) == []
+
+
+def test_secret_scanner_allows_short_documentation_placeholders(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    record = WorkspaceSnapshotIngestor(root).ingest(
+        make_zip([(".env.example", b"API_KEY=replace-me")])
+    )
+    assert record.file_count == 1
