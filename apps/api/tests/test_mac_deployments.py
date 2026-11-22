@@ -80,6 +80,8 @@ async def test_deployment_attempt_is_idempotent_and_only_approved_revisions_are_
     assert first["_id"] == second["_id"]
     assert first["state"] == "queued"
     with pytest.raises(MacDeploymentConflict):
+        await store.create_attempt(**{**args, "actor": "oidc-another-operator"})
+    with pytest.raises(MacDeploymentConflict):
         await store.create_attempt(**{**args, "provider": "azure"})
     with pytest.raises(MacDeploymentError):
         await MongoMacDeploymentStore(Attempts(), Environments("draft")).create_attempt(**args)
