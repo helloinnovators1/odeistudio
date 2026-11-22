@@ -114,6 +114,7 @@ class MongoMadIncidentStore:
     async def transition(
         self, *, incident_id: str, action: str, actor: str,
         expected_version: int, assignee: str | None = None,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         if not isinstance(incident_id, str) or not _INCIDENT_ID.fullmatch(incident_id):
             raise MadIncidentValidationError("Incident ID is invalid")
@@ -129,7 +130,7 @@ class MongoMadIncidentStore:
         elif assignee is not None:
             raise MadIncidentValidationError("Assignee is only valid for assignment")
 
-        current = await self.collection.find_one({"_id": incident_id})
+        current = await self.collection.find_one({"_id": incident_id}, session=session)
         if current is None:
             raise MadIncidentNotFound("Incident does not exist")
         status = current.get("status")
@@ -160,10 +161,11 @@ class MongoMadIncidentStore:
                     **({"assignee": assignee} if action == "assign" else {}),
                 }], "$slice": -200}},
             },
+            session=session,
         )
         if result.modified_count != 1:
             raise MadIncidentConflict("Incident changed; refresh before retrying")
-        updated = await self.collection.find_one({"_id": incident_id})
+        updated = await self.collection.find_one({"_id": incident_id}, session=session)
         if updated is None:
             raise MadIncidentNotFound("Incident disappeared after transition")
         return updated
