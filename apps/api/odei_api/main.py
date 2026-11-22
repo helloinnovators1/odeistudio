@@ -2,8 +2,8 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from hmac import compare_digest
 from contextlib import asynccontextmanager
+from hmac import compare_digest
 from uuid import uuid4
 
 import httpx
