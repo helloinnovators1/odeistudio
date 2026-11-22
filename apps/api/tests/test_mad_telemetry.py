@@ -326,3 +326,31 @@ def test_mad_operator_route_returns_aggregate_metrics_and_audits_success():
     assert audit.events[0]["organization_id"] == "platform"
     assert audit.events[0]["outcome"] == "success"
     assert audit.events[0]["action"] == "mad.metrics.read"
+
+
+def test_mad_operator_route_fails_closed_when_access_audit_write_fails():
+    from fastapi.testclient import TestClient
+
+    from odei_api.main import app
+    from odei_api.security.auth import Principal, get_current_principal
+
+    class FailingAuditStore:
+        async def append(self, **_event):
+            raise RuntimeError("audit unavailable")
+
+    previous_database = getattr(app.state, "mongo_database", None)
+    previous_audit = getattr(app.state, "audit_event_store", None)
+    app.state.mongo_database = MetricsDatabase([], [])
+    app.state.audit_event_store = FailingAuditStore()
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="operator-1", issuer="https://identity.example.test/",
+        scopes=frozenset({"mad:read"}),
+    )
+    try:
+        response = TestClient(app).get("/api/v1/mad/execution-metrics")
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        app.state.mongo_database = previous_database
+        app.state.audit_event_store = previous_audit
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "AUDIT_STORE_UNAVAILABLE"
