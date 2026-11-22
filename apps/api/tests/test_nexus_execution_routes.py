@@ -251,7 +251,7 @@ def test_invalid_archive_never_creates_snapshot_or_run(execution_state):
 
 
 def test_execution_read_and_cancel_are_task_scoped_and_audited(execution_state):
-    _database, audit, _tasks, _snapshots, runs = execution_state
+    _database, audit, _tasks, _snapshots, _runs = execution_state
     client = TestClient(app)
     created = client.post(
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
@@ -274,7 +274,7 @@ def test_execution_read_and_cancel_are_task_scoped_and_audited(execution_state):
 
 
 def test_cross_identity_cannot_access_execution(execution_state):
-    _database, _audit, _tasks, _snapshots, runs = execution_state
+    _database, _audit, _tasks, _snapshots, _runs = execution_state
     created = TestClient(app).post(
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
         json=payload(),
