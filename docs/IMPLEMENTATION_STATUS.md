@@ -515,3 +515,12 @@ Still outstanding: a short-lived single-use approval capability independently ve
 - Corrected the capability response expiry contract to return Unix seconds, matching the browser transport's strict expiry validation.
 - The API now refuses to issue a companion capability for multi-file proposals because the current companion endpoint intentionally accepts exactly one file. No partial multi-file writes are attempted.
 - The panel reports the companion's durability confirmation separately and does not claim automatic rollback. Atomic multi-file transactions, durable rollback/recovery, and full apply audit/receipt remain outstanding. Production ODID/signing-key configuration and Windows-device acceptance are still external gates.
+
+
+## MAC transactional audit hardening — 2026-11-22
+
+- MAC lifecycle state changes now execute through a MongoDB session transaction, and the success audit event is inserted using that same session. Audit insertion failure aborts the state change; failure/denial events are recorded outside the aborted transaction.
+- The MAC store's read/write methods accept an optional Mongo session. Route tests verify shared session identity between the state mutation and audit insert; store fakes support the optional session parameter.
+- Secret-reference validation rejects dot-segments, empty path segments and traversal-like values; sensitive key detection covers API/access/private/signing/encryption keys, tokens, passwords and credential names.
+- Current PR #50 head: `40a7386fee9e22bd16df8c15d3fab1544e77a2ae`. Fresh API CI and security workflows are pending for this exact head. The preceding hardening head `dd62f25cb6e05474a25658739f03205f0df7d940` passed API CI and security scans, including Windows/Ubuntu Python 3.10/3.12, MongoDB replica-set integration, web tests/build, dependency audits, secret scanning and CodeQL.
+- PR #50 remains open and unmerged; no cloud deployment is performed. Provider secret resolution/deployment, separate revision archival, ODID staging and production acceptance remain external/incomplete.
