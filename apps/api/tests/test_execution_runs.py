@@ -9,7 +9,7 @@ from odei_api.services.execution_runs import (
 )
 
 
-def make_run(**overrides):
+\n\ndef make_run(**overrides):
     values = {"id": "run-1", "organization_id": "org-1", "project_id": "project-1",
         "task_id": "task-1", "requester_issuer": "https://identity.example",
         "requester_subject": "subject-1", "profile_id": "python-tests",
