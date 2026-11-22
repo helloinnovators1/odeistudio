@@ -113,8 +113,17 @@ async def test_mac_deployment_attempt_idempotency_claim_and_verification_on_mong
             "idempotency_key": "integration-request-123456",
             "actor": "oidc-deployer",
         }
-        first = await deployments.create_attempt(**request)
-        repeated = await deployments.create_attempt(**request)
+        async with client.start_session() as session:
+            async def create_idempotent_pair(transaction_session):
+                original = await deployments.create_attempt(
+                    **request, session=transaction_session,
+                )
+                replay = await deployments.create_attempt(
+                    **request, session=transaction_session,
+                )
+                return original, replay
+
+            first, repeated = await session.with_transaction(create_idempotent_pair)
         assert repeated["_id"] == first["_id"]
         assert await database["mac_deployment_attempts"].count_documents({}) == 1
 
