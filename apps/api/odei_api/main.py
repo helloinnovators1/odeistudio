@@ -28,9 +28,9 @@ from odei_api.services.conversation_store import MongoConversationStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
+from odei_api.services.mac_deployments import MongoMacDeploymentStore
 from odei_api.services.mac_environment_api import router as mac_environment_router
 from odei_api.services.mac_environments import MongoMacEnvironmentStore
-from odei_api.services.mac_deployments import MongoMacDeploymentStore
 from odei_api.services.mad_incidents import (
     MadIncidentConflict,
     MadIncidentNotFound,
