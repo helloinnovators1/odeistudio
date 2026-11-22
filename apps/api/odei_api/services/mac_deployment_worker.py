@@ -126,20 +126,20 @@ class MacDeploymentWorker:
         try:
             if adapter is None:
                 raise ValueError("No approved provider adapter is configured")
-            record = await self.environment_store.get(environment)
-            revision = next(
-                (item for item in record.get("versions", [])
-                 if item.get("version") == revision_number),
-                None,
-            )
-            if revision is None or revision.get("status") not in {"approved", "promoted"}:
-                raise ValueError("Approved configuration revision is no longer available")
-            config = await self._resolve_config(
-                revision.get("config", {}), environment=environment,
-                provider=provider_name, attempt_id=attempt_id,
-            )
             deployment_id = attempt.get("provider_deployment_id")
             if deployment_id is None:
+                record = await self.environment_store.get(environment)
+                revision = next(
+                    (item for item in record.get("versions", [])
+                     if item.get("version") == revision_number),
+                    None,
+                )
+                if revision is None or revision.get("status") not in {"approved", "promoted"}:
+                    raise ValueError("Approved configuration revision is no longer available")
+                config = await self._resolve_config(
+                    revision.get("config", {}), environment=environment,
+                    provider=provider_name, attempt_id=attempt_id,
+                )
                 deployment_id = await asyncio.wait_for(
                     self._with_heartbeat(
                         adapter.deploy(
