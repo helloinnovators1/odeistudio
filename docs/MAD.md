@@ -40,7 +40,7 @@ Alerts have severity, source, timestamp, affected service/tenant, deduplication 
 
 The current backend change adds an internal, token-authenticated execution-metrics endpoint at `GET /api/v1/internal/mad/execution-metrics`. It is deliberately not a browser dashboard API and is excluded from the public OpenAPI schema. It reports only aggregate values:
 
-- Worker heartbeat totals, fresh workers and stale workers. Freshness threshold: 60 seconds.
+- Worker heartbeat totals, fresh workers, stale workers and workers in graceful shutdown. Freshness threshold: 60 seconds.
 - Queued and active execution-run counts, plus the oldest queued timestamp.
 - Completed, failed and cancelled execution counts over the preceding 24 hours (UTC).
 - An observation timestamp and explicit unknown/degraded states when there are no workers or a queue has no fresh worker.
@@ -49,7 +49,7 @@ The standalone worker writes a low-cardinality heartbeat at startup, while idle,
 
 ### Internal endpoint security
 
-Configure `MAD_METRICS_TOKEN` as a high-entropy secret in the API environment. Send it in the `X-ODEI-MAD-Token` header from a trusted server-side operations client. The endpoint fails closed if the token is absent or invalid, does not accept browser identity tokens as an alternative, and must additionally be protected by private networking, ingress allowlists and secret rotation. Never put this token in browser code, source control, telemetry, URLs or logs.
+Configure `MAD_METRICS_TOKEN` as a high-entropy secret of at least 32 ASCII characters in the API environment. Send it in the `X-ODEI-MAD-Token` header from a trusted server-side operations client. The endpoint fails closed if the token is absent or invalid, does not accept browser identity tokens as an alternative, and must additionally be protected by private networking, ingress allowlists and secret rotation. Never put this token in browser code, source control, telemetry, URLs or logs.
 
 ### Current scope and non-claims
 
