@@ -189,3 +189,15 @@ async def test_only_verified_draft_author_can_edit_draft():
 def test_sensitive_configuration_keys_reject_non_reference_values(value):
     with pytest.raises(MacEnvironmentError):
         validate_environment_config({"api_key": value})
+
+
+@pytest.mark.parametrize("key", [
+    "access_key", "signing_key", "encryption_key", "private_key",
+    "refresh_token", "client_secret", "api-key",
+])
+def test_all_credential_key_variants_require_secret_references(key):
+    with pytest.raises(MacEnvironmentError):
+        validate_environment_config({key: "plaintext"})
+    assert validate_environment_config({key: "secret://vault/prod/credential"}) == {
+        key: "secret://vault/prod/credential"
+    }
