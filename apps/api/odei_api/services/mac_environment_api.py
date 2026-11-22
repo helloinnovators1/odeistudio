@@ -138,8 +138,8 @@ async def read_environment(environment: str, request: Request,
     store, audit = await _context(request, principal, "mac:read", environment)
     try:
         record = await store.get(environment)
-    except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
-        await _audit(audit, principal, "mac.environment.read", environment, "denied")
+    except Exception as exc:
+        await _audit(audit, principal, "mac.environment.read", environment, "failure")
         raise _translate(exc) from exc
     await _audit(audit, principal, "mac.environment.read", environment, "success",
                  {"latest_version": record["latest_version"], "active_version": record["active_version"]})
@@ -165,9 +165,7 @@ async def create_environment_draft(environment: str, payload: EnvironmentDraftRe
             )
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.draft.create", environment, "failure")
-        if isinstance(exc, (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict)):
-            raise _translate(exc) from exc
-        raise
+        raise _translate(exc) from exc
     await _audit(audit, principal, "mac.environment.draft.create", environment, "success",
                  {"version": result["version"]})
     return {"revision": result}
@@ -187,7 +185,7 @@ async def update_environment_draft(environment: str, version: int,
             actor=_actor_id(principal), config=payload.config,
             change_summary=payload.change_summary,
         )
-    except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
+    except Exception as exc:
         await _audit(audit, principal, "mac.environment.draft.update", environment, "failure")
         raise _translate(exc) from exc
     await _audit(audit, principal, "mac.environment.draft.update", environment, "success", {"version": version})
@@ -203,7 +201,7 @@ async def submit_environment(environment: str, payload: RevisionRequest,
             environment=environment, version=payload.version,
             expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
         )
-    except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
+    except Exception as exc:
         await _audit(audit, principal, "mac.environment.submit", environment, "failure")
         raise _translate(exc) from exc
     await _audit(audit, principal, "mac.environment.submit", environment, "success", {"version": payload.version})
@@ -219,7 +217,7 @@ async def approve_environment(environment: str, payload: RevisionRequest,
             environment=environment, version=payload.version,
             expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
         )
-    except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
+    except Exception as exc:
         await _audit(audit, principal, "mac.environment.approve", environment, "failure")
         raise _translate(exc) from exc
     await _audit(audit, principal, "mac.environment.approve", environment, "success", {"version": payload.version})
@@ -236,7 +234,7 @@ async def promote_environment(environment: str, payload: PromotionRequest,
             expected_active_version=payload.expected_active_version,
             expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
         )
-    except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
+    except Exception as exc:
         await _audit(audit, principal, "mac.environment.promote", environment, "failure")
         raise _translate(exc) from exc
     await _audit(audit, principal, "mac.environment.promote", environment, "success", {"version": payload.version})
@@ -253,7 +251,7 @@ async def rollback_environment(environment: str, payload: RollbackRequest,
             expected_latest_version=payload.expected_latest_version,
             actor=_actor_id(principal), change_summary=payload.change_summary,
         )
-    except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
+    except Exception as exc:
         await _audit(audit, principal, "mac.environment.rollback_draft", environment, "failure")
         raise _translate(exc) from exc
     await _audit(audit, principal, "mac.environment.rollback_draft", environment, "success",
