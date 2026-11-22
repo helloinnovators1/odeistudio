@@ -303,7 +303,7 @@ export default function NexusChatPanel({
   }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId]);
 
   useEffect(() => {
-    const accessToken = access?.accessToken;
+    const accessToken = access?.accessToken ?? "";
     const apiBaseUrl = config.apiBaseUrl ?? "";
     const selectedOrganizationId = organizationId ?? "";
     const selectedProjectId = projectId ?? "";
