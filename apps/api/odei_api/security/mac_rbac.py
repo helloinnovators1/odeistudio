@@ -38,6 +38,8 @@ def parse_mac_operator_registry(raw: str) -> dict[tuple[str, str], tuple[str, ..
     """Parse bounded deployment-owned issuer/subject role assignments."""
     if not isinstance(raw, str) or not raw.strip():
         return {}
+    if len(raw) > 262_144:
+        raise ValueError("MAC operator registry exceeds the size limit")
     try:
         values = json.loads(raw)
     except json.JSONDecodeError as exc:
