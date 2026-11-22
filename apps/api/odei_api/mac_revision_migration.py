@@ -26,7 +26,8 @@ async def migrate(*, apply: bool) -> dict[str, int]:
         database = client[database_name]
         environments = database["mac_environments"]
         revisions = database["mac_environment_revisions"]
-        await initialize_mac_revision_collection(revisions)
+        if apply:
+            await initialize_mac_revision_collection(revisions)
         async with client.start_session() as session:
             async def transaction(active_session):
                 return await backfill_mac_environment_revisions(
