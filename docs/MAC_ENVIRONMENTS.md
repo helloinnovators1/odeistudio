@@ -66,3 +66,38 @@ production history can be supported safely.
 ### Atomicity verification
 
 `apps/api/tests/test_mac_store_mongodb_integration.py` exercises the MAC route mutation helper against a real MongoDB replica set. It verifies that a simulated audit insert failure leaves no environment revision behind, and that a successful mutation commits exactly one environment revision and one corresponding audit event. The API CI MongoDB integration job runs this test alongside the task/execution transaction integration tests.
+
+
+## Durable deployment-attempt ledger (implemented; provider execution pending)
+
+The API now accepts an authenticated deployment request at
+`POST /api/v1/mac/environments/{environment}/deployments` and returns
+`202 Accepted` with a durable queued attempt. The request requires
+`mac:deployments:approve`, a positive strict-integer revision, a bounded
+provider identifier, and an idempotency key. Only revisions already in
+`approved` or `promoted` state are eligible. Repeating the same key and
+same request returns the existing attempt; reusing the key for a different
+environment/revision/provider is a conflict.
+
+The attempt ledger uses a separate MongoDB collection and indexes for unique
+environment-scoped idempotency, environment history, and worker queue ordering.
+Its state transitions are compare-and-set guarded:
+
+- `queued -> running`: one worker claims the attempt and owns it.
+- `running -> succeeded`: the owning worker records a positive verification.
+- `running -> verification_failed`: provider execution completed but verification
+  did not pass.
+- `running -> failed`: the owning worker records an execution failure.
+
+The authenticated read endpoint is
+`GET /api/v1/mac/environments/{environment}/deployments/{attempt_id}` and
+requires `mac:read`. Both request and read actions are audited. Attempt records
+store provider deployment identifiers and bounded summaries, not resolved secret
+material or provider logs.
+
+**Not yet implemented:** a worker process/queue consumer, cloud-provider adapters,
+secret-manager resolution, provider health probes, retry/backoff policy, automatic
+compensation/rollback, and deployment UI. A queued record is not a deployment;
+neither API acceptance nor a worker claim is evidence that infrastructure changed.
+Provider credentials and a concrete provider/environment configuration are required
+before a real deployment can be executed safely.
