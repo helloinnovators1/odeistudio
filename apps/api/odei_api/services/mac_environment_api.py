@@ -137,15 +137,18 @@ async def create_environment_draft(environment: str, payload: EnvironmentDraftRe
                                    request: Request, principal: Principal = principal_dependency):
     store, audit = await _context(request, principal, "mac:environment:manage")
     try:
-        if payload.expected_latest_version is not None:
-            current = await store.get(environment)
-            if current["latest_version"] != payload.expected_latest_version:
-                raise MacEnvironmentConflict("Environment changed; refresh before creating a draft")
-            raise MacEnvironmentConflict("A new environment already exists; use the revision workflow")
-        result = await store.create_draft(
-            environment=environment, actor=principal.subject,
-            config=payload.config, change_summary=payload.change_summary,
-        )
+        if payload.expected_latest_version is None:
+            result = await store.create_draft(
+                environment=environment, actor=principal.subject,
+                config=payload.config, change_summary=payload.change_summary,
+            )
+        else:
+            result = await store.create_revision(
+                environment=environment,
+                expected_latest_version=payload.expected_latest_version,
+                actor=principal.subject, config=payload.config,
+                change_summary=payload.change_summary,
+            )
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.draft.create", environment, "failure")
         if isinstance(exc, (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict)):
