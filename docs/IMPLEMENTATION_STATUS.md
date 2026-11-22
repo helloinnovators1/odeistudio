@@ -487,3 +487,12 @@ Feature branch: `feat/nexus-chat-generated-patch-proposals`. Not merged or deplo
 - The UI and API continue to state `application_enabled=false`. Approval records a decision only; no local file is changed.
 
 Still outstanding: a short-lived single-use approval capability independently verified by the local companion; secure atomic apply and rollback with fresh handle-relative base-hash checks; application audit and recovery; isolated test/terminal execution; project-wide tool bridge; production ODID/Mongo/model configuration and staging E2E. No local tests were run in this hosted session; exact-head CI is pending.
+
+
+## NEXUS project-wide execution history — implementation increment (2026-11-22)
+
+- Added a bounded project execution-history endpoint at `GET /api/v1/organizations/{organization_id}/projects/{project_id}/executions`.
+- The endpoint revalidates active organization membership and project access. Project owners can inspect all project runs; other active project members see only runs requested by their exact verified issuer + subject identity.
+- Added stable descending keyset pagination using the pair `before_created_at` + `before_run_id`, with page sizes capped at 100. The API rejects incomplete cursors and returns only the existing public run projection; worker lease tokens and internal execution arguments are not exposed.
+- History reads are audited and fail closed if audit storage is unavailable. The Mongo store uses the existing organization/project/created-at index and does not perform unbounded collection scans.
+- Added route tests for requester scoping, audit metadata and incomplete-cursor rejection. Exact-head CI and merge are pending; no production deployment or live tenant acceptance is implied.
