@@ -78,6 +78,7 @@ class ExecutionRun:
     profile_id: str
     snapshot_sha256: str
     arguments: tuple[str, ...]
+    snapshot_id: str | None = None
     status: ExecutionRunStatus = ExecutionRunStatus.QUEUED
     version: int = 0
     attempts: int = 0
@@ -121,6 +122,10 @@ class MongoExecutionRunStore:
         await self._runs.create_index([("status", 1), ("created_at", 1), ("available_at", 1)])
         await self._runs.create_index([("status", 1), ("lease_expires_at", 1)])
         await self._runs.create_index([("organization_id", 1), ("project_id", 1), ("created_at", -1)])
+        await self._runs.create_index(
+            [("organization_id", 1), ("active_task_id", 1)], unique=True,
+            partialFilterExpression={"active_task_id": {"$exists": True}},
+        )
         await self._events.create_index([("organization_id", 1), ("run_id", 1), ("version", 1)], unique=True)
 
     async def _audit_in_transaction(self, event: Mapping[str, Any] | None, session: Any) -> None:
@@ -136,10 +141,11 @@ class MongoExecutionRunStore:
                 "project_id": run.project_id, "task_id": run.task_id,
                 "requester_issuer": run.requester_issuer, "requester_subject": run.requester_subject,
                 "profile_id": run.profile_id, "snapshot_sha256": run.snapshot_sha256,
-                "arguments": list(run.arguments), "status": run.status.value,
+                "snapshot_id": run.snapshot_id, "arguments": list(run.arguments), "status": run.status.value,
                 "version": run.version, "attempts": run.attempts, "max_attempts": run.max_attempts,
                 "worker_id": None, "lease_token": None, "lease_expires_at": None,
-                "cancel_requested": False, "available_at": now, "created_at": now, "updated_at": now}
+                "cancel_requested": False, "active_task_id": run.task_id,
+                "available_at": now, "created_at": now, "updated_at": now}
 
     async def create(self, run: ExecutionRun, *, audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
         if run.status is not ExecutionRunStatus.QUEUED or run.version != 0 or run.attempts != 0:
@@ -152,6 +158,58 @@ class MongoExecutionRunStore:
                                                   actor_id=run.requester_subject), session=session)
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(document)
+
+    async def create_approved_task_run(
+        self, run: ExecutionRun, *, tasks: Any, task_events: Any,
+        expected_task_version: int, audit_event: Mapping[str, Any],
+    ) -> ExecutionRun:
+        """Atomically consume a project-owner-approved task and enqueue exactly one run."""
+        if run.status is not ExecutionRunStatus.QUEUED or run.version != 0 or run.attempts != 0:
+            raise ValueError("new execution runs must begin queued at version and attempt zero")
+        if not run.snapshot_id:
+            raise ValueError("approved execution runs must reference a durable workspace snapshot")
+        now = datetime.now(timezone.utc)
+        document = self._document(run, now)
+        async with self._client.start_session() as session, await session.start_transaction():
+            task = await tasks.find_one({
+                "_id": run.task_id, "organization_id": run.organization_id,
+                "project_id": run.project_id, "status": "approved",
+                "version": expected_task_version,
+            }, session=session)
+            if task is None:
+                raise ExecutionRunConflict("task is not approved or its version has changed")
+            changed = await tasks.update_one({
+                "_id": run.task_id, "organization_id": run.organization_id,
+                "project_id": run.project_id, "status": "approved",
+                "version": expected_task_version,
+            }, {"$set": {"status": "executing", "updated_at": now},
+                "$inc": {"version": 1}}, session=session)
+            if changed.modified_count != 1:
+                raise ExecutionRunConflict("approved task changed concurrently")
+            await task_events.insert_one({
+                "event_id": str(uuid4()), "organization_id": run.organization_id,
+                "project_id": run.project_id, "task_id": run.task_id,
+                "actor_id": run.requester_subject, "type": "task.execution.started",
+                "from_status": "approved", "to_status": "executing",
+                "version": expected_task_version + 1, "occurred_at": now,
+            }, session=session)
+            await self._runs.insert_one(document, session=session)
+            await self._events.insert_one(_event(
+                run, event_type="execution.queued", version=0,
+                actor_id=run.requester_subject, task_version=expected_task_version + 1,
+            ), session=session)
+            await self._audit_in_transaction(audit_event, session)
+        return self._from_document(document)
+
+    async def get_active_for_task(
+        self, *, organization_id: str, project_id: str, task_id: str,
+    ) -> ExecutionRun | None:
+        row = await self._runs.find_one({
+            "organization_id": organization_id, "project_id": project_id,
+            "task_id": task_id,
+            "status": {"$in": ["queued", "leased", "running", "collecting"]},
+        })
+        return self._from_document(row) if row else None
 
     async def get(self, *, organization_id: str, run_id: str) -> ExecutionRun | None:
         _identifier(organization_id, "organization_id")
@@ -185,6 +243,80 @@ class MongoExecutionRunStore:
                 version=claimed.version, actor_id=worker_id, attempt=claimed.attempts), session=session)
         return claimed
 
+    async def expire_exhausted(self, *, actor_id: str, limit: int = 50,
+                               tasks: Any | None = None, task_events: Any | None = None) -> int:
+        """Fail runs whose queue or expired lease exhausted the bounded attempt budget."""
+        _identifier(actor_id, "actor_id")
+        if not 1 <= limit <= 500:
+            raise ValueError("expiry batch limit is invalid")
+        now = datetime.now(timezone.utc)
+        exhausted = {"$expr": {"$gte": ["$attempts", "$max_attempts"]}}
+        query = {"$or": [
+            {"status": ExecutionRunStatus.QUEUED.value, **exhausted},
+            {"status": {"$in": ["leased", "running", "collecting"]},
+             "lease_expires_at": {"$lte": now}, **exhausted},
+        ]}
+        count = 0
+        async with self._client.start_session() as session, await session.start_transaction():
+            cursor = self._runs.find(query, session=session).sort("created_at", 1).limit(limit)
+            rows = await cursor.to_list(length=limit)
+            for row in rows:
+                status = ExecutionRunStatus(row["status"])
+                updated = await self._runs.find_one_and_update(
+                    {"_id": row["_id"], "organization_id": row["organization_id"],
+                     "version": row["version"], "status": row["status"]},
+                    {"$set": {"status": ExecutionRunStatus.FAILED.value,
+                              "worker_id": None, "lease_token": None,
+                              "lease_expires_at": None, "updated_at": now},
+                     "$unset": {"active_task_id": ""},
+                     "$inc": {"version": 1}},
+                    return_document=ReturnDocument.AFTER, session=session,
+                )
+                if updated is None:
+                    continue
+                run = self._from_document(updated)
+                await self._events.insert_one(_event(
+                    run, event_type="execution.failed", version=run.version,
+                    actor_id=actor_id, from_status=status.value,
+                    to_status=ExecutionRunStatus.FAILED.value,
+                    reason="attempt_budget_exhausted",
+                ), session=session)
+                if tasks is not None and task_events is not None:
+                    task = await tasks.find_one({
+                        "_id": run.task_id, "organization_id": run.organization_id,
+                        "project_id": run.project_id, "status": "executing",
+                    }, session=session)
+                    if task is not None:
+                        task_updated = await tasks.find_one_and_update(
+                            {"_id": task["_id"], "organization_id": run.organization_id,
+                             "version": task["version"], "status": "executing"},
+                            {"$set": {"status": "failed", "updated_at": now},
+                             "$inc": {"version": 1}},
+                            return_document=ReturnDocument.AFTER, session=session,
+                        )
+                        if task_updated is None:
+                            raise ExecutionRunConflict("task changed while exhausted execution was finalized")
+                        await task_events.insert_one({
+                            "event_id": str(uuid4()), "organization_id": run.organization_id,
+                            "project_id": run.project_id, "task_id": run.task_id,
+                            "actor_id": actor_id, "type": "task.status_changed",
+                            "from_status": "executing", "to_status": "failed",
+                            "version": task_updated["version"], "occurred_at": now,
+                        }, session=session)
+                await self._audit_in_transaction({
+                    "organization_id": run.organization_id,
+                    "actor_issuer": "https://odei-studio.internal",
+                    "actor_subject": actor_id,
+                    "action": "nexus.execution.exhausted",
+                    "target_type": "nexus_execution_run",
+                    "target_id": run.id,
+                    "outcome": "failure",
+                    "request_id": uuid4().hex,
+                    "metadata": {"attempts": run.attempts, "max_attempts": run.max_attempts},
+                }, session)
+                count += 1
+        return count
+
     async def heartbeat(self, *, organization_id: str, run_id: str, worker_id: str,
                         lease_token: str, lease_seconds: int = 30) -> datetime:
         now = datetime.now(timezone.utc)
@@ -212,7 +344,8 @@ class MongoExecutionRunStore:
 
     async def finish(self, *, organization_id: str, run_id: str, worker_id: str,
                      lease_token: str, outcome: ExecutionRunStatus,
-                     audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+                     audit_event: Mapping[str, Any] | None = None,
+                     tasks: Any | None = None, task_events: Any | None = None) -> ExecutionRun:
         if outcome not in {ExecutionRunStatus.COMPLETED, ExecutionRunStatus.FAILED, ExecutionRunStatus.CANCELLED}:
             raise ValueError("execution outcome must be completed, failed or cancelled")
         run = await self.get(organization_id=organization_id, run_id=run_id)
@@ -221,11 +354,14 @@ class MongoExecutionRunStore:
         if outcome is ExecutionRunStatus.CANCELLED and not run.cancel_requested:
             raise ExecutionRunConflict("worker cannot cancel without a cancellation request")
         return await self._worker_transition(organization_id=organization_id, run_id=run_id,
-            worker_id=worker_id, lease_token=lease_token, next_status=outcome, audit_event=audit_event)
+            worker_id=worker_id, lease_token=lease_token, next_status=outcome,
+            audit_event=audit_event, task_collection=tasks, task_events=task_events)
 
     async def _worker_transition(self, *, organization_id: str, run_id: str, worker_id: str,
                                  lease_token: str, next_status: ExecutionRunStatus,
-                                 audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+                                 audit_event: Mapping[str, Any] | None = None,
+                                 task_collection: Any | None = None,
+                                 task_events: Any | None = None) -> ExecutionRun:
         now = datetime.now(timezone.utc)
         async with self._client.start_session() as session, await session.start_transaction():
             current = await self._runs.find_one(
@@ -247,7 +383,8 @@ class MongoExecutionRunStore:
                           "worker_id": None if next_status in _TERMINAL else worker_id,
                           "lease_token": None if next_status in _TERMINAL else lease_token,
                           "lease_expires_at": None if next_status in _TERMINAL else current["lease_expires_at"]},
-                 "$inc": {"version": 1}},
+                 "$inc": {"version": 1},
+                 **({"$unset": {"active_task_id": ""}} if next_status in _TERMINAL else {})},
                 return_document=ReturnDocument.AFTER, session=session)
             if updated is None:
                 raise ExecutionRunConflict("execution run changed concurrently")
@@ -255,11 +392,40 @@ class MongoExecutionRunStore:
                 event_type=f"execution.{next_status.value}", version=updated["version"],
                 actor_id=worker_id, from_status=current_status.value, to_status=next_status.value),
                 session=session)
+            if next_status in _TERMINAL and task_collection is not None and task_events is not None:
+                target_task_status = {
+                    ExecutionRunStatus.COMPLETED: "validating",
+                    ExecutionRunStatus.FAILED: "failed",
+                    ExecutionRunStatus.CANCELLED: "cancelled",
+                }[next_status]
+                task = await task_collection.find_one({
+                    "_id": updated["task_id"], "organization_id": organization_id,
+                    "project_id": updated["project_id"], "status": "executing",
+                }, session=session)
+                if task is not None:
+                    task_updated = await task_collection.find_one_and_update(
+                        {"_id": task["_id"], "organization_id": organization_id,
+                         "version": task["version"], "status": "executing"},
+                        {"$set": {"status": target_task_status, "updated_at": now},
+                         "$inc": {"version": 1}},
+                        return_document=ReturnDocument.AFTER, session=session,
+                    )
+                    if task_updated is None:
+                        raise ExecutionRunConflict("task changed while execution was being finalized")
+                    await task_events.insert_one({
+                        "event_id": str(uuid4()), "organization_id": organization_id,
+                        "project_id": updated["project_id"], "task_id": updated["task_id"],
+                        "actor_id": worker_id, "type": "task.status_changed",
+                        "from_status": "executing", "to_status": target_task_status,
+                        "version": task_updated["version"], "occurred_at": now,
+                    }, session=session)
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(updated)
 
     async def request_cancel(self, *, organization_id: str, run_id: str, actor_id: str,
-                             audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+                             audit_event: Mapping[str, Any] | None = None,
+                             tasks: Any | None = None, task_events: Any | None = None,
+                             task_audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
         _identifier(actor_id, "actor_id")
         now = datetime.now(timezone.utc)
         async with self._client.start_session() as session, await session.start_transaction():
@@ -267,8 +433,12 @@ class MongoExecutionRunStore:
             if current is None:
                 raise ExecutionRunNotFound("execution run was not found")
             status = ExecutionRunStatus(current["status"])
+            if status is ExecutionRunStatus.CANCELLED and current.get("cancel_requested"):
+                return self._from_document(current)
             if status in _TERMINAL:
                 raise ExecutionRunConflict("terminal execution runs cannot be cancelled")
+            if current.get("cancel_requested"):
+                return self._from_document(current)
             target = ExecutionRunStatus.CANCELLED if status is ExecutionRunStatus.QUEUED else status
             updated = await self._runs.find_one_and_update(
                 {"_id": run_id, "organization_id": organization_id, "version": current["version"]},
@@ -276,13 +446,37 @@ class MongoExecutionRunStore:
                           "worker_id": None if target is ExecutionRunStatus.CANCELLED else current.get("worker_id"),
                           "lease_token": None if target is ExecutionRunStatus.CANCELLED else current.get("lease_token"),
                           "lease_expires_at": None if target is ExecutionRunStatus.CANCELLED else current.get("lease_expires_at")},
-                 "$inc": {"version": 1}},
+                 "$inc": {"version": 1},
+                 **({"$unset": {"active_task_id": ""}} if target is ExecutionRunStatus.CANCELLED else {})},
                 return_document=ReturnDocument.AFTER, session=session)
             if updated is None:
                 raise ExecutionRunConflict("execution run changed concurrently")
             await self._events.insert_one(_event(self._from_document(updated),
                 event_type="execution.cancel_requested", version=updated["version"],
                 actor_id=actor_id, from_status=status.value, to_status=target.value), session=session)
+            if target is ExecutionRunStatus.CANCELLED and tasks is not None and task_events is not None:
+                task = await tasks.find_one({
+                    "_id": current["task_id"], "organization_id": organization_id,
+                    "project_id": current["project_id"], "status": "executing",
+                }, session=session)
+                if task is not None:
+                    task_updated = await tasks.find_one_and_update(
+                        {"_id": task["_id"], "organization_id": organization_id,
+                         "version": task["version"], "status": "executing"},
+                        {"$set": {"status": "cancelled", "updated_at": now},
+                         "$inc": {"version": 1}},
+                        return_document=ReturnDocument.AFTER, session=session,
+                    )
+                    if task_updated is None:
+                        raise ExecutionRunConflict("task changed while queued execution was cancelled")
+                    await task_events.insert_one({
+                        "event_id": str(uuid4()), "organization_id": organization_id,
+                        "project_id": current["project_id"], "task_id": current["task_id"],
+                        "actor_id": actor_id, "type": "task.cancelled",
+                        "from_status": "executing", "to_status": "cancelled",
+                        "version": task_updated["version"], "occurred_at": now,
+                    }, session=session)
+                    await self._audit_in_transaction(task_audit_event, session)
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(updated)
 
@@ -301,7 +495,8 @@ class MongoExecutionRunStore:
             project_id=row["project_id"], task_id=row["task_id"],
             requester_issuer=row["requester_issuer"], requester_subject=row["requester_subject"],
             profile_id=row["profile_id"], snapshot_sha256=row["snapshot_sha256"],
-            arguments=tuple(row["arguments"]), status=ExecutionRunStatus(row["status"]),
+            arguments=tuple(row["arguments"]), snapshot_id=row.get("snapshot_id"),
+            status=ExecutionRunStatus(row["status"]),
             version=row["version"], attempts=row["attempts"], max_attempts=row["max_attempts"],
             worker_id=row.get("worker_id"), lease_token=row.get("lease_token"),
             lease_expires_at=row.get("lease_expires_at"), cancel_requested=row.get("cancel_requested", False),

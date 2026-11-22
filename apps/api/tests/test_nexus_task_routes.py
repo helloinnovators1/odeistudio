@@ -30,6 +30,8 @@ class Database:
                 "owner_subject": "user-1",
             }),
             "project_memberships": Collection(None),
+            "tasks": Collection(None),
+            "task_events": Collection(None),
         }
 
     def __getitem__(self, name):
@@ -717,3 +719,49 @@ def test_nexus_inspection_rejects_unattached_or_unsafe_paths_before_model_call(r
     assert response.json()["detail"]["code"] == "INVALID_ATTACHED_EXCERPT"
     assert called == []
     assert conversations.documents[item["conversation_id"]]["messages"] == []
+
+def test_task_cancellation_propagates_to_active_execution_run(route_state):
+    _, _audit, tasks, _ = route_state
+    task = TaskRecord(
+        id="task-active-run", organization_id="org-1", project_id="project-1",
+        owner_id=identity_owner_key("https://identity.example/", "user-1"),
+        goal="Cancel active run", status=TaskStatus.EXECUTING,
+        plan="Approved execution", version=4,
+    )
+    tasks.tasks[task.id] = task
+
+    class ActiveRuns:
+        def __init__(self):
+            self.cancelled = []
+
+        async def get_active_for_task(self, **values):
+            assert values == {
+                "organization_id": "org-1", "project_id": "project-1",
+                "task_id": "task-active-run",
+            }
+            return SimpleNamespace(id="run-active")
+
+        async def request_cancel(self, **values):
+            self.cancelled.append(values)
+            return SimpleNamespace(status=SimpleNamespace(value="running"))
+
+    previous = getattr(app.state, "execution_run_store", None)
+    runs = ActiveRuns()
+    app.state.execution_run_store = runs
+    try:
+        response = TestClient(app).post(
+            "/api/v1/organizations/org-1/projects/project-1/tasks/task-active-run/cancel",
+            json={"expected_version": 4},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "cancelled"
+        assert len(runs.cancelled) == 1
+        assert runs.cancelled[0]["run_id"] == "run-active"
+        assert runs.cancelled[0]["actor_id"] == "authenticated-user"
+        assert runs.cancelled[0]["audit_event"]["action"] == "nexus.execution.cancel"
+        assert tasks.tasks[task.id].status is TaskStatus.CANCELLED
+    finally:
+        if previous is None:
+            delattr(app.state, "execution_run_store")
+        else:
+            app.state.execution_run_store = previous
