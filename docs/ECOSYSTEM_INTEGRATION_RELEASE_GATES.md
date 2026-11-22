@@ -1,14 +1,14 @@
 # Ecosystem integration and release gates
 
 **Reviewed:** 2026-11-22  
-**Status:** PR integration merged to `main`; production readiness remains unverified and is not claimed.  
-**Integrated main commit:** `47fcd781a39bfff27a60eee7bc77b5ea9fe4685c` (superseded by follow-up fixes as they merge).  
+**Status:** PR #49 MAD dashboard is merged. PR #55 consolidates MAC environment governance and MAD transactional auditing and remains open, unmerged and undeployed. Production readiness is not claimed.  
+**Current main commit at review:** `8b2b2e6f9449732256fb756d7d81f848e5a91597`.  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
 
 - PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged; GitHub reports no open PRs in this integration set.
-- The assembled main commit passed Windows and Ubuntu Python 3.10/3.12, MongoDB integration, web, dependency-audit and secret-scanning jobs. CodeQL was still running at the last exact-head inspection; recheck it on the final release commit.
+- The current mainline security workflow passed, including CodeQL, Python/web dependency audits and secret scanning. The verified feature PR heads #52, #53, #55 and #56 each passed API CI (6/6) and Security Scanning (4/4), including Windows/Ubuntu Python 3.10/3.12, web tests/build and MongoDB replica-set integration.
 - Merging is not deployment. Real ODID configuration, provisioned worker/runtime, production secret manager, staging E2E, MAD UI/alerting, MAC control-plane acceptance and Windows 10 build 18362 device acceptance remain external/product gates.
 - The eight PR descriptions below record their original scope; they are historical scope descriptions, not open work items.
 
@@ -137,4 +137,4 @@ The target device reported by the project owner is Windows 10 version 1903, OS b
 
 ## 9. Operational truth
 
-The eight execution PRs (#26–#33) are merged into main. On the assembled main commit recorded above, Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web checks, dependency audits and secret scanning passed; CodeQL was still in progress at the last check and must be verified on the final release commit. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
+Execution PRs #26–#33 are merged into main. PR #49 MAD dashboard is merged. PR #55 MAC/MAD transactional governance and PRs #52, #53 and #56 NEXUS hardening remain open and unmerged; each latest reconciled head passed API CI and Security Scanning. Mainline Security Scanning, including CodeQL, passed on commit `8b2b2e6f9449732256fb756d7d81f848e5a91597`. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
