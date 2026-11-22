@@ -545,3 +545,12 @@ Still outstanding: a short-lived single-use approval capability independently ve
 - Corrected the capability response expiry contract to return Unix seconds, matching the browser transport's strict expiry validation.
 - The API now refuses to issue a companion capability for multi-file proposals because the current companion endpoint intentionally accepts exactly one file. No partial multi-file writes are attempted.
 - The panel reports the companion's durability confirmation separately and does not claim automatic rollback. Atomic multi-file transactions, durable rollback/recovery, and full apply audit/receipt remain outstanding. Production ODID/signing-key configuration and Windows-device acceptance are still external gates.
+
+
+
+## NEXUS companion apply request validation — in review (2026-11-22)
+
+- PR [#54](https://github.com/helloinnovators1/odeistudio/pull/54) changes the companion's `proposal_version` field from coercive `int` to Pydantic `StrictInt`, rejecting JSON booleans at the local companion HTTP boundary.
+- Added a regression test for `true` being rejected as a proposal version.
+- Exact-head API CI is pending for `1e8ecd51e63df716cd73204ddfb70869166d74a9`; no pass is claimed yet.
+- This is schema hardening only. The companion apply route remains single-file; durable multi-file transactions, journaling, rollback and crash recovery are not enabled.
