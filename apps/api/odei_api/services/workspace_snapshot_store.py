@@ -100,6 +100,17 @@ class MongoWorkspaceSnapshotStore:
             raise SnapshotStoreError("Snapshot blob size does not match metadata")
         return document, archive
 
+    async def delete_for_tenant(self, *, organization_id: str, project_id: str, snapshot_id: str) -> bool:
+        document = await self._metadata.find_one({
+            "_id": snapshot_id, "organization_id": organization_id,
+            "project_id": project_id,
+        })
+        if document is None:
+            return False
+        await self._bucket.delete(document["blob_id"])
+        await self._metadata.delete_one({"_id": snapshot_id, "organization_id": organization_id})
+        return True
+
     async def delete_expired(self, *, limit: int = 100) -> int:
         if not 1 <= limit <= 1000:
             raise ValueError("deletion batch limit is invalid")
