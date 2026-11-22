@@ -198,3 +198,34 @@ def test_pinned_public_key_map_is_validated_before_companion_writes():
     validate_patch_approval_public_keys(public_keys)
     with pytest.raises(PatchApprovalNotConfigured):
         validate_patch_approval_public_keys({"untrusted": "not-a-valid-key"})
+
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ("src", "src/main.py"),
+        ("src/main.py", "src"),
+        ("SRC", "src/main.py"),
+        ("src/main.py", "SRC"),
+    ],
+)
+def test_capability_digest_rejects_file_directory_path_collisions(paths):
+    content = "new"
+    items = [
+        {
+            "path": path,
+            "operation": "create",
+            "base_sha256": None,
+            "result_sha256": sha256_text(content),
+            "content": content,
+        }
+        for path in paths
+    ]
+    with pytest.raises(PatchApprovalError, match="file-directory-conflicting"):
+        canonical_patch_digest(
+            workspace_id="workspace_1234567890123456",
+            proposal_id="proposal-hierarchy",
+            proposal_version=1,
+            files=items,
+        )
