@@ -227,6 +227,12 @@ export default function NexusChatPanel({
       setConversationId("");
       setTaskPlan(null);
       setTaskError("");
+      setExecutionProfiles([]);
+      setExecutionProfileId("");
+      setExecutionRun(null);
+      setExecutionArtifacts(null);
+      setExecutionError("");
+      setExecutionBusy(false);
       setNotice("Your sign-in expired. Sign in again.");
       return;
     }
@@ -372,6 +378,7 @@ export default function NexusChatPanel({
     setExecutionRun(null);
     setExecutionArtifacts(null);
     setExecutionError("");
+    setExecutionBusy(false);
     setSnapshotSummary("");
     setWorkspaceUploadConsent(false);
     setCodeExecutionConsent(false);
