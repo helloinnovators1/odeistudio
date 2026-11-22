@@ -162,3 +162,24 @@ async def test_new_revision_is_append_only_and_uses_latest_version_compare_and_s
             environment="staging", expected_latest_version=1, actor="author-3",
             config={"replicas": 5}, change_summary="Stale scale",
         )
+
+
+@pytest.mark.asyncio
+async def test_only_verified_draft_author_can_edit_draft():
+    store = MongoMacEnvironmentStore(Collection())
+    await store.create_draft(
+        environment="staging", actor="oidc-author",
+        config={"replicas": 2}, change_summary="Initial",
+    )
+    with pytest.raises(MacEnvironmentConflict):
+        await store.update_draft(
+            environment="staging", version=1, expected_latest_version=1,
+            actor="oidc-other", config={"replicas": 3},
+            change_summary="Unauthorized edit",
+        )
+    updated = await store.update_draft(
+        environment="staging", version=1, expected_latest_version=1,
+        actor="oidc-author", config={"replicas": 4},
+        change_summary="Author edit",
+    )
+    assert updated["versions"][0]["config"] == {"replicas": 4}
