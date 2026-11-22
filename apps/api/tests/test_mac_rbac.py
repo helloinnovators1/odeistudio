@@ -7,7 +7,6 @@ from odei_api.config import Settings
 from odei_api.security import mac_rbac
 from odei_api.security.auth import Principal
 
-
 ISSUER = "https://identity.example.test/"
 SUBJECT = "operator-123"
 
