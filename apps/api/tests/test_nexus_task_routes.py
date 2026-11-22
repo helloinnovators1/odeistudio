@@ -30,6 +30,8 @@ class Database:
                 "owner_subject": "user-1",
             }),
             "project_memberships": Collection(None),
+            "tasks": Collection(None),
+            "task_events": Collection(None),
         }
 
     def __getitem__(self, name):
@@ -741,6 +743,7 @@ def test_task_cancellation_propagates_to_active_execution_run(route_state):
 
         async def request_cancel(self, **values):
             self.cancelled.append(values)
+            return SimpleNamespace(status=SimpleNamespace(value="running"))
 
     previous = getattr(app.state, "execution_run_store", None)
     runs = ActiveRuns()
