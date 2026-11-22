@@ -2,8 +2,6 @@
 import json
 from types import SimpleNamespace
 
-from odei_api.security.auth import Principal, get_current_principal
-from odei_api.services.mac_environment_api import _actor_id, router
 
 
 ISSUER = "https://identity.example.test/"
@@ -61,6 +59,9 @@ def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
+    from odei_api.security.auth import get_current_principal
+    from odei_api.services.mac_environment_api import router
+
     mac_environment_api = importlib.import_module("odei_api.services.mac_environment_api")
     registry = json.dumps([{
         "issuer": principal.issuer,
@@ -83,6 +84,9 @@ def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
 
 
 def test_actor_fingerprint_distinguishes_issuers_with_same_subject():
+    from odei_api.security.auth import Principal
+    from odei_api.services.mac_environment_api import _actor_id
+
     first = _actor_id(Principal(subject="same-subject", issuer=ISSUER))
     second = _actor_id(Principal(subject="same-subject", issuer=OTHER_ISSUER))
     assert first != second
@@ -91,6 +95,8 @@ def test_actor_fingerprint_distinguishes_issuers_with_same_subject():
 
 
 def test_mac_environment_read_is_authenticated_and_audited(monkeypatch):
+    from odei_api.security.auth import Principal
+
     principal = Principal(subject="operator-1", issuer=ISSUER)
     client, store, audit = _client(monkeypatch, principal, ("read_only_auditor",))
     response = client.get("/api/v1/mac/environments/staging")
@@ -102,6 +108,8 @@ def test_mac_environment_read_is_authenticated_and_audited(monkeypatch):
 
 
 def test_mac_environment_draft_uses_issuer_scoped_actor_and_audits(monkeypatch):
+    from odei_api.security.auth import Principal
+
     principal = Principal(subject="operator-1", issuer=ISSUER)
     client, store, audit = _client(monkeypatch, principal)
     response = client.post(
@@ -117,6 +125,8 @@ def test_mac_environment_draft_uses_issuer_scoped_actor_and_audits(monkeypatch):
 
 
 def test_mac_environment_permission_is_resolved_from_server_registry(monkeypatch):
+    from odei_api.security.auth import Principal
+
     principal = Principal(subject="unassigned", issuer=ISSUER)
     client, _store, audit = _client(monkeypatch, principal, ("read_only_auditor",))
     response = client.post(
@@ -129,6 +139,8 @@ def test_mac_environment_permission_is_resolved_from_server_registry(monkeypatch
 
 
 def test_mac_revision_api_rejects_boolean_version_values(monkeypatch):
+    from odei_api.security.auth import Principal
+
     principal = Principal(subject="operator-1", issuer=ISSUER)
     client, store, _audit = _client(monkeypatch, principal)
     response = client.post(
