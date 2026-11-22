@@ -180,16 +180,16 @@ async def test_mac_deployment_lease_reclaim_fences_stale_worker_on_mongodb():
             environment="staging", version=1, provider="aws",
             idempotency_key="lease-integration-12345", actor="oidc-deployer",
         )
-        first = await deployments.claim(
-            attempt_id=attempt["_id"], worker_id="worker-before-crash",
+        first = await deployments.claim_next(
+            worker_id="worker-before-crash",
         )
         assert first["attempt_count"] == 1
         await database["mac_deployment_attempts"].update_one(
             {"_id": attempt["_id"]},
             {"$set": {"lease_expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
         )
-        second = await deployments.claim(
-            attempt_id=attempt["_id"], worker_id="worker-after-crash",
+        second = await deployments.claim_next(
+            worker_id="worker-after-crash",
         )
         assert second["attempt_count"] == 2
         await deployments.record_provider_deployment(
