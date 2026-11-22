@@ -362,8 +362,8 @@ async def _transition_project_task(
             )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."}) from exc
-    except InvalidTaskTransition as exc:
-        raise HTTPException(status_code=409, detail={"code": "TASK_VERSION_OR_STATE_CONFLICT", "message": "Task state changed or this transition is not allowed."}) from exc
+    except (InvalidTaskTransition, ExecutionRunConflict) as exc:
+        raise HTTPException(status_code=409, detail={"code": "TASK_VERSION_OR_STATE_CONFLICT", "message": "Task or execution state changed; reload before retrying."}) from exc
     except RuntimeError as exc:
         logger.error("NEXUS task transaction or audit store failed: %s", type(exc).__name__)
         raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Task and audit storage are temporarily unavailable."}) from exc
