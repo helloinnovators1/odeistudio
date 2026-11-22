@@ -71,8 +71,6 @@ describe("NEXUS execution API client", () => {
       "https://api.example.test", "org", "project", "token", fetcher,
     )).rejects.toThrow("Project owner approval is required.");
   });
-});
-
   it("refuses to send bearer tokens to insecure or credentialed API origins", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({ profiles: [] }));
     await expect(listNexusExecutionProfiles(
@@ -83,3 +81,4 @@ describe("NEXUS execution API client", () => {
     )).rejects.toThrow("without URL credentials");
     expect(fetcher).not.toHaveBeenCalled();
   });
+});
