@@ -4,8 +4,8 @@ import pytest
 from fastapi import HTTPException
 
 from odei_api.config import Settings
+from odei_api.security import mac_rbac
 from odei_api.security.auth import Principal
-import odei_api.security.mac_rbac as mac_rbac
 
 
 ISSUER = "https://identity.example.test/"
@@ -22,7 +22,7 @@ def test_mac_registry_resolves_only_exact_verified_issuer_and_subject():
     assert access["roles"] == ["read_only_auditor", "security_admin"]
     assert "mac:secrets:manage" in access["permissions"]
     assert "mac:audit:read" in access["permissions"]
-    assert resolve_mac_access(raw, issuer=ISSUER, subject="other") == {
+    assert mac_rbac.resolve_mac_access(raw, issuer=ISSUER, subject="other") == {
         "roles": [], "permissions": [],
     }
     assert resolve_mac_access(raw, issuer="https://other.example/", subject=SUBJECT) == {
@@ -57,12 +57,12 @@ def test_settings_validate_mac_operator_registry():
 
 
 def test_mac_permission_helper_fails_closed_for_missing_permission():
-    access = resolve_mac_access(json.dumps([{
+    access = mac_rbac.resolve_mac_access(json.dumps([{
         "issuer": ISSUER, "subject": SUBJECT, "roles": ["read_only_auditor"],
     }]), issuer=ISSUER, subject=SUBJECT)
     mac_rbac.require_mac_permission(access, "mac:audit:read")
     with pytest.raises(HTTPException) as error:
-        require_mac_permission(access, "mac:secrets:manage")
+        mac_rbac.require_mac_permission(access, "mac:secrets:manage")
     assert error.value.status_code == 403
     assert error.value.detail["code"] == "MAC_PERMISSION_DENIED"
 
