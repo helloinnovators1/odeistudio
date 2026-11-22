@@ -16,14 +16,14 @@ class Result:
 class Collection:
     def __init__(self): self.record = None
     async def create_index(self, *_a, **_k): pass
-    async def insert_one(self, doc):
+    async def insert_one(self, doc, session=None):
         if self.record is not None:
             from pymongo.errors import DuplicateKeyError
             raise DuplicateKeyError("duplicate")
         self.record = doc
-    async def find_one(self, query):
+    async def find_one(self, query, session=None):
         return self.record if self.record and self.record["_id"] == query["_id"] else None
-    async def update_one(self, query, update):
+    async def update_one(self, query, update, session=None):
         record = self.record
         if not record or record["_id"] != query["_id"]:
             return Result(0)
