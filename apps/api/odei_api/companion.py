@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import hmac
 import json
 import logging
 import os
+import platform
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -660,9 +663,68 @@ def select_directory_native() -> str | None:
         root.destroy()
 
 
+def diagnose_companion_environment(*, port: int, allowed_origins: Iterable[str]) -> dict:
+    """Report local prerequisites without opening a folder or starting the server."""
+    checks: dict[str, dict[str, object]] = {
+        "python": {
+            "ok": sys.version_info >= (3, 10),
+            "version": platform.python_version(),
+            "minimum": "3.10",
+        },
+        "operating_system": {
+            "ok": True,
+            "system": platform.system(),
+            "release": platform.release(),
+            "version": platform.version(),
+        },
+        "port": {"ok": isinstance(port, int) and 1 <= port <= 65535},
+    }
+    try:
+        checks["tkinter"] = {"ok": importlib.util.find_spec("tkinter") is not None}
+    except (ImportError, ValueError):
+        checks["tkinter"] = {"ok": False}
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", port))
+        checks["loopback_bind"] = {"ok": True}
+    except OSError:
+        checks["loopback_bind"] = {"ok": False}
+
+    origin_values = tuple(allowed_origins)
+    try:
+        _validate_origins(origin_values)
+        checks["browser_origins"] = {"ok": True, "configured_count": len(origin_values)}
+    except (TypeError, ValueError):
+        checks["browser_origins"] = {"ok": False, "configured_count": len(origin_values)}
+
+    if os.name == "nt":
+        kernel32 = getattr(getattr(ctypes, "windll", None), "kernel32", None)
+        has_native_api = kernel32 is not None and hasattr(kernel32, "GetFileInformationByHandleEx")
+        checks["windows_file_handle_api"] = {
+            "ok": has_native_api,
+            "build": platform.version(),
+        }
+    else:
+        checks["windows_file_handle_api"] = {"ok": True, "applicable": False}
+
+    ready = all(bool(value.get("ok")) for value in checks.values())
+    return {
+        "ready": ready,
+        "checks": checks,
+        "limitations": [
+            "Folder-picker interaction and filesystem permissions require a real user session.",
+            "A successful diagnostic does not prove compatibility with every Windows build.",
+            "No workspace is opened, scanned, paired or modified by this command.",
+        ],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the ODEI read-only local workspace companion")
     parser.add_argument("--port", type=int, default=int(os.getenv("ODEI_COMPANION_PORT", DEFAULT_PORT)))
+    parser.add_argument("--diagnose", action="store_true", help="check local prerequisites and exit")
     args = parser.parse_args()
 
     origins = [
@@ -670,6 +732,10 @@ def main() -> int:
         for item in os.getenv("ODEI_COMPANION_ALLOWED_ORIGINS", "").split(",")
         if item.strip()
     ]
+    if args.diagnose:
+        report = diagnose_companion_environment(port=args.port, allowed_origins=origins)
+        print(json.dumps(report, indent=2))
+        return 0 if report["ready"] else 2
     if not origins:
         print(
             "Set ODEI_COMPANION_ALLOWED_ORIGINS to the exact ODEI Studio web-app origin(s).",
