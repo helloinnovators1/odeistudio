@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -51,6 +51,10 @@ class MongoMacDeploymentStore:
         await self.attempts.create_index(
             [("state", ASCENDING), ("created_at", ASCENDING)],
             name="mac_deployment_worker_queue",
+        )
+        await self.attempts.create_index(
+            [("state", ASCENDING), ("lease_expires_at", ASCENDING)],
+            name="mac_deployment_worker_leases",
         )
 
     async def create_attempt(
@@ -97,6 +101,8 @@ class MongoMacDeploymentStore:
             "created_at": now,
             "updated_at": now,
             "worker_id": None,
+            "attempt_count": 0,
+            "lease_expires_at": None,
             "started_at": None,
             "finished_at": None,
             "provider_deployment_id": None,
@@ -119,20 +125,50 @@ class MongoMacDeploymentStore:
                 ) from exc
             return existing
 
-    async def claim(self, *, attempt_id: str, worker_id: str) -> dict[str, Any]:
+    async def claim(
+        self, *, attempt_id: str, worker_id: str, lease_seconds: int = 120,
+        max_attempts: int = 5,
+    ) -> dict[str, Any]:
         if not isinstance(attempt_id, str) or not re.fullmatch(r"[a-f0-9]{32}", attempt_id):
             raise MacDeploymentError("Deployment attempt identifier is invalid")
         if not isinstance(worker_id, str) or not _WORKER.fullmatch(worker_id):
             raise MacDeploymentError("Worker identity is invalid")
+        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 15 <= lease_seconds <= 900:
+            raise MacDeploymentError("Worker lease must be between 15 and 900 seconds")
+        if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 20:
+            raise MacDeploymentError("Maximum attempts must be between 1 and 20")
         now = datetime.now(timezone.utc)
         result = await self.attempts.find_one_and_update(
-            {"_id": attempt_id, "state": "queued"},
+            {"_id": attempt_id, "attempt_count": {"$lt": max_attempts},
+             "$or": [
+                 {"state": "queued"},
+                 {"state": "running", "lease_expires_at": {"$lte": now}},
+             ]},
             {"$set": {"state": "running", "worker_id": worker_id,
-                      "started_at": now, "updated_at": now}},
+                      "lease_expires_at": now + timedelta(seconds=lease_seconds),
+                      "started_at": now, "updated_at": now},
+             "$inc": {"attempt_count": 1}},
             return_document=True,
         )
         if result is None:
-            raise MacDeploymentConflict("Attempt is not queued or has already been claimed")
+            raise MacDeploymentConflict("Attempt is not claimable, its lease is active, or retry limit was reached")
+        return result
+
+    async def heartbeat(
+        self, *, attempt_id: str, worker_id: str, lease_seconds: int = 120,
+    ) -> dict[str, Any]:
+        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 15 <= lease_seconds <= 900:
+            raise MacDeploymentError("Worker lease must be between 15 and 900 seconds")
+        now = datetime.now(timezone.utc)
+        result = await self.attempts.find_one_and_update(
+            {"_id": attempt_id, "state": "running", "worker_id": worker_id,
+             "lease_expires_at": {"$gt": now}},
+            {"$set": {"lease_expires_at": now + timedelta(seconds=lease_seconds),
+                      "updated_at": now}},
+            return_document=True,
+        )
+        if result is None:
+            raise MacDeploymentConflict("Worker lease expired or is not owned by this worker")
         return result
 
     async def finish(
@@ -152,9 +188,10 @@ class MongoMacDeploymentStore:
         now = datetime.now(timezone.utc)
         state = "succeeded" if verified else "verification_failed"
         result = await self.attempts.find_one_and_update(
-            {"_id": attempt_id, "state": "running", "worker_id": worker_id},
+            {"_id": attempt_id, "state": "running", "worker_id": worker_id,
+             "lease_expires_at": {"$gt": now}},
             {"$set": {
-                "state": state, "verified": verified,
+                "state": state, "lease_expires_at": None, "verified": verified,
                 "provider_deployment_id": provider_deployment_id,
                 "result_summary": result_summary.strip(),
                 "finished_at": now, "updated_at": now,
@@ -172,8 +209,9 @@ class MongoMacDeploymentStore:
             raise MacDeploymentError("A bounded failure reason is required")
         now = datetime.now(timezone.utc)
         result = await self.attempts.find_one_and_update(
-            {"_id": attempt_id, "state": "running", "worker_id": worker_id},
-            {"$set": {"state": "failed", "result_summary": reason.strip(),
+            {"_id": attempt_id, "state": "running", "worker_id": worker_id,
+             "lease_expires_at": {"$gt": now}},
+            {"$set": {"state": "failed", "lease_expires_at": None, "result_summary": reason.strip(),
                       "verified": False, "finished_at": now, "updated_at": now}},
             return_document=True,
         )
