@@ -1,37 +1,37 @@
 # Implementation Status
 
-## Verified repository snapshot — 2026-11-22
+## Authoritative repository snapshot — 2026-11-22
 
-This top-level snapshot supersedes older status statements in the historical notes below. It distinguishes code on `main`, open pull requests, CI verification, independent review, merge, deployment and external acceptance.
+This section is the source of truth for the current repository state. Older implementation notes below are historical milestones and must not override this snapshot. Repository code, CI verification, independent review, merge, deployment and external acceptance are separate states.
 
-| Workstream | Verified state | Remaining gates |
+| Workstream | Current verified state | Remaining gates |
 |---|---|---|
-| Mainline foundation | PR #49 MAD dashboard merged to `main` as `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db`; authenticated NEXUS dashboard integration and `docs/MAD.md` included. | Post-merge production configuration, real telemetry and alert delivery are not established. |
-| MAC environment governance | PR #55 open, unmerged; integration head `15c6e23d64d4183e4c77d4674d6af1c5be537f30` consolidates MAC environment governance with MAD transactional auditing on current `main`. Exact-head API CI [45045484828](https://github.com/helloinnovators1/odeistudio/actions/runs/45045177255) passed 6/6 jobs and Security Scanning [45045484884](https://github.com/helloinnovators1/odeistudio/actions/runs/45045177237) passed 4/4 jobs. | Independent review; concrete cloud-provider and external secret-manager adapters; provider-side reconciliation/rollback; deployed worker; staging acceptance; operator-run database migration. |
-| MAD transactional audit | Included in PR #55 (open, unmerged; head `3e981ddcbd4ef4c373559e59b17cc5f3889f771c`) alongside MAC governance. Exact-head API CI [45045177255](https://github.com/helloinnovators1/odeistudio/actions/runs/45045177255) passed 6/6 jobs and Security Scanning [45045177237](https://github.com/helloinnovators1/odeistudio/actions/runs/45045177237) passed 4/4 jobs. Includes transactional incident transitions and alert-observation persistence plus success audit, with MongoDB replica-set integration coverage. | Independent review; real telemetry source coverage; external alert delivery; ODID scope provisioning; staging acceptance. |
-| NEXUS local companion | Mainline approved apply remains single-file, signed-capability and fresh-challenge gated. | Multi-file atomic apply, durable journal, rollback and crash recovery. |
-| NEXUS strict proposal-version validation | PR #52 open, unmerged; reconciled head `eb27bb8e583ef2401dc249c7234780d6c6d48ff7`. Exact-head API CI [45045463982](https://github.com/helloinnovators1/odeistudio/actions/runs/45045155515) passed 6/6 jobs and Security Scanning [45045463978](https://github.com/helloinnovators1/odeistudio/actions/runs/45045155524) passed 4/4 jobs. | Independent review and merge; this does not implement multi-file transactions. |
-| NEXUS capability path hierarchy validation | PR #53 open, unmerged; reconciled head `57db00c4a1538b884533730be1f37bdc7947a3cd`. Exact-head API CI [45045475635](https://github.com/helloinnovators1/odeistudio/actions/runs/45045165856) passed 6/6 jobs and Security Scanning [45045475604](https://github.com/helloinnovators1/odeistudio/actions/runs/45045165857) passed 4/4 jobs. | Independent review and merge; this does not implement multi-file transactions. |
-| NEXUS companion apply-request validation | PR #54 closed as a duplicate; its `StrictInt` change and boolean regression test are consolidated into PR #52, whose exact-head CI/security checks passed. | No separate merge required; multi-file transactions remain disabled. |
-| NEXUS execution | Earlier execution, worker, snapshots, artifact and history increments are integrated. | Hardened hostile-code isolation, production worker/storage/secrets, cancellation/recovery drills and staging E2E. |
-| ODID | Browser PKCE foundation exists. | Real issuer/client/redirect/resource/scopes, API issuer/JWKS, callback and staging identity acceptance. |
-| Windows | Cross-platform CI exists; companion diagnostic is available. | Actual Windows 10 build 18362.1256 device acceptance, signed installer/update and key rotation. |
-| Agents | Not complete as a product workflow. | Agents Window, CLI, policy-controlled lifecycle, background orchestration and observability. |
-| Production release | No production deployment is claimed. | Approved staging evidence, production credentials/providers, backup/restore, release approval, monitored rollout and rollback. |
+| Mainline | Main commit `8b2b2e6f9449732256fb756d7d81f848e5a91597`. PR #49 MAD dashboard is merged. | Production configuration, external telemetry/alert delivery, staging and production acceptance. |
+| NEXUS chat and workspace | Main includes ODID PKCE client foundation, tenant-scoped conversations, project/task workflows, streamed chat, bounded attached-excerpt inspection, patch proposals/review and the read-only Monaco workspace. | Real ODID issuer/client/redirect/resource/scopes, production API issuer/JWKS/CORS, staging identity and tenant acceptance. |
+| NEXUS execution | PRs #26–#33, #35, #43 and #44 are merged; durable runs/events, worker leases, bounded snapshots, API/worker integration, artifacts, project execution history and MAD worker metrics are present. | Hardened hostile-code isolation, dedicated production workers, storage/secrets configuration, staging E2E and recovery drills. |
+| Local companion | Main includes explicit folder selection, bounded read-only inspection, pairing and signed, fresh-challenge-bound single-file patch apply. PR #56 adds stable-snapshot validation but remains open. | Multi-file transactions, durable journal, rollback/crash recovery, Windows target-device validation and signed installer/update. |
+| NEXUS strict version validation | PR #52 open; exact head `e36dd3c015c50ab9212fead9c56e4bd26a52ce79`; API CI 6/6 and Security Scanning 4/4 passed. | Independent review and merge. |
+| NEXUS capability path validation | PR #53 open; exact head `f445b3a117c605805b2f9741dc6d1b4112530082`; API CI 6/6 and Security Scanning 4/4 passed. | Independent review and merge. |
+| NEXUS stable file snapshots | PR #56 open; exact head `b5e7ae3e811aded126156705ab0236b2f18050a2`; API CI 6/6 and Security Scanning 4/4 passed. | Independent review and merge; this remains single-file snapshot hardening only. |
+| MAC environment governance and MAD transactional auditing | Consolidated PR #55 open; exact head `be5c57b6c4a981ddaabe3e4d188b7fc91afa5582`; API CI 6/6 and Security Scanning 4/4 passed. PRs #50/#51 are superseded. | Independent review; real provider and secret-manager adapters; worker deployment; operator-run migration; staging and operational acceptance. |
+| MAD dashboard | PR #49 merged to main. | Real infrastructure telemetry, ODID operator/scope provisioning, calibrated alerts and external alert delivery. |
+| ODID | Browser PKCE and token lifecycle foundation exist. | Real issuer/client configuration, API trust/JWKS, scopes and staging acceptance. |
+| Windows | Windows Python 3.10/3.12 CI runs pass for the verified PR heads. | Actual Windows 10 build 18362.1256 device acceptance, companion installer, signing and key rotation. |
+| Agents | Not complete as an end-to-end product workflow. | Agents Window, CLI, policy-controlled lifecycle, background orchestration and observability. |
+| Production release | No production deployment is claimed. | Provider configuration, approved staging evidence, backups/restore, release approval, monitored rollout and rollback. |
 
-### Integration and release rules
+### Verification and release rules
 
-- PR #49 is merged. PRs #50 and #51 are closed as superseded by PR #55; PR #54 is closed as a duplicate of #52. PRs #52, #53 and #55 are open, reconciled with current `main`, mergeable, and have passed their latest exact-head API CI and security workflows. Green CI is not independent review or production acceptance.
-- Do not merge security-sensitive PRs without the repository's required independent review and checks.
-- MAC's revision-store migration is an operator-controlled production procedure: backup, freeze writes, dry-run, explicit apply, reconcile counts/content/pointers, then deploy. No production migration was performed by the PR.
-- A packaged MAC worker is not a deployed worker. A queued or verified test deployment attempt is not proof of a cloud infrastructure change.
-- MAD transactional code is included in open PR #55, not yet on `main`; the merged dashboard in PR #49 does not itself provide production telemetry or external notification delivery.
-- No actual Windows 10 target device, ODID staging issuer, production provider, external secret manager or production environment was available for acceptance in this repository session.
-- NEXUS multi-file writes remain disabled until cross-platform transaction semantics, rollback/recovery and adversarial filesystem tests pass.
+- PR #49 is merged. PRs #50 and #51 are closed as superseded by #55. PR #54 is closed as a duplicate consolidated into #52. PRs #52, #53, #55 and #56 are open and have successful exact-head API CI and security workflows.
+- GitHub reports the active PRs as mergeable, but there are no independent review submissions recorded. Do not merge security-sensitive changes without independent review and required checks.
+- Mainline Security Scanning passed on commit `8b2b2e6f9449732256fb756d7d81f848e5a91597`. The latest mainline documentation-only change was also scanned successfully.
+- PR #55 contains MAC revision migration and deployment-worker packaging, but no production migration or cloud deployment was performed. Its worker/provider/secret-manager boundaries remain as described in `docs/MAC_ENVIRONMENTS.md`.
+- PR #55 promotion changes the approved active configuration pointer; it does not itself deploy cloud infrastructure.
+- Multi-file companion writes remain disabled. A green CI run does not establish transaction-wide atomicity, production readiness or target-device acceptance.
 
 ---
 
-## Current verified repository snapshot — 2026-11-22
+## Historical snapshot — superseded by the authoritative snapshot above
 
 This is the authoritative current status. Sections after the historical separator record prior implementation increments and must not override this snapshot.
 
