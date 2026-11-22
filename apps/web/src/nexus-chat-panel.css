@@ -17,3 +17,37 @@
 .nexus-execution-artifacts{display:grid;gap:6px;margin-top:7px}
 .nexus-execution-artifacts strong{color:#a9c9b7;font-size:9px}
 .nexus-execution-artifacts pre{max-height:220px;overflow:auto;margin:0;padding:8px;border:1px solid #303b49;border-radius:5px;background:#0e141c;color:#d7dee7;font:10px/1.5 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+
+
+/* Durable NEXUS execution event history */
+.nexus-execution-timeline {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--nexus-border, rgba(127, 127, 127, .25));
+}
+.nexus-execution-timeline > strong {
+  font-size: .72rem;
+  letter-spacing: .08em;
+}
+.nexus-execution-timeline ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 0 18px;
+}
+.nexus-execution-timeline li {
+  display: grid;
+  gap: 2px;
+  padding-left: 3px;
+}
+.nexus-execution-timeline li > span {
+  font-size: .82rem;
+  text-transform: capitalize;
+}
+.nexus-execution-timeline li > small {
+  color: var(--nexus-muted, #858585);
+  font-size: .7rem;
+  overflow-wrap: anywhere;
+}
