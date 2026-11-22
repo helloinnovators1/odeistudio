@@ -198,6 +198,16 @@ class MongoExecutionRunStore:
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(document)
 
+    async def get_active_for_task(
+        self, *, organization_id: str, project_id: str, task_id: str,
+    ) -> ExecutionRun | None:
+        row = await self._runs.find_one({
+            "organization_id": organization_id, "project_id": project_id,
+            "task_id": task_id,
+            "status": {"$in": ["queued", "leased", "running", "collecting"]},
+        })
+        return self._from_document(row) if row else None
+
     async def get(self, *, organization_id: str, run_id: str) -> ExecutionRun | None:
         _identifier(organization_id, "organization_id")
         _identifier(run_id, "run_id")
