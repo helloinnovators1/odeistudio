@@ -92,6 +92,18 @@ class Snapshots:
         return self.documents.pop(values["snapshot_id"], None) is not None
 
 
+class Artifacts:
+    async def get_for_tenant(self, **_values):
+        return {
+            "artifact_id": "artifact-1", "run_id": "run-1",
+            "exit_code": 0, "duration_ms": 12, "timed_out": False,
+            "stdout_truncated": False, "stderr_truncated": False,
+            "stdout_bytes": 2, "stderr_bytes": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "stdout": "ok", "stderr": "",
+        }
+
+
 class Runs:
     def __init__(self):
         self.run = None
@@ -135,7 +147,7 @@ def execution_state():
         key: getattr(app.state, key, None)
         for key in ("mongo_database", "audit_event_store", "task_store",
                     "execution_run_store", "workspace_snapshot_store",
-                    "execution_profile_registry")
+                    "execution_profile_registry", "execution_artifact_store")
     }
     previous_overrides = dict(app.dependency_overrides)
     database = Database()
@@ -152,6 +164,7 @@ def execution_state():
     app.state.task_store = tasks
     app.state.workspace_snapshot_store = snapshots
     app.state.execution_run_store = runs
+    app.state.execution_artifact_store = Artifacts()
     app.state.execution_profile_registry = load_execution_profiles(Settings(
         execution_profiles_json='[{"name":"python-tests","image":"registry.example/odei/python@sha256:' + "a" * 64 + '","command":["python","-m","pytest"]}]'
     ))
@@ -273,3 +286,17 @@ def test_cross_identity_cannot_access_execution(execution_state):
         f"/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions/{created['run_id']}"
     )
     assert response.status_code == 403
+
+def test_execution_artifact_route_is_tenant_and_task_scoped(execution_state):
+    _database, audit, _tasks, _snapshots, runs = execution_state
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=payload(),
+    ).json()
+    response = client.get(
+        f"/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions/{created['run_id']}/artifacts"
+    )
+    assert response.status_code == 200
+    assert response.json()["stdout"] == "ok"
+    assert audit.events[-1]["action"] == "nexus.execution.artifacts.read"
