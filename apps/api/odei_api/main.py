@@ -381,7 +381,7 @@ async def _record_mad_alerts_with_audit(
                 target_id="execution",
                 outcome="success",
                 request_id=uuid4().hex,
-                metadata={"authorization_scope": "mad:read", "alert_count": len(alerts)},
+                metadata={"required_scope": "mad:read", "alert_count": len(alerts)},
                 session=active_session,
             )
 
