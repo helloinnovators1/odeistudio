@@ -20,7 +20,7 @@ _ENVIRONMENTS = frozenset({"development", "staging", "production"})
 _ENV_ID = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 _ACTOR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
 _CONFIG_KEY = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
-_SECRET_KEY = re.compile(r"(?:secret|password|passwd|token|api[_-]?key|private[_-]?key|credential)", re.IGNORECASE)
+_SECRET_KEY = re.compile(r"(?:secret|password|passwd|token|api[_-]?key|access[_-]?key|private[_-]?key|signing[_-]?key|encryption[_-]?key|credential)", re.IGNORECASE)
 _SECRET_REF = re.compile(r"^secret://[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$")
 
 
