@@ -133,7 +133,7 @@ async def _mutate_with_audit(request: Request, store: Any, audit: Any,
         result = await operation(**arguments)
         await _audit(audit, principal, action, environment, "success", {})
         return result
-    async with await client.start_session() as session:
+    async with client.start_session() as session:
         async def transaction(active_session):
             result = await operation(**arguments, session=active_session)
             metadata = {"version": result.get("version")} if isinstance(result, dict) and "version" in result else {}
