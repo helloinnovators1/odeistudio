@@ -881,7 +881,6 @@ def test_companion_environment_diagnostics_report_prerequisites_without_opening_
     assert report["checks"]["python"]["ok"] is True
     assert report["checks"]["port"]["ok"] is False
     assert report["checks"]["browser_origins"] == {"ok": True, "configured_count": 1}
-    assert "workspace" not in repr(report).lower() or "workspace is opened" not in repr(report).lower()
     assert "studio.example.test" not in repr(report)
     assert any("No workspace is opened" in item for item in report["limitations"])
 
