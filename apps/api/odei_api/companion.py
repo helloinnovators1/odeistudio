@@ -686,7 +686,6 @@ def diagnose_companion_environment(*, port: int, allowed_origins: Iterable[str])
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("127.0.0.1", port))
         checks["loopback_bind"] = {"ok": True}
     except OSError:
