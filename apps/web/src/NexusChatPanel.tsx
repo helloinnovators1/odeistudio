@@ -95,6 +95,7 @@ export default function NexusChatPanel({
   const [organizationBusy, setOrganizationBusy] = useState(false);
   const [organizationError, setOrganizationError] = useState("");
   const [projects, setProjects] = useState<NexusProject[]>([]);
+  const projectLoadGenerationRef = useRef(0);
   const [projectId, setProjectId] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
@@ -245,6 +246,7 @@ export default function NexusChatPanel({
     if (!access) return;
     const expireSession = (message: string, error = "") => {
       authGenerationRef.current += 1;
+      projectLoadGenerationRef.current += 1;
       refreshAbortRef.current?.abort();
       refreshAbortRef.current = null;
       if (config.auth && access.refreshToken) {
@@ -467,7 +469,10 @@ export default function NexusChatPanel({
   }
 
   async function loadProjects() {
-    if (!access || !config.apiBaseUrl) return;
+    if (!access || !config.apiBaseUrl || !organizationId) return;
+    const generation = ++projectLoadGenerationRef.current;
+    const requestedOrganizationId = organizationId;
+    const requestedAccessToken = access.accessToken;
     executionGenerationRef.current += 1;
     abortRef.current?.abort();
     taskAbortRef.current?.abort();
@@ -491,13 +496,18 @@ export default function NexusChatPanel({
     setCodeExecutionConsent(false);
     setConsent(false);
     try {
-      const result = await listNexusProjects(config.apiBaseUrl, organizationId, access.accessToken);
+      const result = await listNexusProjects(
+        config.apiBaseUrl, requestedOrganizationId, requestedAccessToken,
+      );
+      if (generation !== projectLoadGenerationRef.current) return;
       setProjects(result.projects);
       setNotice(result.projects.length ? "Choose a project to begin a read-only NEXUS conversation." : "No active projects are available to this identity in that organization.");
     } catch (cause) {
-      setProjectError(errorMessage(cause));
+      if (generation === projectLoadGenerationRef.current) {
+        setProjectError(errorMessage(cause));
+      }
     } finally {
-      setProjectBusy(false);
+      if (generation === projectLoadGenerationRef.current) setProjectBusy(false);
     }
   }
 
@@ -764,6 +774,8 @@ export default function NexusChatPanel({
   }
 
   function signOut() {
+    projectLoadGenerationRef.current += 1;
+    setProjectBusy(false);
     const currentAccess = access;
     const pendingRefresh = refreshPromiseRef.current;
     authGenerationRef.current += 1;
@@ -1025,6 +1037,8 @@ export default function NexusChatPanel({
           <div className="nexus-org-form">
             <label htmlFor="nexus-org-id">ORGANIZATION</label>
             <select id="nexus-org-id" value={organizationId} onChange={(event) => {
+              projectLoadGenerationRef.current += 1;
+              setProjectBusy(false);
               abortRef.current?.abort();
               taskAbortRef.current?.abort();
               setTaskPlan(null);
