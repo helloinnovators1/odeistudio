@@ -890,3 +890,44 @@ def test_companion_environment_diagnostics_reject_invalid_public_http_origin():
 
     report = diagnose_companion_environment(port=8765, allowed_origins=["http://studio.example.test"])
     assert report["checks"]["browser_origins"]["ok"] is False
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "pwrite"),
+    reason="POSIX concurrent-write snapshot regression",
+)
+def test_posix_patch_read_rejects_file_modified_during_snapshot(tmp_path, monkeypatch):
+    from odei_api.services import workspace_patch_apply
+
+    target = tmp_path / "target.txt"
+    target.write_bytes(b"before")
+    parent_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    real_read = os.read
+    changed = False
+
+    def racing_read(descriptor, size):
+        nonlocal changed
+        data = real_read(descriptor, size)
+        if not changed:
+            changed = True
+            writer = os.open(target, os.O_WRONLY)
+            try:
+                # Same-length replacement ensures the regression is detected
+                # by inode metadata, not only by a size mismatch.
+                os.pwrite(writer, b"change", 0)
+            finally:
+                os.close(writer)
+        return data
+
+    monkeypatch.setattr(workspace_patch_apply.os, "read", racing_read)
+    try:
+        with pytest.raises(
+            workspace_patch_apply.WorkspacePatchApplyError,
+            match="changed while being read",
+        ):
+            workspace_patch_apply._read_posix(parent_fd, "target.txt")
+    finally:
+        os.close(parent_fd)
