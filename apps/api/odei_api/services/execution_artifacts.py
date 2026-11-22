@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from gridfs.errors import NoFile
 from gridfs.asynchronous import AsyncGridFSBucket
+from gridfs.errors import NoFile
 
 from odei_api.services.secret_redaction import redact_secrets
 
@@ -38,7 +38,7 @@ class MongoExecutionArtifactStore:
         stdout: str, stderr: str, stdout_truncated: bool, stderr_truncated: bool,
     ) -> dict[str, Any]:
         if not isinstance(stdout, str) or not isinstance(stderr, str):
-            raise ValueError("execution output must be text")
+            raise TypeError("execution output must be text")
         if len(stdout.encode("utf-8")) > 1_048_576 or len(stderr.encode("utf-8")) > 1_048_576:
             raise ValueError("execution output exceeds its storage limit")
         if not 0 <= duration_ms <= 600_000:
