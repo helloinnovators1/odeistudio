@@ -72,3 +72,15 @@ describe("safe workspace archive builder", () => {
     expect(read).toHaveBeenCalledTimes(2_000);
   });
 });
+
+  it("skips source files containing recognizable credential material", async () => {
+    const archive = await buildWorkspaceArchive([
+      { path: "src/main.py", size: 12 },
+      { path: "config/local.ts", size: 50 },
+    ], async (path) => path === "src/main.py"
+      ? "print('hello')"
+      : "const api_key = 'super_secret_value_that_is_long_enough';");
+    expect(archive.fileCount).toBe(1);
+    expect(archive.skippedCount).toBe(1);
+    expect(archive.skippedPaths).toEqual(["config/local.ts"]);
+  });
