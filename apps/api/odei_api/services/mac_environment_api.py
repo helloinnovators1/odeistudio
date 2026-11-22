@@ -26,7 +26,7 @@ principal_dependency = Depends(get_current_principal)
 
 def _actor_id(principal: Principal) -> str:
     """Bind lifecycle authorship to the complete verified issuer/subject pair."""
-    identity = f"{principal.issuer}\0{principal.subject}".encode("utf-8")
+    identity = f"{principal.issuer}\0{principal.subject}".encode()
     return "oidc-" + hashlib.sha256(identity).hexdigest()
 
 
