@@ -28,9 +28,7 @@ class MongoWorkspaceSnapshotStore:
         await self._metadata.create_index(
             [("organization_id", 1), ("task_id", 1), ("created_at", -1)]
         )
-        await self._metadata.create_index(
-            [("expires_at", 1)], expireAfterSeconds=0
-        )
+        await self._metadata.create_index([("expires_at", 1)])
 
     async def put(
         self, *, organization_id: str, project_id: str, task_id: str,
