@@ -21,6 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
+from odei_api.services.execution_runs import ExecutionRunConflict
 from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
@@ -305,20 +306,64 @@ async def _transition_project_task(
                 "denied", reason="project_owner_approval_required",
             )
             raise HTTPException(status_code=403, detail={"code": "PROJECT_OWNER_APPROVAL_REQUIRED", "message": "Only the project owner can approve this task."})
-        updated = await store.transition(
-            organization_id=organization_id, task_id=task_id,
-            next_status=next_status, expected_version=payload.expected_version,
-            actor_id=identity_owner_key(principal.issuer, principal.subject),
-            audit_event=_task_audit_event(
-                principal, organization_id, task_id,
-                "nexus.task.approve" if next_status is TaskStatus.APPROVED else "nexus.task.cancel",
-                {"version": payload.expected_version + 1},
-            ),
-        )
+        cancelled_with_run = False
+        if next_status is TaskStatus.CANCELLED:
+            run_store = getattr(request.app.state, "execution_run_store", None)
+            database = getattr(request.app.state, "mongo_database", None)
+            if run_store is not None and database is not None:
+                active_run = await run_store.get_active_for_task(
+                    organization_id=organization_id, project_id=project_id, task_id=task_id,
+                )
+                if active_run is not None:
+                    try:
+                        cancellation = await run_store.request_cancel(
+                            organization_id=organization_id, run_id=active_run.id,
+                            actor_id="authenticated-user",
+                            audit_event={
+                                "organization_id": organization_id,
+                                "actor_issuer": principal.issuer,
+                                "actor_subject": principal.subject,
+                                "action": "nexus.execution.cancel",
+                                "target_type": "nexus_execution_run",
+                                "target_id": active_run.id,
+                                "outcome": "success",
+                                "request_id": uuid4().hex,
+                                "metadata": {"source": "task_cancel"},
+                            },
+                            tasks=database["tasks"], task_events=database["task_events"],
+                            task_audit_event=_task_audit_event(
+                                principal, organization_id, task_id, "nexus.task.cancel",
+                                {"version": payload.expected_version + 1, "source": "task_cancel"},
+                            ),
+                        )
+                        cancelled_with_run = cancellation.status.value == "cancelled"
+                    except ExecutionRunConflict:
+                        latest_run = await run_store.get(
+                            organization_id=organization_id, run_id=active_run.id,
+                        )
+                        if latest_run is not None and latest_run.status.value not in {
+                            "completed", "failed", "cancelled", "expired",
+                        } and not latest_run.cancel_requested:
+                            raise
+        if cancelled_with_run:
+            updated = await store.get(organization_id=organization_id, task_id=task_id)
+            if updated is None or updated.status is not TaskStatus.CANCELLED:
+                raise RuntimeError("Queued execution was cancelled but task state could not be confirmed")
+        else:
+            updated = await store.transition(
+                organization_id=organization_id, task_id=task_id,
+                next_status=next_status, expected_version=payload.expected_version,
+                actor_id=identity_owner_key(principal.issuer, principal.subject),
+                audit_event=_task_audit_event(
+                    principal, organization_id, task_id,
+                    "nexus.task.approve" if next_status is TaskStatus.APPROVED else "nexus.task.cancel",
+                    {"version": payload.expected_version + 1},
+                ),
+            )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."}) from exc
-    except InvalidTaskTransition as exc:
-        raise HTTPException(status_code=409, detail={"code": "TASK_VERSION_OR_STATE_CONFLICT", "message": "Task state changed or this transition is not allowed."}) from exc
+    except (InvalidTaskTransition, ExecutionRunConflict) as exc:
+        raise HTTPException(status_code=409, detail={"code": "TASK_VERSION_OR_STATE_CONFLICT", "message": "Task or execution state changed; reload before retrying."}) from exc
     except RuntimeError as exc:
         logger.error("NEXUS task transaction or audit store failed: %s", type(exc).__name__)
         raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Task and audit storage are temporarily unavailable."}) from exc
