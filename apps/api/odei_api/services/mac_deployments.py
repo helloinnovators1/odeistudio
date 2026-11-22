@@ -191,6 +191,29 @@ class MongoMacDeploymentStore:
             raise MacDeploymentConflict("Worker lease expired or is not owned by this worker")
         return result
 
+    async def record_provider_deployment(
+        self, *, attempt_id: str, worker_id: str, provider_deployment_id: str,
+    ) -> dict[str, Any]:
+        if not isinstance(provider_deployment_id, str) or not 1 <= len(provider_deployment_id) <= 200 or any(
+            ord(char) < 32 for char in provider_deployment_id
+        ):
+            raise MacDeploymentError("Provider deployment identifier is invalid")
+        now = datetime.now(timezone.utc)
+        result = await self.attempts.find_one_and_update(
+            {"_id": attempt_id, "state": "running", "worker_id": worker_id,
+             "lease_expires_at": {"$gt": now},
+             "$or": [
+                 {"provider_deployment_id": None},
+                 {"provider_deployment_id": provider_deployment_id},
+             ]},
+            {"$set": {"provider_deployment_id": provider_deployment_id,
+                      "updated_at": now}},
+            return_document=True,
+        )
+        if result is None:
+            raise MacDeploymentConflict("Worker lease expired or provider deployment identity conflicts")
+        return result
+
     async def finish(
         self, *, attempt_id: str, worker_id: str, verified: bool,
         provider_deployment_id: str | None, result_summary: str,
