@@ -173,13 +173,16 @@ async def create_environment_draft(environment: str, payload: EnvironmentDraftRe
     store, audit = await _context(request, principal, "mac:environment:manage", environment)
     try:
         if payload.expected_latest_version is None:
-            result = await store.create_draft(
-                environment=environment, actor=_actor_id(principal),
-                config=payload.config, change_summary=payload.change_summary,
+            result = await _mutate_with_audit(
+                request, store, audit, principal, "mac.environment.draft.create",
+                environment, "create_draft", environment=environment,
+                actor=_actor_id(principal), config=payload.config,
+                change_summary=payload.change_summary,
             )
         else:
-            result = await store.create_revision(
-                environment=environment,
+            result = await _mutate_with_audit(
+                request, store, audit, principal, "mac.environment.draft.create",
+                environment, "create_revision", environment=environment,
                 expected_latest_version=payload.expected_latest_version,
                 actor=_actor_id(principal), config=payload.config,
                 change_summary=payload.change_summary,
@@ -187,8 +190,6 @@ async def create_environment_draft(environment: str, payload: EnvironmentDraftRe
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.draft.create", environment, "failure")
         raise _translate(exc) from exc
-    await _audit(audit, principal, "mac.environment.draft.create", environment, "success",
-                 {"version": result["version"]})
     return {"revision": result}
 
 
