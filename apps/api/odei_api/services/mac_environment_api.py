@@ -71,9 +71,13 @@ async def _context(request: Request, principal: Principal, permission: str, envi
     except HTTPException as exc:
         if exc.status_code == 403:
             audit = getattr(request.app.state, "audit_event_store", None)
-            if audit is not None:
-                await _audit(audit, principal, "mac.environment.authorization", environment, "denied",
-                             {"required_permission": permission})
+            if audit is None:
+                raise HTTPException(status_code=503, detail={
+                    "code": "AUDIT_STORE_UNAVAILABLE",
+                    "message": "Authorization decisions cannot be durably audited.",
+                }) from exc
+            await _audit(audit, principal, "mac.environment.authorization", environment, "denied",
+                         {"required_permission": permission})
         raise
     except ValueError as exc:
         raise HTTPException(status_code=503, detail={
@@ -87,15 +91,12 @@ async def _context(request: Request, principal: Principal, permission: str, envi
             "code": "MAC_STORAGE_UNAVAILABLE",
             "message": "MAC environment and audit storage are unavailable.",
         })
-    store = MongoMacEnvironmentStore(database["mac_environments"])
-    try:
-        await store.initialize()
-    except Exception as exc:
-        logger.error("MAC environment store initialization failed (%s)", type(exc).__name__)
+    store = getattr(request.app.state, "mac_environment_store", None)
+    if store is None:
         raise HTTPException(status_code=503, detail={
             "code": "MAC_STORAGE_UNAVAILABLE",
             "message": "MAC environment storage is unavailable.",
-        }) from exc
+        })
     return store, audit
 
 
@@ -160,7 +161,7 @@ async def create_environment_draft(environment: str, payload: EnvironmentDraftRe
             result = await store.create_revision(
                 environment=environment,
                 expected_latest_version=payload.expected_latest_version,
-                actor=principal.subject, config=payload.config,
+                actor=_actor_id(principal), config=payload.config,
                 change_summary=payload.change_summary,
             )
     except Exception as exc:
@@ -184,7 +185,7 @@ async def update_environment_draft(environment: str, version: int,
         result = await store.update_draft(
             environment=environment, version=version,
             expected_latest_version=payload.expected_latest_version,
-            actor=principal.subject, config=payload.config,
+            actor=_actor_id(principal), config=payload.config,
             change_summary=payload.change_summary,
         )
     except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
@@ -201,7 +202,7 @@ async def submit_environment(environment: str, payload: RevisionRequest,
     try:
         result = await store.submit_for_approval(
             environment=environment, version=payload.version,
-            expected_latest_version=payload.expected_latest_version, actor=principal.subject,
+            expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
         )
     except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
         await _audit(audit, principal, "mac.environment.submit", environment, "failure")
@@ -217,7 +218,7 @@ async def approve_environment(environment: str, payload: RevisionRequest,
     try:
         result = await store.approve(
             environment=environment, version=payload.version,
-            expected_latest_version=payload.expected_latest_version, actor=principal.subject,
+            expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
         )
     except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
         await _audit(audit, principal, "mac.environment.approve", environment, "failure")
@@ -234,7 +235,7 @@ async def promote_environment(environment: str, payload: PromotionRequest,
         result = await store.promote(
             environment=environment, version=payload.version,
             expected_active_version=payload.expected_active_version,
-            expected_latest_version=payload.expected_latest_version, actor=principal.subject,
+            expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
         )
     except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
         await _audit(audit, principal, "mac.environment.promote", environment, "failure")
@@ -251,7 +252,7 @@ async def rollback_environment(environment: str, payload: RollbackRequest,
         result = await store.create_rollback_draft(
             environment=environment, target_version=payload.target_version,
             expected_latest_version=payload.expected_latest_version,
-            actor=principal.subject, change_summary=payload.change_summary,
+            actor=_actor_id(principal), change_summary=payload.change_summary,
         )
     except (MacEnvironmentError, MacEnvironmentNotFound, MacEnvironmentConflict) as exc:
         await _audit(audit, principal, "mac.environment.rollback_draft", environment, "failure")
