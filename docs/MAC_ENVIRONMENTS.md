@@ -91,7 +91,7 @@ requires `mac:read`. Both request and read actions are audited. Attempt records
 store provider deployment identifiers and bounded summaries, not resolved secret
 material or provider logs.
 
-**Not yet implemented:** a deployed worker process/queue consumer, concrete cloud-provider adapters,
+**Not yet implemented:** deployment and operation of the worker process, concrete cloud-provider adapters,
 production secret-manager integration, provider-specific health probes, durable retry/backoff
 orchestration, automatic compensation/rollback, and deployment UI. The provider-neutral
 worker orchestration contract is implemented but must be wired to reviewed adapters and
@@ -186,3 +186,45 @@ The dry run performs no database writes or index DDL. With `--apply`, the
 command creates the target indexes and runs the backfill in a MongoDB
 transaction. It exits non-zero on malformed history, gaps, duplicate sequence
 numbers, target conflicts, or database/transaction errors. It does not remove legacy embedded history, alter active-version pointers, or deploy infrastructure. The runtime cutover is enabled in this branch, so the operator must complete and reconcile this migration before deploying the new API against any database with legacy environment records. Re-run the dry run after application and verify all environment/version sequences before deployment.
+
+
+### Deployable worker process entry point (implemented; adapters/deployment pending)
+
+The API package exposes `odei-mac-deployment-worker`, implemented in
+`apps/api/odei_api/mac_worker.py`. It initializes the separate revision store
+(and refuses to run against incomplete legacy history), initializes the durable
+deployment ledger, loads trusted provider and secret-resolver factories, and
+polls the queue until interrupted. It supports `--once` for a single-attempt
+smoke run and a bounded `--poll-interval` for continuous operation. Logs include
+only attempt identifiers and final state; adapter exception text and resolved
+secret values are not logged.
+
+The worker requires deployment-controlled configuration:
+
+- `ODEI_MAC_PROVIDER_FACTORY=package.module:factory`: returns a non-empty
+  mapping of provider names to reviewed `deploy/verify` adapters.
+- `ODEI_MAC_SECRET_RESOLVER_FACTORY=package.module:factory`: returns an
+  environment/provider-authorized secret resolver.
+- `ODEI_MAC_WORKER_ID`: optional stable worker identity; defaults to hostname
+  plus process ID.
+- The normal API MongoDB settings must point to the same replica-set/sharded
+  database used by the API and migration runner.
+
+Run one queued attempt with:
+
+```sh
+odei-mac-deployment-worker --once
+```
+
+Run the continuous worker with:
+
+```sh
+odei-mac-deployment-worker --poll-interval 2
+```
+
+This is a packaged, fail-closed process entry point—not proof of an operational
+worker deployment. Provider and secret-manager factory modules must be reviewed,
+installed and configured by the deployment owner; credentials, network policy,
+resource limits, process supervision, health monitoring and staging acceptance
+remain external deployment gates. No cloud provider adapter or real deployment
+is supplied by the generic worker entry point.
