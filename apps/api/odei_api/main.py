@@ -1,8 +1,8 @@
 """FastAPI application entry point and dependency lifecycle."""
 import asyncio
 import logging
-from hmac import compare_digest
 from collections.abc import AsyncIterator
+from hmac import compare_digest
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
