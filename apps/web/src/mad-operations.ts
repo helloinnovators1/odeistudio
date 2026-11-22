@@ -149,7 +149,7 @@ export async function transitionMadIncident(
   const payload = await request<{ incident: MadIncident }>(
     apiBaseUrl, "/api/v1/mad/incidents/" + encodeURIComponent(incident.incident_id) + "/transitions",
     accessToken, options.fetcher ?? fetch, "POST",
-    { action, expected_version: incident.version, ...(action === "assign" ? { assignee } : {}) },
+    { action, expected_version: incident.version, ...(action === "assign" ? { assignee } : {}) }, options.signal,
   );
   return validateIncident(payload.incident);
 }
