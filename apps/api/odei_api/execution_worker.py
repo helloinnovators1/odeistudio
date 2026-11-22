@@ -27,6 +27,7 @@ from odei_api.services.execution_runs import (
     MongoExecutionRunStore,
 )
 from odei_api.services.execution_sandbox import ContainerSandbox
+from odei_api.services.mad_telemetry import MongoWorkerHeartbeatStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 from odei_api.services.workspace_snapshots import WorkspaceSnapshotIngestor
 
@@ -36,7 +37,7 @@ logger = logging.getLogger("odei.execution.worker")
 class ExecutionWorker:
     """Lease-supervised worker that verifies immutable snapshots before sandbox execution."""
 
-    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root, tasks, task_events):
+    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root, tasks, task_events, heartbeats=None):
         self.worker_id = worker_id
         self.runs = runs
         self.snapshots = snapshots
@@ -46,6 +47,17 @@ class ExecutionWorker:
         self.workspace_root = Path(workspace_root).resolve(strict=True)
         self.tasks = tasks
         self.task_events = task_events
+        self.heartbeats = heartbeats
+
+    async def _publish_heartbeat(self, *, status: str, active_run_id: str | None = None) -> None:
+        if self.heartbeats is None:
+            return
+        try:
+            await self.heartbeats.heartbeat(
+                worker_id=self.worker_id, status=status, active_run_id=active_run_id,
+            )
+        except (PyMongoError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            logger.warning("Worker heartbeat write failed (%s)", type(exc).__name__)
 
     def _audit(self, run: ExecutionRun, *, action: str, outcome: str, metadata=None):
         from uuid import uuid4
@@ -71,6 +83,7 @@ class ExecutionWorker:
             return True
         workspace = None
         sandbox_task: asyncio.Task | None = None
+        await self._publish_heartbeat(status="busy", active_run_id=run.id)
         try:
             profile = self.registry.get(run.profile_id)
             if not run.snapshot_id:
@@ -103,6 +116,7 @@ class ExecutionWorker:
                     organization_id=run.organization_id, run_id=run.id,
                     worker_id=self.worker_id, lease_token=lease_token, lease_seconds=45,
                 )
+                await self._publish_heartbeat(status="busy", active_run_id=run.id)
                 current = await self.runs.get(organization_id=run.organization_id, run_id=run.id)
                 if current is None:
                     raise RuntimeError("Execution run disappeared while worker held its lease")
@@ -183,19 +197,33 @@ class ExecutionWorker:
         finally:
             if workspace is not None:
                 shutil.rmtree(workspace, ignore_errors=True)
+            await self._publish_heartbeat(status="idle")
 
     async def serve(self, *, idle_seconds: float = 1.0) -> None:
         last_cleanup = 0.0
-        while True:
-            await self.runs.expire_exhausted(actor_id=self.worker_id, limit=50,
-                                                    tasks=self.tasks, task_events=self.task_events)
-            if time.monotonic() - last_cleanup >= 60:
-                await self.snapshots.delete_expired(limit=50)
-                await self.artifacts.delete_expired(limit=50)
-                last_cleanup = time.monotonic()
-            worked = await self.run_once()
-            if not worked:
-                await asyncio.sleep(idle_seconds)
+        last_heartbeat = 0.0
+        try:
+            await self._publish_heartbeat(status="idle")
+            while True:
+                now = time.monotonic()
+                if now - last_heartbeat >= 15:
+                    await self._publish_heartbeat(status="idle")
+                    last_heartbeat = now
+                await self.runs.expire_exhausted(actor_id=self.worker_id, limit=50,
+                                                 tasks=self.tasks, task_events=self.task_events)
+                if now - last_cleanup >= 60:
+                    await self.snapshots.delete_expired(limit=50)
+                    await self.artifacts.delete_expired(limit=50)
+                    last_cleanup = now
+                worked = await self.run_once()
+                if not worked:
+                    await asyncio.sleep(idle_seconds)
+        finally:
+            if self.heartbeats is not None:
+                try:
+                    await self.heartbeats.mark_stopped(worker_id=self.worker_id)
+                except (PyMongoError, OSError, RuntimeError, ValueError, TypeError) as exc:
+                    logger.warning("Worker shutdown heartbeat failed (%s)", type(exc).__name__)
 
 
 async def _main() -> None:
@@ -223,6 +251,8 @@ async def _main() -> None:
     await snapshots.initialize()
     artifacts = MongoExecutionArtifactStore(database)
     await artifacts.initialize()
+    heartbeats = MongoWorkerHeartbeatStore(database["execution_worker_heartbeats"])
+    await heartbeats.initialize()
     sandbox = ContainerSandbox(
         runtime_path=settings.execution_runtime_path,
         workspace_root=workspace_root,
@@ -232,6 +262,7 @@ async def _main() -> None:
         worker_id=worker_id, runs=runs, snapshots=snapshots, artifacts=artifacts,
         registry=registry, sandbox=sandbox, workspace_root=workspace_root,
         tasks=database["tasks"], task_events=database["task_events"],
+        heartbeats=heartbeats,
     )
     try:
         await worker.serve()
