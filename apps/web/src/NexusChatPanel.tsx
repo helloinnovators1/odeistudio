@@ -943,12 +943,82 @@ export default function NexusChatPanel({
                 {taskBusy ? "Saving…" : "Approve plan"}
               </button>
             )}
-            {["awaiting_approval", "approved"].includes(taskPlan.status) && (
-              <button type="button" className="nexus-link-button" onClick={() => void cancelTaskPlan()} disabled={taskBusy}>
+            {["awaiting_approval", "approved", "executing", "validating"].includes(taskPlan.status) && (
+              <button type="button" className="nexus-link-button" onClick={() => void cancelTaskPlan()} disabled={taskBusy || executionBusy}>
                 Cancel task
               </button>
             )}
-            <p className="nexus-task-safety">Approval records intent only. Task execution, file writes and command execution are not enabled.</p>
+            {taskPlan.status === "approved" && !executionRun && (
+              <div className="nexus-execution-controls">
+                <strong>ISOLATED EXECUTION</strong>
+                {!workspaceContext ? (
+                  <p className="nexus-muted">Connect the local companion and select a workspace before creating an execution snapshot.</p>
+                ) : (
+                  <>
+                    <p>{workspaceContext.files.length} local files are visible to the companion. A filtered snapshot is created only after both consent checks and your confirmation.</p>
+                    <label className="nexus-execution-label" htmlFor="nexus-execution-profile">Server-approved execution profile</label>
+                    <select id="nexus-execution-profile" value={executionProfileId}
+                      onChange={(event) => setExecutionProfileId(event.target.value)}
+                      disabled={executionBusy || executionProfiles.length === 0}>
+                      <option value="">Select an approved profile…</option>
+                      {executionProfiles.map((profile) => (
+                        <option key={profile.profile_id} value={profile.profile_id}>{profile.profile_id}</option>
+                      ))}
+                    </select>
+                    <label className="nexus-consent nexus-execution-consent">
+                      <input type="checkbox" checked={workspaceUploadConsent}
+                        onChange={(event) => setWorkspaceUploadConsent(event.target.checked)}
+                        disabled={executionBusy} />
+                      I explicitly authorize uploading a filtered snapshot of this selected workspace to ODEI for this task.
+                    </label>
+                    <label className="nexus-consent nexus-execution-consent">
+                      <input type="checkbox" checked={codeExecutionConsent}
+                        onChange={(event) => setCodeExecutionConsent(event.target.checked)}
+                        disabled={executionBusy} />
+                      I explicitly authorize running the selected server-approved command profile against that snapshot in an isolated sandbox.
+                    </label>
+                    <p className="nexus-task-safety">The snapshot excludes known credential paths, dependency/build folders and files larger than 2 MiB. Unreadable files are skipped. No local files are modified.</p>
+                    <button type="button" className="nexus-secondary-button"
+                      onClick={() => void startExecution()}
+                      disabled={executionBusy || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent}>
+                      {executionBusy ? "Preparing snapshot and queueing…" : "Create isolated execution"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {executionError && <p className="nexus-error" role="alert">{executionError}</p>}
+            {snapshotSummary && <p className="nexus-selected-project">Snapshot: {snapshotSummary}</p>}
+            {executionRun && executionRun.task_id === taskPlan.task_id && (
+              <div className="nexus-execution-result" aria-live="polite">
+                <div className="nexus-task-heading">
+                  <strong>EXECUTION RUN</strong>
+                  <span>{executionRun.status.toUpperCase()}</span>
+                </div>
+                <small>Run: {executionRun.run_id}</small>
+                <small>Profile: {executionRun.profile_id} · Attempt {executionRun.attempts}/{executionRun.max_attempts}</small>
+                <small>Snapshot SHA-256: {executionRun.snapshot_sha256}</small>
+                {["queued", "leased", "running", "collecting"].includes(executionRun.status)
+                  && !executionRun.cancel_requested && (
+                  <button type="button" className="nexus-link-button" onClick={() => void cancelExecution()} disabled={executionBusy}>
+                    {executionBusy ? "Requesting…" : "Cancel execution"}
+                  </button>
+                )}
+                {executionRun.cancel_requested && <p className="nexus-muted">Cancellation requested; waiting for sandbox cleanup.</p>}
+                {executionArtifacts && (
+                  <div className="nexus-execution-artifacts">
+                    <p>Exit code: {executionArtifacts.exit_code} · Duration: {executionArtifacts.duration_ms} ms{executionArtifacts.timed_out ? " · Timed out" : ""}</p>
+                    <strong>Standard output</strong>
+                    <pre>{executionArtifacts.stdout || "(empty)"}</pre>
+                    <strong>Standard error</strong>
+                    <pre>{executionArtifacts.stderr || "(empty)"}</pre>
+                    {(executionArtifacts.stdout_truncated || executionArtifacts.stderr_truncated)
+                      && <p className="nexus-muted">Output was truncated by the server safety limit.</p>}
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="nexus-task-safety">Execution is limited to the server-approved profile and immutable snapshot. Results require validation and review; successful sandbox exit does not automatically complete the task.</p>
             <small>Task ID: {taskPlan.task_id} · Version {taskPlan.version}</small>
           </section>
         )}
