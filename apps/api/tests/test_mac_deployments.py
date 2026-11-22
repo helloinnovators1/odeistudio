@@ -49,11 +49,11 @@ class Attempts:
                 elif candidate.get(key) != value:
                     return False
             return True
-        candidates = list(self.items.values())
+        candidates = [candidate for candidate in self.items.values() if matches(candidate, query)]
         if sort:
             key, direction = sort[0]
             candidates.sort(key=lambda item: item.get(key), reverse=direction < 0)
-        item = next((candidate for candidate in candidates if matches(candidate, query)), None)
+        item = candidates[0] if candidates else None
         if item is None:
             return None
         item.update(update.get("$set", {}))
