@@ -12,7 +12,7 @@ This section is authoritative for the current PR branch. Merged mainline, open p
 | Multi-file apply and durable recovery | Not implemented | Transaction journal, atomic multi-file apply, rollback, crash recovery and acceptance tests |
 | NEXUS execution stack | PRs #26–#33, #35, #43–#44 merged; includes OCI sandbox foundation, durable runs/leases/events, bounded snapshots, authenticated API, worker, artifacts, event timeline and project-wide execution history | Dedicated hardened Linux worker, reviewed immutable profiles, production storage/secrets, staging E2E, cancellation/recovery drills and richer artifact/review closure |
 | MAD | PR #49 merged: authenticated MAD dashboard in NEXUS, aggregate metrics, active alerts, persisted incidents and audited incident lifecycle actions | Real ODID scope/operator provisioning, production telemetry coverage, alert delivery, staging thresholds and production operations |
-| MAC environment governance | PR #50 open: versioned environments, authenticated two-person approval and atomic mutation/audit; added durable idempotent deployment-attempt ledger, authenticated request/read endpoints, worker ownership and verification-gated terminal states | Provider worker/adapters, secret-manager resolution, retry/rollback, immutable separate revision collection/archival, staging identity and production acceptance remain |
+| MAC environment governance | PR #50 open: versioned environments, authenticated two-person approval and atomic mutation/audit; durable idempotent deployment ledger with worker leases, heartbeats, expired-lease reclaim, stale-worker fencing and verification-gated terminal states | Provider worker/adapters, secret-manager resolution, provider idempotency/reconciliation, retry/rollback orchestration, immutable separate revision collection/archival, staging identity and production acceptance remain |
 | Agents Window / CLI / cloud or background agents | Not implemented as complete product workflows | Agent lifecycle, policy enforcement, tools, orchestration, observability and acceptance |
 | Production deployment | Not completed or claimed | Real provider configuration, staging acceptance, backups/restore, release provenance, approval, monitored rollout and rollback |
 
@@ -20,7 +20,7 @@ This section is authoritative for the current PR branch. Merged mainline, open p
 
 - PR #49, MAD dashboard, is merged. Squash commit: 0d1bc4cb71d97d340f7a2fe6422730aac2deb3db. Its exact-head Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, dependency audit, secret scanning and CodeQL checks passed before merge.
 - PR #50, MAC environment governance and NEXUS panel, remains open at https://github.com/helloinnovators1/odeistudio/pull/50. It is not merged or deployed.
-- PR #50 code head `909caf02edd077146e8a78f2f700fb02c83ec305` passed API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807), including Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB MAC audit-rollback integration, dependency audits, secret scanning and CodeQL. The newer deployment-ledger code is committed on the PR branch and its CI/security runs are pending; do not treat the prior pass as validation of the new code. PR #50 remains open/unmerged pending review and repository integration gates.
+- PR #50 code head `4845b2bb25a3f5db8d3443c5225fa071e3055b0b` passed API CI [45020617722](https://github.com/helloinnovators1/odeistudio/actions/runs/45020617722) and Security Scanning [45020617764](https://github.com/helloinnovators1/odeistudio/actions/runs/45020617764), including Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB replica-set integration, dependency audits, secret scanning and CodeQL. The subsequent worker-lease implementation is at head `719224f209087c10341492736ea34b1dc0c19315`; API CI [45022881091](https://github.com/helloinnovators1/odeistudio/actions/runs/45022881091) and Security Scanning [45022881089](https://github.com/helloinnovators1/odeistudio/actions/runs/45022881089) are pending. Do not treat the earlier pass as validation of this newer code. PR #50 remains open/unmerged pending review and repository integration gates.
 - Earlier PRs #26–#47 are merged, including execution, companion, ODID foundation and MAD incident lifecycle work. PR #49 adds the MAD operator dashboard.
 - GitHub-hosted CI proves only the exact tested commit. It does not prove ODID staging connectivity, a deployed worker, provider deployment, Windows device acceptance or production readiness.
 
@@ -542,3 +542,16 @@ gating and route authorization/input validation. The new commit's GitHub CI and
 security scans must pass before this increment is considered verified. No
 provider worker or cloud adapter has been configured, so requests currently
 create queued records only; no infrastructure deployment is executed.
+
+
+### MAC deployment worker recovery increment — 2026-11-22
+
+The deployment-attempt ledger now issues bounded expiring worker leases, supports
+lease heartbeats, and allows a new worker to reclaim an expired running attempt.
+Claims increment a bounded attempt counter using one MongoDB compare-and-set
+update. Completion and failure require the current unexpired lease, so a worker
+whose lease expired or was superseded cannot overwrite the new owner's result.
+Unit tests cover heartbeat renewal, lease expiry, reclaim, stale-worker fencing
+and invalid lease/retry limits. The API CI and security workflows for exact head
+`719224f209087c10341492736ea34b1dc0c19315` are pending; no pass is claimed yet.
+This remains a ledger primitive, not a provider worker or actual cloud deployment.
