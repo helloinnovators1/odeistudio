@@ -108,3 +108,11 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  mac-worker-container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Build non-root MAC worker image
+        run: docker build --file apps/api/Dockerfile.mac-worker --tag odei-mac-worker:ci apps/api
