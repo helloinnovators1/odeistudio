@@ -14,11 +14,8 @@ from pymongo.errors import PyMongoError
 from starlette.concurrency import run_in_threadpool
 
 from odei_api.config import get_settings
-from odei_api.security.auth import Principal, get_current_principal
-from odei_api.services.execution_runs import (
-    ExecutionRun, ExecutionRunConflict, ExecutionRunNotFound,
-    ExecutionRunStatus, MongoExecutionRunStore,
-)
+from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
+from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict, ExecutionRunStatus
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import TaskStatus, identity_owner_key
 from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
@@ -51,8 +48,6 @@ async def _authorize_execution_resource(
             "code": "EXECUTION_STORAGE_UNAVAILABLE",
             "message": "Execution storage is not configured.",
         })
-    from odei_api.security.auth import require_organization_membership
-    from odei_api.services.project_access import require_project_access
     try:
         await require_organization_membership(
             database["organization_memberships"], principal=principal,
@@ -152,7 +147,6 @@ async def list_execution_profiles(
     database = getattr(request.app.state, "mongo_database", None)
     if database is None:
         raise HTTPException(status_code=503, detail={"code": "EXECUTION_STORAGE_UNAVAILABLE", "message": "Execution storage is not configured."})
-    from odei_api.security.auth import require_organization_membership
     try:
         await require_organization_membership(database["organization_memberships"], principal=principal, organization_id=organization_id)
         await require_project_access(database["projects"], database["project_memberships"],
