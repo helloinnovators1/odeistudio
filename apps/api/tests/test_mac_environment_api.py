@@ -65,7 +65,7 @@ class EnvironmentStore:
         return {"version": kwargs["expected_latest_version"] + 1, "rollback_of": kwargs["target_version"]}
 
 
-def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
+def _client(monkeypatch, principal, roles=("platform_owner",)):
     import importlib
     import json
 
