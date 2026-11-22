@@ -30,7 +30,7 @@ class Attempts:
         return next((dict(item) for item in self.items.values()
                      if all(item.get(k) == v for k, v in query.items())), None)
 
-    async def find_one_and_update(self, query, update, return_document=True):
+    async def find_one_and_update(self, query, update, sort=None, return_document=True):
         item = self.items.get(query["_id"])
         if item is None:
             return None
