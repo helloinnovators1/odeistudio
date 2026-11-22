@@ -181,6 +181,7 @@ export async function buildWorkspaceArchive(
     const results = await Promise.all(batch.map(async (file) => {
       try {
         const content = await readFile(file.path);
+        if (content.includes("\u0000")) return { file, bytes: null };
         return { file, bytes: new TextEncoder().encode(content) };
       } catch {
         return { file, bytes: null };
