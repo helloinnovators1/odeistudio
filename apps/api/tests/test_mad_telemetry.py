@@ -1,0 +1,121 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from odei_api.services.mad_telemetry import (
+    MongoWorkerHeartbeatStore,
+    collect_mad_execution_metrics,
+)
+
+
+class HeartbeatCollection:
+    def __init__(self):
+        self.document = None
+        self.indexes = []
+
+    async def create_index(self, keys, **options):
+        self.indexes.append((keys, options))
+
+    async def update_one(self, query, update, *, upsert):
+        assert upsert is True
+        self.document = {
+            **(self.document or {}),
+            **update["$setOnInsert"],
+            **update["$set"],
+        }
+
+
+@pytest.mark.asyncio
+async def test_worker_heartbeat_is_bounded_and_never_stores_host_details():
+    collection = HeartbeatCollection()
+    store = MongoWorkerHeartbeatStore(collection)
+    await store.initialize()
+    timestamp = await store.heartbeat(
+        worker_id="worker-01", status="busy", active_run_id="a" * 32,
+    )
+    assert timestamp.tzinfo is timezone.utc
+    assert collection.document["worker_id"] == "worker-01"
+    assert collection.document["status"] == "busy"
+    assert collection.document["active_run_id"] == "a" * 32
+    assert "hostname" not in collection.document
+    assert "environment" not in collection.document
+    assert collection.document["protocol_version"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("worker_id,status,run_id", [
+    ("../host", "idle", None),
+    ("worker", "healthy", None),
+    ("worker", "busy", "../tenant"),
+])
+async def test_worker_heartbeat_rejects_untrusted_identifiers_and_states(worker_id, status, run_id):
+    store = MongoWorkerHeartbeatStore(HeartbeatCollection())
+    with pytest.raises(ValueError):
+        await store.heartbeat(worker_id=worker_id, status=status, active_run_id=run_id)
+
+
+class MetricsCollection:
+    def __init__(self, documents):
+        self.documents = documents
+
+    async def count_documents(self, query):
+        def matches(document):
+            for key, expected in query.items():
+                actual = document.get(key)
+                if isinstance(expected, dict):
+                    if "$gte" in expected and (actual is None or actual < expected["$gte"]):
+                        return False
+                    if "$in" in expected and actual not in expected["$in"]:
+                        return False
+                elif actual != expected:
+                    return False
+            return True
+        return sum(matches(document) for document in self.documents)
+
+    async def find_one(self, query, *, sort):
+        matches = [
+            document for document in self.documents
+            if all(document.get(key) == value for key, value in query.items())
+        ]
+        if not matches:
+            return None
+        field, direction = sort[0]
+        return sorted(matches, key=lambda document: document.get(field), reverse=direction < 0)[0]
+
+
+class MetricsDatabase:
+    def __init__(self, runs, workers):
+        self.collections = {
+            "execution_runs": MetricsCollection(runs),
+            "execution_worker_heartbeats": MetricsCollection(workers),
+        }
+
+    def __getitem__(self, name):
+        return self.collections[name]
+
+
+@pytest.mark.asyncio
+async def test_mad_metrics_are_aggregated_and_do_not_expose_tenant_or_artifact_data():
+    now = datetime.now(timezone.utc)
+    database = MetricsDatabase(
+        runs=[
+            {"status": "queued", "created_at": now - timedelta(minutes=20), "organization_id": "secret-org"},
+            {"status": "running", "organization_id": "secret-org"},
+            {"status": "completed", "updated_at": now - timedelta(hours=1), "stdout": "private output"},
+            {"status": "failed", "updated_at": now - timedelta(days=2)},
+        ],
+        workers=[
+            {"status": "idle", "last_seen_at": now, "worker_id": "worker-1"},
+            {"status": "busy", "last_seen_at": now - timedelta(minutes=10), "worker_id": "worker-2"},
+        ],
+    )
+    metrics = await collect_mad_execution_metrics(database)
+    assert metrics["workers"] == {"state": "degraded", "known": 2, "fresh": 1, "stale": 1}
+    assert metrics["queue"]["queued"] == 1
+    assert metrics["queue"]["active"] == 1
+    assert metrics["queue"]["oldest_queued_at"] == (now - timedelta(minutes=20)).isoformat()
+    assert metrics["executions_24h"] == {"completed": 1, "failed": 0, "cancelled": 0}
+    serialized = repr(metrics)
+    assert "secret-org" not in serialized
+    assert "private output" not in serialized
+    assert "worker-1" not in serialized
