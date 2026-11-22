@@ -36,6 +36,7 @@ import {
   type NexusPatchProposal,
   type NexusPatchProposalSummary,
 } from "./nexus-patch-proposals";
+import { getMadExecutionMetrics, listMadIncidents, transitionMadIncident, type MadIncident, type MadMetrics } from "./mad-operations";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -108,6 +109,13 @@ export default function NexusChatPanel({
   const [inspectionRunning, setInspectionRunning] = useState(false);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
+  const [madOpen, setMadOpen] = useState(false);
+  const [madMetrics, setMadMetrics] = useState<MadMetrics | null>(null);
+  const [madIncidents, setMadIncidents] = useState<MadIncident[]>([]);
+  const [madBusy, setMadBusy] = useState(false);
+  const [madError, setMadError] = useState("");
+  const [madIncludeResolved, setMadIncludeResolved] = useState(false);
+  const [madAssignee, setMadAssignee] = useState("");
   const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState("");
@@ -710,6 +718,51 @@ export default function NexusChatPanel({
     }
   }
 
+  async function refreshMadOperations() {
+    if (!access || !config.apiBaseUrl || madBusy) return;
+    setMadBusy(true);
+    setMadError("");
+    const controller = new AbortController();
+    try {
+      const [metrics, incidents] = await Promise.all([
+        getMadExecutionMetrics(config.apiBaseUrl, access.accessToken, fetch, controller.signal),
+        listMadIncidents(config.apiBaseUrl, access.accessToken, {
+          includeResolved: madIncludeResolved, limit: 100, fetcher: fetch, signal: controller.signal,
+        }),
+      ]);
+      setMadMetrics(metrics);
+      setMadIncidents(incidents);
+    } catch (cause) {
+      setMadError(errorMessage(cause));
+    } finally {
+      setMadBusy(false);
+    }
+  }
+
+  async function updateMadIncident(
+    incident: MadIncident, action: "acknowledge" | "assign" | "resolve" | "reopen",
+  ) {
+    if (!access || !config.apiBaseUrl || madBusy) return;
+    setMadBusy(true);
+    setMadError("");
+    try {
+      await transitionMadIncident(config.apiBaseUrl, access.accessToken, incident, action, {
+        assignee: action === "assign" ? madAssignee : undefined,
+      });
+      const [metrics, incidents] = await Promise.all([
+        getMadExecutionMetrics(config.apiBaseUrl, access.accessToken),
+        listMadIncidents(config.apiBaseUrl, access.accessToken, { includeResolved: madIncludeResolved }),
+      ]);
+      setMadMetrics(metrics);
+      setMadIncidents(incidents);
+      setMadAssignee("");
+    } catch (cause) {
+      setMadError(errorMessage(cause) + " Refresh the incident list before retrying.");
+    } finally {
+      setMadBusy(false);
+    }
+  }
+
   function signOut() {
     const currentAccess = access;
     const pendingRefresh = refreshPromiseRef.current;
@@ -942,7 +995,7 @@ export default function NexusChatPanel({
       <div className="pane-heading">
         <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
         <div className="nexus-header-actions">
-          {access && <button className="nexus-link-button" onClick={signOut}>Sign out</button>}
+          {access && <><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>
       </div>
@@ -1081,6 +1134,62 @@ export default function NexusChatPanel({
       )}
 
       <div className="nexus-transcript" role="log" aria-label="Conversation" aria-live="polite">
+      {access && madOpen && (
+        <section className="mad-operator-panel" aria-label="Master Admin Dashboard">
+          <div className="nexus-task-heading">
+            <strong>MASTER ADMIN DASHBOARD</strong>
+            <button type="button" className="nexus-link-button" onClick={() => void refreshMadOperations()} disabled={madBusy}>
+              {madBusy ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+          <p className="nexus-muted">Platform-wide aggregate execution telemetry and audited incidents. Access is enforced by verified ODID scopes.</p>
+          {madError && <p className="nexus-error" role="alert">{madError}</p>}
+          {madMetrics ? (
+            <>
+              <div className="mad-metric-grid">
+                <article><small>WORKERS</small><strong>{madMetrics.workers.fresh}/{madMetrics.workers.known}</strong><span>{madMetrics.workers.state}</span></article>
+                <article><small>QUEUED</small><strong>{madMetrics.queue.queued}</strong><span>{madMetrics.queue.state}</span></article>
+                <article><small>ACTIVE</small><strong>{madMetrics.queue.active}</strong><span>executions</span></article>
+                <article><small>COMPLETED · 24H</small><strong>{madMetrics.executions_24h.completed}</strong><span>completed</span></article>
+                <article><small>FAILED · 24H</small><strong>{madMetrics.executions_24h.failed}</strong><span>failed</span></article>
+                <article><small>CANCELLED · 24H</small><strong>{madMetrics.executions_24h.cancelled}</strong><span>cancelled</span></article>
+              </div>
+              <p className="mad-observed">Observed {new Date(madMetrics.observed_at).toLocaleString()} · freshness: {madMetrics.freshness}</p>
+              <strong className="mad-section-title">ACTIVE ALERTS ({madMetrics.alerts.length})</strong>
+              {madMetrics.alerts.length === 0 ? <p className="nexus-muted">No active aggregate alerts.</p> : madMetrics.alerts.map((alert) => (
+                <article className="mad-alert" key={alert.id}>
+                  <strong>{alert.severity.toUpperCase()} · {alert.summary}</strong>
+                  <small>{alert.id} · {new Date(alert.observed_at).toLocaleString()}</small>
+                  <small>{alert.runbook}</small>
+                </article>
+              ))}
+            </>
+          ) : !madError ? <p className="nexus-muted">Load aggregate metrics to begin.</p> : null}
+          <div className="mad-incidents-heading">
+            <strong>INCIDENTS</strong>
+            <label><input type="checkbox" checked={madIncludeResolved} onChange={(event) => setMadIncludeResolved(event.target.checked)} /> Include resolved</label>
+            <button type="button" className="nexus-link-button" onClick={() => void refreshMadOperations()} disabled={madBusy}>Load</button>
+          </div>
+          {madIncidents.length === 0 ? <p className="nexus-muted">No incidents loaded or no incidents match this filter.</p> : madIncidents.map((incident) => (
+            <article className="mad-incident" key={incident.incident_id}>
+              <div><strong>{incident.severity.toUpperCase()} · {incident.status.toUpperCase()}</strong><small>v{incident.version} · {new Date(incident.updated_at).toLocaleString()}</small></div>
+              <p>{incident.summary}</p>
+              <small>{incident.incident_id} · {incident.assignee ? "Assigned: " + incident.assignee : "Unassigned"}</small>
+              <div className="mad-incident-actions">
+                {incident.status === "firing" && <button type="button" disabled={madBusy} onClick={() => void updateMadIncident(incident, "acknowledge")}>Acknowledge</button>}
+                {incident.status !== "resolved" && <>
+                  <input aria-label={"Assignee for " + incident.incident_id} placeholder="Assignee ID" value={madAssignee} onChange={(event) => setMadAssignee(event.target.value)} />
+                  <button type="button" disabled={madBusy || !madAssignee.trim()} onClick={() => void updateMadIncident(incident, "assign")}>Assign</button>
+                  <button type="button" disabled={madBusy} onClick={() => void updateMadIncident(incident, "resolve")}>Resolve</button>
+                </>}
+                {incident.status === "resolved" && <button type="button" disabled={madBusy} onClick={() => void updateMadIncident(incident, "reopen")}>Reopen</button>}
+              </div>
+              <details><summary>Audit history ({incident.history.length})</summary><ol>{incident.history.map((entry, index) => <li key={entry.version + "-" + index}>{entry.action} · {entry.actor} · {new Date(entry.at).toLocaleString()} · v{entry.version}</li>)}</ol></details>
+            </article>
+          ))}
+          <p className="nexus-disclaimer">The API enforces mad:read for telemetry and incident listing, and mad:incident:manage for transitions. The browser never supplies or asserts operator roles.</p>
+        </section>
+      )}
         {messages.length === 0 && (
           <div className="nexus-empty-state">
             <div className="nexus-mark">N</div>
