@@ -3,8 +3,8 @@ import json
 import pytest
 from fastapi import HTTPException
 
-from odei_api.security import mac_rbac
 from odei_api.config import Settings
+from odei_api.security import mac_rbac
 from odei_api.security.auth import Principal
 
 
