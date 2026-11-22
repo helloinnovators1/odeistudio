@@ -1,6 +1,7 @@
 """Tenant-scoped GridFS storage for immutable workspace snapshot archives."""
 from __future__ import annotations
 
+import io
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -41,7 +42,7 @@ class MongoWorkspaceSnapshotStore:
         snapshot_id = uuid4().hex
         now = datetime.now(timezone.utc)
         blob_id = await self._bucket.upload_from_stream(
-            f"{snapshot_id}.zip", archive,
+            f"{snapshot_id}.zip", io.BytesIO(archive),
             metadata={
                 "snapshot_id": snapshot_id,
                 "organization_id": organization_id,
