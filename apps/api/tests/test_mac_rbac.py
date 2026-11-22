@@ -5,11 +5,7 @@ from fastapi import HTTPException
 
 from odei_api.config import Settings
 from odei_api.security.auth import Principal
-from odei_api.security.mac_rbac import (
-    parse_mac_operator_registry,
-    require_mac_permission,
-    resolve_mac_access,
-)
+import odei_api.security.mac_rbac as mac_rbac
 
 
 ISSUER = "https://identity.example.test/"
@@ -22,7 +18,7 @@ def test_mac_registry_resolves_only_exact_verified_issuer_and_subject():
         "subject": SUBJECT,
         "roles": ["security_admin", "read_only_auditor"],
     }])
-    access = resolve_mac_access(raw, issuer=ISSUER, subject=SUBJECT)
+    access = mac_rbac.resolve_mac_access(raw, issuer=ISSUER, subject=SUBJECT)
     assert access["roles"] == ["read_only_auditor", "security_admin"]
     assert "mac:secrets:manage" in access["permissions"]
     assert "mac:audit:read" in access["permissions"]
@@ -40,12 +36,14 @@ def test_mac_registry_resolves_only_exact_verified_issuer_and_subject():
     '[{"issuer":"http://identity.example.test","subject":"x","roles":["platform_owner"]}]',
     '[{"issuer":"https://identity.example.test/","subject":"x","roles":["unknown"]}]',
     '[{"issuer":"https://identity.example.test/","subject":"x","roles":["platform_owner"],"extra":true}]',
-    '[{"issuer":"https://identity.example.test/","subject":"x","roles":["platform_owner"]},'
-    '{"issuer":"https://identity.example.test/","subject":"x","roles":["security_admin"]}]',
+    json.dumps([
+        {"issuer": "https://identity.example.test/", "subject": "x", "roles": ["platform_owner"]},
+        {"issuer": "https://identity.example.test/", "subject": "x", "roles": ["security_admin"]},
+    ]),
 ])
 def test_mac_registry_rejects_malformed_or_ambiguous_assignments(raw):
     with pytest.raises(ValueError):
-        parse_mac_operator_registry(raw)
+        mac_rbac.parse_mac_operator_registry(raw)
 
 
 def test_settings_validate_mac_operator_registry():
@@ -61,7 +59,7 @@ def test_mac_permission_helper_fails_closed_for_missing_permission():
     access = resolve_mac_access(json.dumps([{
         "issuer": ISSUER, "subject": SUBJECT, "roles": ["read_only_auditor"],
     }]), issuer=ISSUER, subject=SUBJECT)
-    require_mac_permission(access, "mac:audit:read")
+    mac_rbac.require_mac_permission(access, "mac:audit:read")
     with pytest.raises(HTTPException) as error:
         require_mac_permission(access, "mac:secrets:manage")
     assert error.value.status_code == 403
