@@ -29,6 +29,7 @@ from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
 from odei_api.services.mac_environment_api import router as mac_environment_router
+from odei_api.services.mac_environments import MongoMacEnvironmentStore
 from odei_api.services.mad_incidents import (
     MadIncidentConflict,
     MadIncidentNotFound,
@@ -76,11 +77,17 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.mongo_client = client
         application.state.mongo_database = client[database_name] if client and database_name else None
         application.state.audit_event_store = None
+        application.state.mac_environment_store = None
         application.state.mad_incident_store = None
         if application.state.mongo_database is not None:
             audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
             await audit_store.initialize()
             application.state.audit_event_store = audit_store
+            mac_environment_store = MongoMacEnvironmentStore(
+                application.state.mongo_database["mac_environments"]
+            )
+            await mac_environment_store.initialize()
+            application.state.mac_environment_store = mac_environment_store
             incident_store = MongoMadIncidentStore(application.state.mongo_database["mad_incidents"])
             await incident_store.initialize()
             application.state.mad_incident_store = incident_store
@@ -127,6 +134,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await artifact_store.initialize()
             application.state.execution_artifact_store = artifact_store
         else:
+            application.state.mac_environment_store = None
             application.state.task_store = None
             application.state.conversation_store = None
             application.state.patch_proposal_store = None
