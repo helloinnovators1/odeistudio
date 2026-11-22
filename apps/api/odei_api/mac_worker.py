@@ -19,8 +19,8 @@ from typing import Any
 
 from odei_api.config import get_settings
 from odei_api.mongo_client import create_mongo_client
-from odei_api.services.mac_deployments import MongoMacDeploymentStore
 from odei_api.services.mac_deployment_worker import MacDeploymentWorker
+from odei_api.services.mac_deployments import MongoMacDeploymentStore
 from odei_api.services.mac_revision_environment_store import MongoMacRevisionEnvironmentStore
 
 logger = logging.getLogger("odei_api.mac_worker")
@@ -37,7 +37,7 @@ def _load_factory(spec: str, *, setting_name: str) -> Any:
     except (ImportError, AttributeError) as exc:
         raise RuntimeError(f"{setting_name} could not be loaded") from exc
     if not callable(factory):
-        raise RuntimeError(f"{setting_name} must resolve to a callable")
+        raise TypeError(f"{setting_name} must resolve to a callable")
     return factory
 
 
