@@ -3,10 +3,11 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from hmac import compare_digest
 from uuid import uuid4
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Path, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from pymongo.errors import PyMongoError
@@ -22,7 +23,12 @@ from odei_api.security.auth import (
 )
 from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.conversation_store import MongoConversationStore
+from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
+from odei_api.services.execution_profiles import load_execution_profiles
+from odei_api.services.execution_runs import MongoExecutionRunStore
+from odei_api.services.mad_telemetry import collect_mad_execution_metrics
 from odei_api.services.nexus_conversations import router as nexus_conversations_router
+from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
 from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
 from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
@@ -30,6 +36,7 @@ from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
 from odei_api.services.task_store import MongoTaskStore
+from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -45,6 +52,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.http_client = http_client
     application.state.jwks_cache = None
     application.state.jwks_lock = asyncio.Lock()
+    application.state.execution_profile_registry = load_execution_profiles(settings)
     try:
         if settings.mongodb_uri is not None and settings.mongodb_uri.get_secret_value():
             client, database_name = create_mongo_client(settings)
@@ -83,10 +91,27 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             patch_proposal_store = MongoPatchProposalStore(application.state.mongo_database["nexus_patch_proposals"])
             await patch_proposal_store.initialize()
             application.state.patch_proposal_store = patch_proposal_store
+            execution_run_store = MongoExecutionRunStore(
+                application.state.mongo_database["execution_runs"],
+                application.state.mongo_database["execution_run_events"],
+                client,
+                audit_store=audit_store,
+            )
+            await execution_run_store.initialize()
+            application.state.execution_run_store = execution_run_store
+            snapshot_store = MongoWorkspaceSnapshotStore(application.state.mongo_database)
+            await snapshot_store.initialize()
+            application.state.workspace_snapshot_store = snapshot_store
+            artifact_store = MongoExecutionArtifactStore(application.state.mongo_database)
+            await artifact_store.initialize()
+            application.state.execution_artifact_store = artifact_store
         else:
             application.state.task_store = None
             application.state.conversation_store = None
             application.state.patch_proposal_store = None
+            application.state.execution_run_store = None
+            application.state.workspace_snapshot_store = None
+            application.state.execution_artifact_store = None
         yield
     finally:
         if client is not None:
@@ -103,6 +128,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(nexus_tasks_router)
+app.include_router(nexus_execution_router)
 app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
 app.include_router(nexus_patch_proposals_router)
@@ -159,6 +185,45 @@ async def readiness(request: Request) -> dict[str, object]:
             },
         )
     return {"status": "ready", "checks": {"mongodb": "ok", "transactions": "supported"}}
+
+
+@app.get(
+    f"{settings.api_prefix}/internal/mad/execution-metrics",
+    tags=["internal-operations"],
+    include_in_schema=False,
+)
+async def mad_execution_metrics(
+    request: Request,
+    supplied_token: str | None = Header(default=None, alias="X-ODEI-MAD-Token"),
+) -> dict[str, object]:
+    """Internal platform metrics endpoint; protect additionally with network policy."""
+    configured_token = settings.mad_metrics_token
+    if configured_token is None or not configured_token.get_secret_value():
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAD_METRICS_NOT_CONFIGURED", "message": "MAD metrics are not configured."},
+        )
+    if supplied_token is None or not compare_digest(
+        supplied_token.encode("utf-8"), configured_token.get_secret_value().encode("utf-8")
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "MAD_METRICS_UNAUTHORIZED", "message": "A valid operations credential is required."},
+        )
+    database = getattr(request.app.state, "mongo_database", None)
+    if database is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAD_METRICS_UNAVAILABLE", "message": "Operational metrics storage is unavailable."},
+        )
+    try:
+        return await collect_mad_execution_metrics(database)
+    except PyMongoError as exc:
+        logger.warning("MAD metrics collection failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAD_METRICS_UNAVAILABLE", "message": "Operational metrics are temporarily unavailable."},
+        ) from exc
 
 
 @app.get(f"{settings.api_prefix}/auth/me", tags=["auth"])

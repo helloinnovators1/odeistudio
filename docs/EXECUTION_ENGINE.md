@@ -59,3 +59,18 @@ This remains an execution-backend foundation plus a durable run/lease persistenc
 - Test worker crash/restart, lease expiry, duplicate delivery, cancellation races and audit rollback.
 - Run the full end-to-end path: project snapshot → approved task → sandbox run → test report → reviewable artifact → user acceptance.
 - Do not mark execution operational until the actual worker host, OCI runtime, image digests, queue, storage and monitoring are configured and tested.
+
+
+## Workspace snapshot ingestion
+
+A bounded ZIP ingestion module is implemented on the stacked workspace-snapshot branch. It validates archive metadata and actual expanded bytes, rejects unsafe path/link entries and writes a deterministic content snapshot into a fresh worker directory. It is not yet exposed as an authenticated API or backed by durable object storage; do not use it as a direct browser-to-worker upload path until those controls are integrated.
+
+
+## Authenticated API and snapshot storage
+
+The API now provides authenticated project/task-scoped execution profile listing, execution creation with separate upload and execution consent, run reads, cursor-paginated events and cancellation requests. GridFS stores archive bytes; metadata and run records are tenant scoped. Creation atomically consumes the approved task and creates the run/event/audit records. See EXECUTION_API.md. This is still not a live worker deployment.
+
+
+## Standalone worker and result lifecycle
+
+A separate `odei-execution-worker` process is implemented. It claims and heartbeats leases, validates snapshot tenant bindings and content digest, runs only the configured OCI profile, polls cancellation, persists redacted bounded stdout/stderr, finalizes run/task state, fails exhausted attempts and schedules snapshot/artifact retention cleanup. It is not deployed or operational until a dedicated host, OCI runtime, reviewed profile digests and environment are configured. See EXECUTION_WORKER.md.
