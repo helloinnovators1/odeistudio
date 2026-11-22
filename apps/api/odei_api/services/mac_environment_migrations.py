@@ -79,8 +79,10 @@ async def backfill_mac_environment_revisions(
             await revisions.insert_one(document, session=session)
             copied += 1
         latest = environment.get("latest_version", 0)
-        if seen and max(seen) != latest:
+        if isinstance(latest, bool) or not isinstance(latest, int) or latest < 0:
+            raise MacRevisionMigrationConflict("Legacy latest-version pointer is invalid")
+        if seen != set(range(1, latest + 1)):
             raise MacRevisionMigrationConflict(
-                f"Environment {environment_name} latest-version pointer is inconsistent"
+                f"Environment {environment_name} revision sequence is incomplete"
             )
     return {"copied": copied, "already_present": already_present}
