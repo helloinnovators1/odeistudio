@@ -20,8 +20,10 @@ import {
   getNexusExecutionArtifacts,
   listNexusExecutionEvents,
   listNexusExecutionProfiles,
+  listNexusProjectExecutions,
   type NexusExecutionArtifacts,
   type NexusExecutionEvent,
+  type NexusExecutionHistoryCursor,
   type NexusExecutionProfile,
   type NexusExecutionRun,
 } from "./nexus-executions";
@@ -118,6 +120,12 @@ export default function NexusChatPanel({
   const [executionEvents, setExecutionEvents] = useState<NexusExecutionEvent[]>([]);
   const executionEventVersionRef = useRef(-1);
   const [executionArtifacts, setExecutionArtifacts] = useState<NexusExecutionArtifacts | null>(null);
+  const [executionHistory, setExecutionHistory] = useState<NexusExecutionRun[]>([]);
+  const [executionHistoryCursor, setExecutionHistoryCursor] = useState<NexusExecutionHistoryCursor | null>(null);
+  const [executionHistoryHasMore, setExecutionHistoryHasMore] = useState(false);
+  const [executionHistoryBusy, setExecutionHistoryBusy] = useState(false);
+  const [executionHistoryError, setExecutionHistoryError] = useState("");
+  const executionHistoryGenerationRef = useRef(0);
   const [snapshotSummary, setSnapshotSummary] = useState("");
   const executionAbortRef = useRef<AbortController | null>(null);
   const executionGenerationRef = useRef(0);
@@ -240,6 +248,8 @@ export default function NexusChatPanel({
       setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false); setChatError("");
       setTaskPlan(null); setTaskError(""); setPatchProposals([]); setSelectedPatch(null); setPatchError("");
       setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
+    setExecutionHistory([]); setExecutionHistoryCursor(null); setExecutionHistoryHasMore(false); setExecutionHistoryError("");
+      setExecutionHistory([]); setExecutionHistoryCursor(null); setExecutionHistoryHasMore(false); setExecutionHistoryError("");
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
       setNotice(message);
@@ -312,6 +322,41 @@ export default function NexusChatPanel({
     return () => {
       active = false;
       controller.abort();
+    };
+  }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId]);
+
+  useEffect(() => {
+    const accessToken = access?.accessToken ?? "";
+    const apiBaseUrl = config.apiBaseUrl ?? "";
+    const selectedOrganizationId = organizationId ?? "";
+    const selectedProjectId = projectId ?? "";
+    executionHistoryGenerationRef.current += 1;
+    setExecutionHistory([]);
+    setExecutionHistoryCursor(null);
+    setExecutionHistoryHasMore(false);
+    setExecutionHistoryError("");
+    if (!accessToken || !apiBaseUrl || !selectedOrganizationId || !selectedProjectId) return;
+    let active = true;
+    const controller = new AbortController();
+    const generation = executionHistoryGenerationRef.current;
+    setExecutionHistoryBusy(true);
+    void listNexusProjectExecutions(
+      apiBaseUrl, selectedOrganizationId, selectedProjectId, accessToken,
+      { limit: 50, fetcher: fetch, signal: controller.signal },
+    ).then((page) => {
+      if (!active || generation !== executionHistoryGenerationRef.current) return;
+      setExecutionHistory(page.runs);
+      setExecutionHistoryCursor(page.next_cursor);
+      setExecutionHistoryHasMore(page.has_more);
+    }).catch((cause: unknown) => {
+      if (active && !controller.signal.aborted) setExecutionHistoryError(errorMessage(cause));
+    }).finally(() => {
+      if (active && generation === executionHistoryGenerationRef.current) setExecutionHistoryBusy(false);
+    });
+    return () => {
+      active = false;
+      controller.abort();
+      executionHistoryGenerationRef.current += 1;
     };
   }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId]);
 
@@ -500,6 +545,34 @@ export default function NexusChatPanel({
     } finally {
       if (taskAbortRef.current === controller) taskAbortRef.current = null;
       setTaskBusy(false);
+    }
+  }
+
+  async function loadMoreExecutionHistory() {
+    if (!access || !config.apiBaseUrl || !organizationId || !projectId
+      || !executionHistoryCursor || !executionHistoryHasMore || executionHistoryBusy) return;
+    const generation = ++executionHistoryGenerationRef.current;
+    const controller = new AbortController();
+    setExecutionHistoryBusy(true);
+    setExecutionHistoryError("");
+    try {
+      const page = await listNexusProjectExecutions(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken,
+        { limit: 50, cursor: executionHistoryCursor, fetcher: fetch, signal: controller.signal },
+      );
+      if (generation !== executionHistoryGenerationRef.current) return;
+      setExecutionHistory((current) => {
+        const known = new Set(current.map((run) => run.run_id));
+        return [...current, ...page.runs.filter((run) => !known.has(run.run_id))];
+      });
+      setExecutionHistoryCursor(page.next_cursor);
+      setExecutionHistoryHasMore(page.has_more);
+    } catch (cause) {
+      if (!controller.signal.aborted && generation === executionHistoryGenerationRef.current) {
+        setExecutionHistoryError(errorMessage(cause));
+      }
+    } finally {
+      if (generation === executionHistoryGenerationRef.current) setExecutionHistoryBusy(false);
     }
   }
 
@@ -1129,6 +1202,33 @@ export default function NexusChatPanel({
             )}
             <p className="nexus-task-safety">Execution is limited to the server-approved profile and immutable snapshot. Results require validation and review; successful sandbox exit does not automatically complete the task.</p>
             <small>Task ID: {taskPlan.task_id} · Version {taskPlan.version}</small>
+          </section>
+        )}
+        {access && projectId && (
+          <section className="nexus-execution-history" aria-label="Project execution history">
+            <div className="nexus-task-heading">
+              <strong>PROJECT EXECUTION HISTORY</strong>
+              <button type="button" className="nexus-link-button"
+                onClick={() => void loadMoreExecutionHistory()}
+                disabled={executionHistoryBusy || !executionHistoryHasMore}>
+                {executionHistoryBusy ? "Loading…" : executionHistoryHasMore ? "Load older" : "Up to date"}
+              </button>
+            </div>
+            {executionHistoryError && <p className="nexus-error" role="alert">{executionHistoryError}</p>}
+            {executionHistory.length === 0 && !executionHistoryBusy
+              ? <p className="nexus-muted">No execution runs are visible in this project yet.</p>
+              : <ol>
+                {executionHistory.map((run) => (
+                  <li key={run.run_id}>
+                    <div>
+                      <strong>{run.status.toUpperCase()}</strong>
+                      <span>{run.profile_id}</span>
+                    </div>
+                    <small>Task {run.task_id} · {run.created_at ? new Date(run.created_at).toLocaleString() : "Creation time unavailable"}</small>
+                    <small>Run {run.run_id} · Attempt {run.attempts}/{run.max_attempts}</small>
+                  </li>
+                ))}
+              </ol>}
           </section>
         )}
         {conversationBusy && <div className="nexus-thinking" role="status">Loading saved conversations…</div>}
