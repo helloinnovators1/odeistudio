@@ -20,6 +20,11 @@ const SENSITIVE_NAMES = new Set([
 const SAFE_ENV_TEMPLATES = new Set([
   ".env.example", ".env.sample", ".env.template", ".env.dist",
 ]);
+const RESERVED_WINDOWS = new Set([
+  "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5",
+  "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4",
+  "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+]);
 
 export interface WorkspaceArchiveResult {
   base64: string;
@@ -39,6 +44,7 @@ function normalizedSafePath(path: string): string | null {
   const lower = parts.map((part) => part.toLowerCase());
   if (lower.some((part) => SENSITIVE_DIRECTORIES.has(part) || IGNORED_DIRECTORIES.has(part))) return null;
   const basename = lower.at(-1) ?? "";
+  if (parts.some((part) => RESERVED_WINDOWS.has((part.split(".", 1)[0] ?? "").toLowerCase()))) return null;
   if (SENSITIVE_NAMES.has(basename)) return null;
   if (basename.startsWith(".env") && !SAFE_ENV_TEMPLATES.has(basename)) return null;
   if (basename.endsWith(".pem") || basename.endsWith(".key")
