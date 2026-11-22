@@ -17,6 +17,9 @@ class FakeStore:
 
     async def claim_next(self, **kwargs):
         self.claimed = kwargs
+        if self.attempt is not None:
+            self.attempt["state"] = "running"
+            self.attempt["worker_id"] = kwargs["worker_id"]
         return self.attempt
 
     async def finish(self, **kwargs):
