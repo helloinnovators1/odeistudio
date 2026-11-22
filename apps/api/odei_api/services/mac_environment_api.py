@@ -141,10 +141,14 @@ async def _mutate_with_audit(request: Request, store: Any, audit: Any,
     database = getattr(request.app.state, "mongo_database", None)
     client = getattr(database, "client", None)
     operation = getattr(store, method)
-    if client is None or not callable(getattr(client, "start_session", None)):
-        result = await operation(**arguments)
-        await _audit(audit, principal, action, environment_name, "success", {})
-        return result
+    start_session = getattr(client, "start_session", None)
+    if not callable(start_session):
+        # MAC mutations change privileged deployment state. Never commit the
+        # state change separately from its success audit record.
+        raise HTTPException(status_code=503, detail={
+            "code": "TRANSACTIONAL_AUDIT_UNAVAILABLE",
+            "message": "MAC mutations require MongoDB transaction support; no change was applied.",
+        })
     async with client.start_session() as session:
         async def transaction(active_session):
             result = await operation(**arguments, session=active_session)
