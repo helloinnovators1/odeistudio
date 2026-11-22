@@ -1,43 +1,47 @@
 # Implementation Status
 
-## Authoritative repository snapshot — 2026-11-22 (post PR #72)
+## Authoritative repository snapshot — 2026-11-22 (PR #74 review candidate)
 
-This snapshot records the state verified on the current mainline. Repository implementation, CI evidence, independent review, merge, external acceptance and production deployment are separate states.
+This snapshot distinguishes mainline code from unmerged candidate work, CI evidence, independent review, external acceptance and production deployment.
 
-**Main at snapshot:** `7beaf69173e08a22db32309f0198bc469e1548c3`.  
-**Recently merged:** [#68](https://github.com/helloinnovators1/odeistudio/pull/68) (NEXUS shell/browser regression baseline), [#69](https://github.com/helloinnovators1/odeistudio/pull/69) (NEXUS documentation synchronization), [#70](https://github.com/helloinnovators1/odeistudio/pull/70) (delivery snapshot correction), [#71](https://github.com/helloinnovators1/odeistudio/pull/71) (stale project-discovery response guard), [#72](https://github.com/helloinnovators1/odeistudio/pull/72) (npm lockfile and deterministic CI installs).  
-**Open PR:** [#66](https://github.com/helloinnovators1/odeistudio/pull/66) (MAC/MAD governance and deployment worker changes); it is not approved or merge-ready. It is based on an older mainline commit and has no independent approval. A source-level review comment records four unresolved concerns: audit transaction fallback, unbounded secret resolution, migration readiness/backfill contract, and deployment authority/idempotency.  
-**Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection and review policy), [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated browser E2E/accessibility/visual regression). Issue [#62](https://github.com/helloinnovators1/odeistudio/issues/62) is closed after PR #72 merged.
+**Main at snapshot:** `f25e6fc71d3eff77e8c45c6aa4eed0b7520614c5`.  
+**Recently merged:** [#68](https://github.com/helloinnovators1/odeistudio/pull/68) (NEXUS shell/browser baseline), [#69](https://github.com/helloinnovators1/odeistudio/pull/69) (NEXUS documentation), [#70](https://github.com/helloinnovators1/odeistudio/pull/70) (delivery snapshot correction), [#71](https://github.com/helloinnovators1/odeistudio/pull/71) (stale project-discovery response guard), [#72](https://github.com/helloinnovators1/odeistudio/pull/72) (npm lockfile and deterministic installs), and [#73](https://github.com/helloinnovators1/odeistudio/pull/73) (post-PR-72 documentation refresh).  
+**Open integration PR:** [#74](https://github.com/helloinnovators1/odeistudio/pull/74), ready for independent review; exact head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a`. It reconstructs MAC/MAD work on current main and restores the MAC environment panel while preserving PR #71's project-load race fix. It is not merged. PR #66 is closed as superseded by #74.  
+**Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection/review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated browser E2E/accessibility/visual regression). [#62](https://github.com/helloinnovators1/odeistudio/issues/62) is closed after PR #72.
 
-| Workstream | Verified repository state | Remaining gates |
+| Workstream | Verified in main | Candidate work / remaining gates |
 |---|---|---|
-| NEXUS identity/chat | ODID Authorization Code + PKCE browser foundation, in-memory token lifecycle, authorized organization/project discovery, consent-gated Responses API chat, SSE streaming/cancellation and owner/tenant-scoped durable conversations. | Configure and verify real ODID issuer/client/callback/scopes/audience, API issuer/JWKS/CORS, production credentials and staging tenant isolation. |
-| NEXUS project selection | PR #71 merged. Latest-request generation prevents stale project-list success/error/loading updates from crossing organization changes, sign-out or session expiry; unit tests cover overlapping and invalidated generations. | Full authenticated browser journey for organization switching and project selection remains open in issue #64. |
-| Inspection/proposals | Bounded tool loop over explicitly attached excerpts, redaction, persisted patch proposals, owner decisions and signed one-use capability for one-file local apply. | Safe broader multi-file context manager; conversation/proposal mutation-audit consistency; full review/apply/recovery tests. |
-| Tasks/execution | Durable task planning/approval, filtered workspace snapshots, separate upload/execution consent, approved profiles, durable runs/events/leases, worker/sandbox integration, cancellation and artifacts/history. | Hardened production worker/runtime, secret/storage/monitoring integration, hostile-code isolation and crash/retry/lease/cancel/cleanup drills. |
-| Local companion | Explicit workspace selection, bounded read-only inspection, pairing and signed fresh-challenge-bound one-file apply. | Multi-file journal, rollback, crash recovery, durable receipt/audit, signed installer/update and actual Windows 10 build 18362.1256 device acceptance. |
-| MAC/MAD | MAD telemetry and incident operations are in main. MAC role/permission foundation is present. PR #66 proposes broader MAC environment governance, revision migration, worker packaging and transactional audit changes but remains stale, open and without independent review. | Resolve the four review findings, rebase/update against current main, obtain independent security review, rerun exact-head checks, then validate providers/secrets/migrations/enforcement in staging. |
-| Browser QA | Playwright/Chromium CI; panel open/shortcut, accessible panel landmark, safe unauthenticated state, narrow/desktop overflow checks and focused request-generation unit tests. | ODID/org/project/conversation/stream/cancel/task/execution/patch/companion/MAC/MAD browser journeys, axe/accessibility, keyboard/focus/dialog tests and deterministic visual baselines. |
-| Web dependencies | PR #72 merged. `apps/web/package-lock.json` (lockfile v3) generated with Node 22/npm 10.9.4; `packageManager` pinned; API CI and Security Scanning use `npm ci`. Clean install, web unit tests, production build, npm audit and final PR checks passed. | Continue Dependabot lockfile updates and verify every new workflow uses the committed lockfile. |
-| Repository governance | `main` remains unprotected. The connected GitHub integration cannot mutate branch protection/rulesets; its branch-protection read returned 403. | Repository administrator must enable independent review, required CI/security contexts, stale approval dismissal, conversation resolution and force-push/direct-push restrictions. |
-| Agents/production | Full Agents Window/CLI/background orchestration product is not delivered. No production deployment is claimed. | Agent lifecycle/orchestration/policy/observability; real provider configuration, secrets, backups/restore, approved staging, monitored rollout and rollback. |
+| NEXUS identity/chat | ODID Authorization Code + PKCE browser foundation, in-memory token lifecycle, authenticated organization/project discovery, consent-gated Responses API chat, SSE streaming/cancellation and owner/tenant-scoped conversations. | Real ODID issuer/client/callback/scopes/audience, API issuer/JWKS/CORS, production credentials and staging tenant isolation. |
+| Project discovery | PR #71 merged. Request-generation guards prevent stale project-list success/error/loading updates crossing organization changes, sign-out or session expiry. | Authenticated browser acceptance of organization/project switching remains open in #64. |
+| Inspection/proposals | Bounded tool loop over explicitly attached excerpts, redaction, persisted proposals, owner decisions and signed one-use capability for one-file local apply. | Broader safe multi-file context, conversation/proposal mutation-audit consistency, authenticated proposal/apply/recovery journeys. |
+| Tasks/execution | Durable task planning/approval, filtered workspace snapshots, separate upload/execution consent, approved profiles, durable runs/events/leases, worker/sandbox integration, cancellation, artifacts/history. | Production hardened worker/runtime, concrete secret/provider integration, hostile-code isolation and crash/retry/lease/cancel/cleanup drills. |
+| Local companion | Explicit workspace selection, bounded read-only inspection, pairing and signed fresh-challenge-bound one-file apply. | Multi-file journal, rollback/crash recovery, durable receipt/audit, signed installer/update and actual Windows 10 build 18362.1256 device acceptance. |
+| MAC/MAD | MAD telemetry and incident operations are in main; MAC RBAC/permission foundation is in main. | PR #74 adds environment revisions, NEXUS MAC panel, transactional audit fail-closed behavior, bounded/cancellable secret resolution, separate request/approval roles, exact factory allowlists, provider idempotency retry coverage and worker packaging. Exact-head Security Scanning passed; API CI has passed Ubuntu 3.10/3.12, Windows 3.12, MongoDB integration and web build/tests/Playwright; Windows 3.10 was still running at snapshot. Independent security review, concrete production adapters, staging migration/rollback and hardened worker deployment remain required. |
+| Browser QA | Playwright/Chromium CI; panel open/shortcut, accessible landmark, safe unauthenticated state, narrow/desktop overflow and project request-generation unit tests. | Authenticated ODID/org/project/chat/stream/cancel/task/execution/patch/companion/MAC/MAD journeys, axe/accessibility, keyboard/focus/dialog tests and deterministic visual baselines. |
+| Web dependencies | PR #72 merged: lockfile v3, npm 10.9.4 pin, Node/npm engine range, `npm ci` in API CI and Security Scanning. | Keep lockfile current and require lockfile-based installs in new workflows. |
+| Repository governance | `main` remains unprotected; no active ruleset was found. The connected integration cannot administer branch protection. | A repository administrator must configure independent review, required CI/security contexts, stale-approval dismissal, conversation resolution, and force-push/direct-push restrictions. |
+| Agents/production | Full Agents Window/CLI/background orchestration product is not delivered. No production deployment is claimed. | Agent lifecycle/orchestration/policy/observability; real provider configuration, secrets, backups/restore, staging, monitored rollout and rollback. |
 
 ### Verification evidence and limits
 
-- PR #68 merged browser shell coverage; PR #71 merged stale project-load protection; PR #72 merged deterministic web dependency installation. All reported final-head checks for these PRs passed, including Windows/Ubuntu Python matrix, MongoDB integration, web tests/build/Playwright, dependency audits, secret scanning and CodeQL.
-- PR #72's temporary GitHub-hosted bootstrap run generated the lockfile using npm 10.9.4, then passed `npm ci`, web tests, production build and `npm audit --audit-level=high`. The temporary workflow was removed before the PR was merged.
-- PR #66 is not approved or merged. Its review comment is a technical review from the repository owner, not independent approval. The PR is based on an older mainline and needs conflict/rebase work before it can be reconsidered.
-- The connected GitHub integration reports no branch-protection mutation capability; the branch-protection endpoint is inaccessible to this integration. An administrator must configure it in repository settings.
-- No live ODID provider, production MongoDB, production model credentials, external secret manager, deployed worker fleet or physical Windows 10 device was accessed or accepted. No production migration, deployment or real customer-data operation was performed.
+- PR #68, #71 and #72 passed their reported final-head checks before merge. PR #74 exact head is `a80c8005b6ee9bdae7b4304368a67be0238c1e0a`.
+- PR #74 Security Scanning passed all four jobs: CodeQL, Python dependency audit, web dependency audit and secret scanning.
+- PR #74 API CI at this snapshot had passed Ubuntu Python 3.10/3.12, Windows Python 3.12, MongoDB replica-set transaction integration, and web unit tests/build/Playwright. Windows Python 3.10 was still running; do not describe the full exact-head API CI matrix as complete until that job passes.
+- PR #74's transaction/audit tests prove the mutation and success-audit use the same MongoDB transaction session and that missing transaction support fails closed. The worker tests bound secret resolution and simulate provider success followed by cancellation before receipt persistence, verifying the same idempotency key is reused on reclaim.
+- Provider and secret-resolver factories now require exact deployment-owned JSON allowlists. This does not provide concrete cloud-provider or secret-manager implementations; none has been accepted in a real environment.
+- PR #74 is not merged and has no independent security approval. PR #66 is closed as superseded, not merged.
+- `main` remains unprotected. A repository administrator must configure protection and review rules.
+- No live ODID provider, production MongoDB, production model credentials, external secret manager, deployed worker fleet or physical Windows 10 target device was accessed or accepted. No production migration or deployment was performed.
 
 ### Immediate dependency-ordered work
 
-1. Rework PR #66 on current main; address its four review findings with tests and obtain independent security review before merge.
-2. Complete authenticated browser journeys and accessibility/visual regression under issue #64.
-3. Make conversation and patch-proposal mutation/audit outcomes transactionally consistent or safely recoverable.
-4. Design and prove journaled multi-file apply with crash recovery/rollback before enabling it.
-5. Provision hardened execution workers and complete staging, recovery, Windows device and operational acceptance.
+1. Finish exact-head Windows 3.10 CI for PR #74 and obtain independent security review.
+2. Implement and accept concrete provider/secret-manager adapters; prove provider idempotency in the actual upstream APIs.
+3. Run migration dry-run, transactional backfill, full history verification and rollback in staging.
+4. Deploy the worker only in a hardened isolation boundary and complete crash/restart/lease/cancel/cleanup drills.
+5. Complete authenticated NEXUS browser journeys and accessibility/visual regression under issue #64.
 6. Have a repository administrator configure branch protection and release governance under issue #63.
+7. Complete real ODID, MongoDB, backup/restore, Windows device and monitored rollout/rollback acceptance before any production release.
 
 ---
 
