@@ -171,3 +171,31 @@ or a write freeze, migrate all environments, verify counts and content hashes,
 switch reads/writes atomically, and test rollback/recovery on a production-like
 replica set. Immutable history must remain available for approvals, rollback,
 audit correlation and regulatory retention.
+
+### Running the backfill command
+
+Install the API package in the deployment environment, set the intended
+`MONGODB_URI` and `MONGODB_DATABASE`, and run from the API package environment:
+
+```sh
+odei-mac-revision-migration
+```
+
+The default is a dry run: it validates every legacy environment and revision,
+checks existing target records for exact consistency, and reports how many
+revision documents would be copied without inserting them. After taking and
+verifying a database backup, arranging a write freeze (or another formally
+approved consistency barrier), reviewing the dry-run output, and confirming
+replica-set/sharded transaction support, an authorized operator can explicitly
+apply:
+
+```sh
+odei-mac-revision-migration --apply
+```
+
+The command creates the target indexes and runs the backfill in a MongoDB
+transaction. It exits non-zero on malformed history, gaps, duplicate sequence
+numbers, target conflicts, or database/transaction errors. It does not remove
+legacy embedded history, alter active-version pointers, change API reads/writes,
+or deploy infrastructure. Re-run the dry run after application and reconcile
+the reported `already_present` count before any future storage cutover.
