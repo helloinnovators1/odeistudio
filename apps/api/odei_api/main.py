@@ -35,6 +35,7 @@ from odei_api.services.mad_incidents import (
     MongoMadIncidentStore,
 )
 from odei_api.services.mad_telemetry import collect_mad_execution_metrics, evaluate_mad_alerts
+from odei_api.services.mac_environment_api import router as mac_environment_router
 from odei_api.services.nexus_conversations import router as nexus_conversations_router
 from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
@@ -153,6 +154,7 @@ app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
 app.include_router(nexus_patch_proposals_router)
 app.include_router(projects_router)
+app.include_router(mac_environment_router)
 
 # Keep origins empty until the deployment's exact web origins are configured.
 # Wildcard CORS with credentials is deliberately not enabled.
