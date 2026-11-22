@@ -57,3 +57,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Safe Workspace Snapshots](WORKSPACE_SNAPSHOTS.md) — bounded ZIP ingestion, path validation, content hashing and disposable workspace extraction.
 
 - [NEXUS Execution API](EXECUTION_API.md) — authenticated, approval-gated run creation, GridFS snapshot storage, task/run transactions and API deployment gates.
+
+- [NEXUS Execution Worker Operations](EXECUTION_WORKER.md) — standalone worker deployment, leases, sandbox lifecycle, cancellation, artifact retention and production controls.
