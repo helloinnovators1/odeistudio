@@ -19,7 +19,7 @@ from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import (
-    ExecutionRun, ExecutionRunConflict, ExecutionRunStatus, MongoExecutionRunStore,
+    ExecutionRun, ExecutionRunStatus, MongoExecutionRunStore,
 )
 from odei_api.services.execution_sandbox import ContainerSandbox
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
