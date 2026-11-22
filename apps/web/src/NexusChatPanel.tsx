@@ -237,12 +237,25 @@ export default function NexusChatPanel({
       return;
     }
     const timer = window.setTimeout(() => {
+      executionGenerationRef.current += 1;
       setAccess(null);
       setOrganizations([]);
       setOrganizationId("");
       setProjects([]);
       setProjectId("");
       setMessages([]);
+      setConversations([]);
+      setConversationId("");
+      setTaskPlan(null);
+      setExecutionProfiles([]);
+      setExecutionProfileId("");
+      setExecutionRun(null);
+      setExecutionArtifacts(null);
+      setExecutionError("");
+      setExecutionBusy(false);
+      setSnapshotSummary("");
+      setWorkspaceUploadConsent(false);
+      setCodeExecutionConsent(false);
       setNotice("Your sign-in expired. Sign in again.");
     }, remaining);
     return () => window.clearTimeout(timer);
@@ -600,6 +613,7 @@ export default function NexusChatPanel({
     setExecutionRun(null);
     setExecutionArtifacts(null);
     setExecutionError("");
+    setExecutionBusy(false);
     setSnapshotSummary("");
     setWorkspaceUploadConsent(false);
     setCodeExecutionConsent(false);
