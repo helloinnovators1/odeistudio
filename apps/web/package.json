@@ -12,14 +12,14 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "@monaco-editor/react": "^4.7.0",
-    "monaco-editor": "^0.52.2"
+    "monaco-editor": "^0.57.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^4.5.2",
-    "typescript": "^5.8.3",
-    "vite": "^6.4.4",
-    "vitest": "^4.1.12"
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   }
 }
