@@ -321,3 +321,33 @@ async def cancel_execution(
         raise HTTPException(status_code=409, detail={"code": "EXECUTION_STATE_CONFLICT", "message": "The execution run cannot be cancelled in its current state."}) from exc
     await _append_decision(request, principal, organization_id, run_id, "nexus.execution.cancel", "success", {"status": updated.status.value})
     return _public_run(updated)
+
+@router.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/tasks/{{task_id}}/executions/{{run_id}}/artifacts",
+    tags=["execution"],
+)
+async def get_execution_artifacts(
+    request: Request, organization_id: str = PathParam(min_length=1, max_length=128),
+    project_id: str = PathParam(min_length=1, max_length=128),
+    task_id: str = PathParam(min_length=1, max_length=128),
+    run_id: str = PathParam(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    await _authorize_execution_resource(request, organization_id, project_id, task_id, principal)
+    runs = getattr(request.app.state, "execution_run_store", None)
+    artifacts = getattr(request.app.state, "execution_artifact_store", None)
+    if runs is None or artifacts is None:
+        raise HTTPException(status_code=503, detail={"code": "EXECUTION_STORAGE_UNAVAILABLE", "message": "Execution storage is not configured."})
+    run = await runs.get(organization_id=organization_id, run_id=run_id)
+    if run is None or run.project_id != project_id or run.task_id != task_id:
+        raise HTTPException(status_code=404, detail={"code": "EXECUTION_NOT_FOUND", "message": "Execution run was not found."})
+    result = await artifacts.get_for_tenant(
+        organization_id=organization_id, project_id=project_id,
+        task_id=task_id, run_id=run_id,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail={"code": "EXECUTION_ARTIFACTS_NOT_FOUND", "message": "Execution artifacts are not available."})
+    await _append_decision(request, principal, organization_id, run_id,
+        "nexus.execution.artifacts.read", "success",
+        {"stdout_bytes": result["stdout_bytes"], "stderr_bytes": result["stderr_bytes"]})
+    return result
