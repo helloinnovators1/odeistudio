@@ -34,8 +34,24 @@ export interface NexusExecutionArtifacts {
 
 type Fetcher = typeof fetch;
 
+function normalizeBase(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TypeError("A valid NEXUS API base URL is required.");
+  }
+  const localHttp = url.protocol === "http:"
+    && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if ((url.protocol !== "https:" && !localHttp)
+    || url.username || url.password || url.search || url.hash) {
+    throw new TypeError("NEXUS API must use HTTPS (or loopback HTTP) without URL credentials or query parameters.");
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
 function route(baseUrl: string, organizationId: string, projectId: string, taskId?: string): string {
-  const base = baseUrl.replace(/\/+$/, "");
+  const base = normalizeBase(baseUrl);
   const root = base + "/api/v1/organizations/" + encodeURIComponent(organizationId)
     + "/projects/" + encodeURIComponent(projectId);
   return taskId ? root + "/tasks/" + encodeURIComponent(taskId) + "/executions" : root + "/execution";
