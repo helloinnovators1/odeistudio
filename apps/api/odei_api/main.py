@@ -299,13 +299,12 @@ async def mad_operator_execution_metrics(
         ) from exc
     metrics["alerts"] = evaluate_mad_alerts(metrics)
     incident_store = getattr(request.app.state, "mad_incident_store", None)
-    if incident_store is None:
-        raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident storage is unavailable."})
-    try:
-        await incident_store.record_alerts(metrics["alerts"])
-    except Exception as exc:
-        logger.warning("MAD incident observation persistence failed (%s)", type(exc).__name__)
-        raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident observations could not be persisted."}) from exc
+    if incident_store is not None:
+        try:
+            await incident_store.record_alerts(metrics["alerts"])
+        except Exception as exc:
+            logger.warning("MAD incident observation persistence failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident observations could not be persisted."}) from exc
     await append_access_audit("success")
     return metrics
 
