@@ -27,6 +27,6 @@ def load_execution_profiles(settings: Settings) -> SandboxProfileRegistry | None
             raise ValueError("Execution profile requires name, image and command")
         command = value["command"]
         if not isinstance(command, list):
-            raise ValueError("Execution profile command must be a JSON array")
+            raise TypeError("Execution profile command must be a JSON array")
         profiles.append(SandboxProfile(**{**value, "command": tuple(command)}))
     return SandboxProfileRegistry(profiles)
