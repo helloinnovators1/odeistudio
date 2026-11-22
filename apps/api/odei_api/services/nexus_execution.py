@@ -219,7 +219,7 @@ async def create_execution(
             id=run_id, organization_id=organization_id, project_id=project_id,
             task_id=task_id, requester_issuer=principal.issuer,
             requester_subject=principal.subject, profile_id=payload.profile_id,
-            snapshot_sha256=digest, arguments=(),
+            snapshot_sha256=digest, arguments=(), snapshot_id=snapshot["snapshot_id"],
         )
         await runs.create_approved_task_run(
             run, tasks=database["tasks"], task_events=database["task_events"],
