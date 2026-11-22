@@ -304,13 +304,26 @@ async def mad_operator_execution_metrics(
         ) from exc
     metrics["alerts"] = evaluate_mad_alerts(metrics)
     incident_store = getattr(request.app.state, "mad_incident_store", None)
-    if incident_store is not None:
-        try:
-            await incident_store.record_alerts(metrics["alerts"])
-        except Exception as exc:
-            logger.warning("MAD incident observation persistence failed (%s)", type(exc).__name__)
-            raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident observations could not be persisted."}) from exc
-    await append_access_audit("success")
+    mongo_client = getattr(request.app.state, "mongo_client", None)
+    if incident_store is None or mongo_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Transactional incident and audit storage is unavailable."},
+        )
+    try:
+        await _record_mad_alerts_with_audit(
+            mongo_client=mongo_client,
+            incident_store=incident_store,
+            audit_store=audit_store,
+            alerts=metrics["alerts"],
+            principal=principal,
+        )
+    except Exception as exc:
+        logger.warning("MAD alert observation transaction failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Alert observations and their audit could not be committed."},
+        ) from exc
     return metrics
 
 
@@ -345,6 +358,34 @@ async def mad_list_incidents(
     for incident in incidents:
         incident["id"] = incident.pop("_id", incident.get("incident_id"))
     return {"incidents": incidents}
+
+
+async def _record_mad_alerts_with_audit(
+    *,
+    mongo_client,
+    incident_store: MongoMadIncidentStore,
+    audit_store: MongoAuditEventStore,
+    alerts: list[dict[str, object]],
+    principal: Principal,
+) -> None:
+    """Commit alert-observation changes and their success audit atomically."""
+    async with mongo_client.start_session() as session:
+        async def transaction(active_session):
+            await incident_store.record_alerts(alerts, session=active_session)
+            await audit_store.append(
+                organization_id="platform",
+                actor_issuer=principal.issuer,
+                actor_subject=principal.subject,
+                action="mad.metrics.read",
+                target_type="platform_metrics",
+                target_id="execution",
+                outcome="success",
+                request_id=uuid4().hex,
+                metadata={"authorization_scope": "mad:read", "alert_count": len(alerts)},
+                session=active_session,
+            )
+
+        await session.with_transaction(transaction)
 
 
 async def _transition_mad_incident_with_audit(
