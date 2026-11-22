@@ -17,3 +17,8 @@ A run binds an organization, project, approved task, server-registered profile i
 
 ## Explicit remaining gates
 This increment does not yet provide HTTP routes, API authorization/approval checks, immutable snapshot ingestion or object storage, worker process/queue deployment, retry exhaustion handling, sandbox cancellation wiring, artifact/log storage, artifact retrieval, output secret redaction, or MAD metrics/alerts. Do not enable user execution until these layers and crash/restart, tenant-isolation, lease-race and cancellation-cleanup tests are complete.
+
+
+## Snapshot ingestion increment
+
+A bounded ZIP snapshot ingestor is now implemented in services/workspace_snapshots.py. It rejects traversal, absolute and non-portable paths, duplicate normalized paths, symlinks and special files, file/directory conflicts, encrypted or unsupported entries, oversized archives/files and excessive compression ratios. It extracts only to a fresh worker-owned directory, uses exclusive no-follow file creation where supported, and calculates a deterministic content-manifest digest. See WORKSPACE_SNAPSHOTS.md. Authenticated upload, durable object storage, explicit consent and tenant-scoped API integration remain separate gates.
