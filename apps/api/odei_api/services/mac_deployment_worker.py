@@ -138,34 +138,50 @@ class MacDeploymentWorker:
                 revision.get("config", {}), environment=environment,
                 provider=provider_name, attempt_id=attempt_id,
             )
-            deployment_id = await asyncio.wait_for(
-                self._with_heartbeat(
-                    adapter.deploy(
-                        config, environment=environment,
-                        idempotency_key=str(attempt.get("idempotency_key", "")),
+            deployment_id = attempt.get("provider_deployment_id")
+            if deployment_id is None:
+                deployment_id = await asyncio.wait_for(
+                    self._with_heartbeat(
+                        adapter.deploy(
+                            config, environment=environment,
+                            idempotency_key=str(attempt.get("idempotency_key", "")),
+                        ),
+                        attempt_id=attempt_id,
                     ),
-                    attempt_id=attempt_id,
-                ),
-                timeout=self.operation_timeout_seconds,
-            )
-            if not isinstance(deployment_id, str) or not 1 <= len(deployment_id) <= 200:
-                raise ValueError("Provider adapter returned an invalid deployment identifier")
-            verified = await asyncio.wait_for(
-                self._with_heartbeat(
-                    adapter.verify(deployment_id, environment=environment),
-                    attempt_id=attempt_id,
-                ),
-                timeout=self.operation_timeout_seconds,
-            )
+                    timeout=self.operation_timeout_seconds,
+                )
+                if not isinstance(deployment_id, str) or not 1 <= len(deployment_id) <= 200:
+                    raise ValueError("Provider adapter returned an invalid deployment identifier")
+                await self.store.record_provider_deployment(
+                    attempt_id=attempt_id, worker_id=self.worker_id,
+                    provider_deployment_id=deployment_id,
+                )
+            try:
+                verified = await asyncio.wait_for(
+                    self._with_heartbeat(
+                        adapter.verify(deployment_id, environment=environment),
+                        attempt_id=attempt_id,
+                    ),
+                    timeout=self.operation_timeout_seconds,
+                )
+            except asyncio.CancelledError:
+                raise
+            except MacDeploymentConflict:
+                raise
+            except Exception:
+                verified = False
             if not isinstance(verified, bool):
-                raise ValueError("Provider verification must return a boolean")
+                verified = False
+            if not verified:
+                return await self.store.finish(
+                    attempt_id=attempt_id, worker_id=self.worker_id,
+                    verified=False, provider_deployment_id=deployment_id,
+                    result_summary="Provider health verification failed or could not be completed",
+                )
             return await self.store.finish(
                 attempt_id=attempt_id, worker_id=self.worker_id,
-                verified=verified, provider_deployment_id=deployment_id,
-                result_summary=(
-                    "Provider health verification passed" if verified
-                    else "Provider health verification failed"
-                ),
+                verified=True, provider_deployment_id=deployment_id,
+                result_summary="Provider health verification passed",
             )
         except asyncio.CancelledError:
             # Leave the lease to expire; another worker can safely reclaim it.
