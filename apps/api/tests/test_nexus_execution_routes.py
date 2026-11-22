@@ -13,7 +13,6 @@ from odei_api.config import Settings
 from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.execution_profiles import load_execution_profiles
-from odei_api.services.execution_sandbox import SandboxProfile
 from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key
 
 
