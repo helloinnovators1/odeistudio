@@ -25,7 +25,7 @@ def test_mac_registry_resolves_only_exact_verified_issuer_and_subject():
     assert mac_rbac.resolve_mac_access(raw, issuer=ISSUER, subject="other") == {
         "roles": [], "permissions": [],
     }
-    assert resolve_mac_access(raw, issuer="https://other.example/", subject=SUBJECT) == {
+    assert mac_rbac.resolve_mac_access(raw, issuer="https://other.example/", subject=SUBJECT) == {
         "roles": [], "permissions": [],
     }
 
