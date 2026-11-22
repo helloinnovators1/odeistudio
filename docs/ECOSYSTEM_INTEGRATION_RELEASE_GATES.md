@@ -8,7 +8,7 @@
 ## Verified integration state
 
 - PRs #26–#47 are merged. PR #49 adds the authenticated MAD operator dashboard and is merged at `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db`.
-- PR #50 remains open and adds MAC versioned environment governance, authenticated/audited lifecycle API, and a NEXUS MAC panel. Its latest exact-head CI is the merge gate; it is not merged or deployed.
+- PR #50 remains open and adds MAC versioned environment governance, authenticated/audited lifecycle API with atomic mutation/success-audit transactions, and a NEXUS MAC panel. Exact code-head API CI and security scans passed; PR #50 is not merged or deployed and still requires review/integration gates.
 - The MAD dashboard is now in NEXUS with aggregate metrics, alerts, persisted incidents and audited incident lifecycle actions. Real ODID operator/scope provisioning, broad production telemetry and alert delivery remain open.
 - The MAC panel supports versioned configuration drafts, author submission, distinct-identity approval, active-configuration pointer promotion and rollback drafts. It does not execute cloud deployments. Secret-manager integration, provider deployers, deployment verification, revision archival and production acceptance remain open.
 - The older PR descriptions below record their original scope and are historical scope descriptions, not a complete current-status list.
