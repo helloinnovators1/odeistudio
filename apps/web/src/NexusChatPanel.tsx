@@ -432,6 +432,97 @@ export default function NexusChatPanel({
     }
   }
 
+  async function startExecution() {
+    if (
+      !access || !taskPlan || taskPlan.status !== "approved" || !workspaceContext
+      || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent
+      || executionBusy || !config.apiBaseUrl
+    ) return;
+    const controller = new AbortController();
+    executionAbortRef.current = controller;
+    setExecutionBusy(true);
+    setExecutionError("");
+    setExecutionArtifacts(null);
+    try {
+      const snapshot = await buildWorkspaceArchive(
+        workspaceContext.files,
+        (path) => readWorkspaceFile(
+          workspaceContext.accessToken, workspaceContext.workspaceId, path,
+        ),
+      );
+      if (controller.signal.aborted) return;
+      if (snapshot.skippedCount > 0) {
+        const examples = snapshot.skippedPaths.slice(0, 8).join("\n");
+        const message = snapshot.skippedCount + " file(s) will be excluded from this snapshot."
+          + (examples ? "\n\nExamples:\n" + examples : "")
+          + "\n\nContinue with the partial, filtered workspace snapshot?";
+        if (!window.confirm(message)) return;
+      }
+      const created = await createNexusExecution(
+        config.apiBaseUrl, organizationId, projectId, taskPlan.task_id,
+        access.accessToken,
+        {
+          profileId: executionProfileId,
+          expectedTaskVersion: taskPlan.version,
+          snapshotZipBase64: snapshot.base64,
+        },
+        fetch, controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      const now = new Date().toISOString();
+      setExecutionRun({
+        run_id: created.run_id, organization_id: organizationId,
+        project_id: projectId, task_id: taskPlan.task_id,
+        profile_id: created.profile_id, snapshot_sha256: created.snapshot.sha256,
+        status: "queued", version: 0, attempts: 0, max_attempts: 3,
+        cancel_requested: false, created_at: now, updated_at: now,
+      });
+      setTaskPlan({ ...taskPlan, status: "executing", version: taskPlan.version + 1 });
+      setWorkspaceUploadConsent(false);
+      setCodeExecutionConsent(false);
+      setSnapshotSummary(
+        snapshot.fileCount + " files · " + Math.ceil(snapshot.totalBytes / 1024) + " KiB"
+        + (snapshot.skippedCount ? " · " + snapshot.skippedCount + " skipped" : ""),
+      );
+      setNotice("Workspace snapshot uploaded. The approved server profile has been queued for isolated execution.");
+    } catch (cause) {
+      if (!controller.signal.aborted) setExecutionError(errorMessage(cause));
+    } finally {
+      if (executionAbortRef.current === controller) executionAbortRef.current = null;
+      setExecutionBusy(false);
+    }
+  }
+
+  async function cancelExecution() {
+    if (!access || !executionRun || !config.apiBaseUrl || executionBusy) return;
+    const controller = new AbortController();
+    executionAbortRef.current = controller;
+    setExecutionBusy(true);
+    setExecutionError("");
+    try {
+      const updated = await cancelNexusExecution(
+        config.apiBaseUrl, organizationId, projectId, executionRun.task_id,
+        executionRun.run_id, access.accessToken, fetch, controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setExecutionRun(updated);
+      if (updated.status === "cancelled") {
+        setTaskPlan((current) => current && current.task_id === updated.task_id
+          && current.status !== "cancelled"
+          ? { ...current, status: "cancelled", version: current.version + 1 }
+          : current);
+      }
+      setNotice(updated.status === "cancelled"
+        ? "Queued execution and task were cancelled."
+        : "Cancellation requested. The worker will terminate the sandbox and confirm cleanup.");
+    } catch (cause) {
+      if (!controller.signal.aborted) setExecutionError(errorMessage(cause));
+    } finally {
+      if (executionAbortRef.current === controller) executionAbortRef.current = null;
+      setExecutionBusy(false);
+    }
+  }
+
   async function cancelTaskPlan() {
     if (!access || !taskPlan || !config.apiBaseUrl || taskBusy) return;
     const controller = new AbortController();
