@@ -1,18 +1,16 @@
 # Ecosystem integration and release gates
 
 **Reviewed:** 2026-11-22  
-**Status:** PR #49 MAD dashboard is merged; MAC/MAD transactional governance is consolidated in PR #55 and remains under review. Production readiness is not claimed.  
-**Integrated main commit:** `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db` (PR #49 MAD dashboard).  
+**Status:** PR #49 MAD dashboard and NEXUS hardening PRs #52, #53 and #56 are merged. MAC/MAD transactional governance PR #55 and the NEXUS project-load race fix PR #65 remain open, unmerged and undeployed. Production readiness is not claimed.  
+**Current main commit at review:** `cd03e40605327324adb9cf2284f659f4f1e582a0`.  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
 
-- PRs #26–#47 are merged. PR #49 adds the authenticated MAD operator dashboard and is merged at `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db`.
-- PRs #50 and #51 are closed as superseded; their MAC environment-governance and MAD transactional-audit work is consolidated in [PR #55](https://github.com/helloinnovators1/odeistudio/pull/55). PR #55 is open, unmerged and undeployed pending independent review.
-- The MAD dashboard is now in NEXUS with aggregate metrics, alerts, persisted incidents and audited incident lifecycle actions. Real ODID operator/scope provisioning, broad production telemetry and alert delivery remain open.
-- The MAC panel supports versioned configuration drafts, author submission, distinct-identity approval, active-configuration pointer promotion and rollback drafts. It does not execute cloud deployments. Secret-manager integration, provider deployers, deployment verification, revision archival and production acceptance remain open.
-- The earlier PR descriptions below record their original scope and are historical scope descriptions, not a complete current-status list.
-
+- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged; GitHub reports no open PRs in this integration set.
+- PRs #52, #53 and #56 are now merged into main. Their exact PR heads passed API CI and Security Scanning before integration. PR #55 passed its prior exact-head API/security checks but currently has a base-branch conflict that is being reconciled. PR #65 adds stale-project-load protection and is awaiting final CI/security completion. Mainline CI/security was triggered again after the three merges and must pass on the resulting release candidate.
+- Merging is not deployment. Real ODID configuration, provisioned worker/runtime, production secret manager, staging E2E, MAD UI/alerting, MAC control-plane acceptance and Windows 10 build 18362 device acceptance remain external/product gates.
+- The eight PR descriptions below record their original scope; they are historical scope descriptions, not open work items.
 
 
 This document records verified repository/CI evidence separately from external acceptance. A green pull-request workflow proves only that the tested commit passed those jobs. It does not prove that the change is merged, deployed, configured against a real identity provider, or accepted on the target Windows device.
@@ -139,7 +137,7 @@ The target device reported by the project owner is Windows 10 version 1903, OS b
 
 ## 9. Operational truth
 
-The eight execution PRs (#26–#33) are merged into main. On the assembled main commit recorded above, Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web checks, dependency audits and secret scanning passed; CodeQL was still in progress at the last check and must be verified on the final release commit. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
+Execution PRs #26–#33 are merged into main. PR #49 MAD dashboard is merged. PR #55 MAC/MAD transactional governance and PRs #52, #53 and #56 NEXUS hardening remain open and unmerged; each latest reconciled head passed API CI and Security Scanning. Mainline Security Scanning, including CodeQL, passed on commit `8b2b2e6f9449732256fb756d7d81f848e5a91597`. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
 
 
 ## MAC transactional audit implementation — 2026-11-22
