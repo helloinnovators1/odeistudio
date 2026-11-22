@@ -27,6 +27,7 @@ from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
 from odei_api.services.mad_telemetry import collect_mad_execution_metrics, evaluate_mad_alerts
+from odei_api.security.mac_rbac import resolve_mac_access
 from odei_api.services.nexus_conversations import router as nexus_conversations_router
 from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
@@ -285,6 +286,71 @@ async def mad_operator_execution_metrics(
     metrics["alerts"] = evaluate_mad_alerts(metrics)
     await append_access_audit("success")
     return metrics
+
+
+@app.get(f"{settings.api_prefix}/mac/access", tags=["mac"])
+async def mac_operator_access(
+    request: Request,
+    principal: Principal = auth_principal_dependency,
+) -> dict[str, list[str]]:
+    """Resolve MAC roles from deployment-owned assignments, never token-supplied roles."""
+    registry = settings.mac_platform_operators_json
+    if not registry.strip():
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAC_OPERATOR_REGISTRY_NOT_CONFIGURED",
+                    "message": "Platform operator assignments are not configured."},
+        )
+    try:
+        access = resolve_mac_access(
+            registry, issuer=principal.issuer, subject=principal.subject,
+        )
+    except ValueError as exc:
+        logger.error("MAC operator registry validation failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAC_OPERATOR_REGISTRY_INVALID",
+                    "message": "Platform operator assignments are unavailable."},
+        ) from exc
+
+    audit_store = getattr(request.app.state, "audit_event_store", None)
+    if audit_store is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE",
+                    "message": "Platform authorization audit storage is unavailable."},
+        )
+
+    async def append_access_audit(outcome: str) -> None:
+        try:
+            await audit_store.append(
+                organization_id="platform",
+                actor_issuer=principal.issuer,
+                actor_subject=principal.subject,
+                action="mac.access.read",
+                target_type="platform_access",
+                target_id="mac",
+                outcome=outcome,
+                request_id=uuid4().hex,
+                metadata={"roles": access["roles"]},
+            )
+        except Exception as exc:
+            logger.error("MAC access audit append failed (%s)", type(exc).__name__)
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "AUDIT_STORE_UNAVAILABLE",
+                        "message": "Platform authorization audit could not be recorded."},
+            ) from exc
+
+    if not access["roles"]:
+        await append_access_audit("denied")
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "MAC_OPERATOR_REQUIRED",
+                    "message": "No platform operator role is assigned to this identity."},
+        )
+    await append_access_audit("success")
+    return access
 
 
 @app.get(f"{settings.api_prefix}/auth/me", tags=["auth"])
