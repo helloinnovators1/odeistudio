@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from bson import ObjectId
 from gridfs.errors import NoFile
 from gridfs.asynchronous import AsyncGridFSBucket
 
