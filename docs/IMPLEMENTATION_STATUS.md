@@ -556,10 +556,11 @@ rather than reapplying when a worker is reclaimed after that point. Provider
 exceptions are sanitized before persistence. Unit tests cover secret isolation,
 verification gating, recovery, worker ownership and lease behavior; the real
 MongoDB replica-set integration job covers lease reclaim and stale-worker fencing.
-Exact code head `ea966eb0f072473f682a7cfd79a62658b709aa1e` passed API CI
-[45023666183](https://github.com/helloinnovators1/odeistudio/actions/runs/45023666183),
-including Windows/Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration.
-Security Scanning [45023666145](https://github.com/helloinnovators1/odeistudio/actions/runs/45023666145)
+Exact code head `187149b0667cb8c0704b8475b55c0380a225f76e` passed API CI
+[45024576646](https://github.com/helloinnovators1/odeistudio/actions/runs/45024576646),
+including Windows/Ubuntu Python 3.10/3.12, Ruff, API tests, web tests/build and
+MongoDB replica-set integration for lease recovery and transaction-scoped
+idempotency. Security Scanning [45024571949](https://github.com/helloinnovators1/odeistudio/actions/runs/45024571949)
 also passed, including dependency audits, secret scanning and CodeQL. No concrete
 provider adapter, secret manager or deployed worker service is configured, so no
 cloud deployment is claimed.
