@@ -46,7 +46,7 @@ describe("NEXUS execution API client", () => {
   });
 
   it("uses tenant/task/run-scoped routes for status, events, cancellation and artifacts", async () => {
-    const fetcher = vi.fn()
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({}))
       .mockResolvedValueOnce(response({ run_id: "run-1", status: "running" }))
       .mockResolvedValueOnce(response({ run_id: "run-1", status: "cancelled" }))
       .mockResolvedValueOnce(response({ events: [], has_more: false, next_after_version: 4 }))
