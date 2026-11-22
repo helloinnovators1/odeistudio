@@ -53,3 +53,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization and verification contract for the merged one-file local companion apply path, plus rollback and production release limits.
 
 - [Ecosystem integration and release gates](ECOSYSTEM_INTEGRATION_RELEASE_GATES.md) — dependency-ordered execution integration, NEXUS/ODID acceptance, MAC/MAD completion, Windows device validation and production release gates.
+
+- [NEXUS Durable Execution Runs](EXECUTION_RUNS.md) — durable run lifecycle, transactional events, worker leases and cancellation intent.

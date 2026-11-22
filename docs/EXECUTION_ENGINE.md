@@ -33,7 +33,7 @@ NEXUS may select only profile identifiers registered by the server, such as `pyt
 
 ## Worker and persistence requirements
 
-The next integration layer must provide:
+The durable run/lease store is now implemented in services/execution_runs.py with transactional run/event writes, worker claim and heartbeat, lease expiry reclamation, version checks and cancellation intent. See EXECUTION_RUNS.md. It remains an internal persistence layer, not a public execution service. The next integration layer must provide:
 1. MongoDB-backed execution-run records and append-only events with optimistic versions.
 2. Atomic task/run/event/audit transitions and transaction-capable MongoDB topology.
 3. A worker lease with heartbeat, lease expiry, retry limits and idempotent completion.
@@ -47,7 +47,7 @@ The next integration layer must provide:
 
 The branch `feat/nexus-isolated-execution-engine` adds `services/execution_sandbox.py`, a shell-free OCI command builder and runner with digest-pinned profiles, network isolation, non-root execution, read-only root filesystem, capability drop, no-new-privileges, resource limits, bounded output, workspace containment checks, link/special-file rejection and cleanup attempts. Unit/contract tests are added for the security arguments, workspace validation and runner result handling.
 
-This is an execution-backend foundation only. The API CI run on commit `df36b08` passed on Ubuntu and Windows with Python 3.10 and 3.12: Ubuntu reported 264 passed and 10 skipped on each version; Windows reported 266 passed and 8 skipped on each version. MongoDB replica-set integration and web tests/build passed. CodeQL, secret scanning and Python/web dependency audits also passed. The in-process server-approved profile registry is implemented, but it is not yet connected to authenticated tenant-scoped profile selection, NEXUS task approval, durable execution-run records, snapshot creation/storage, a worker queue, API routes, cancellation events, artifact retrieval or MAD metrics. No production command execution is enabled by this branch.
+This remains an execution-backend foundation plus a durable run/lease persistence layer only. The API CI run on commit `df36b08` passed on Ubuntu and Windows with Python 3.10 and 3.12: Ubuntu reported 264 passed and 10 skipped on each version; Windows reported 266 passed and 8 skipped on each version. MongoDB replica-set integration and web tests/build passed. CodeQL, secret scanning and Python/web dependency audits also passed. The in-process server-approved profile registry is implemented, but it is not yet connected to authenticated tenant-scoped profile selection, NEXUS task approval, durable execution-run records, snapshot creation/storage, a worker queue, API routes, cancellation events, artifact retrieval or MAD metrics. No production command execution is enabled by this branch.
 
 ## Acceptance gates
 
