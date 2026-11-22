@@ -39,6 +39,7 @@ async def backfill_mac_environment_revisions(
     revisions: Any,
     *,
     session: Any,
+    dry_run: bool = False,
 ) -> dict[str, int]:
     """Copy every embedded revision in one caller-owned Mongo transaction.
 
@@ -76,7 +77,8 @@ async def backfill_mac_environment_revisions(
                     )
                 already_present += 1
                 continue
-            await revisions.insert_one(document, session=session)
+            if not dry_run:
+                await revisions.insert_one(document, session=session)
             copied += 1
         latest = environment.get("latest_version", 0)
         if isinstance(latest, bool) or not isinstance(latest, int) or latest < 0:
