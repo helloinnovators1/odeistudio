@@ -54,3 +54,16 @@ Configure `MAD_METRICS_TOKEN` as a high-entropy secret of at least 32 ASCII char
 ### Current scope and non-claims
 
 This is a first operational telemetry slice, not the complete MAD product. It does not yet provide the MAD web dashboard, MAC-managed operator identities and roles, incident lifecycle, alert delivery, integrations/deployment status, model-cost reconciliation, product analytics, or tenant-visible drill-down. Those capabilities remain gated on the MAC governance model and their authoritative data sources. A green CI run is not evidence of production monitoring or deployment.
+
+
+## Deterministic alert evaluation
+
+The internal aggregate-metrics response now includes a derived `alerts` array:
+- **Critical — worker pool unavailable:** queued or active execution work exists and there are no fresh worker heartbeats.
+- **Warning — worker pool degraded:** workers are stale or stopping, unless the critical no-fresh-worker rule applies.
+- **Warning — queue backlog:** the oldest queued execution is at least 15 minutes old.
+- **Warning — failure burst:** at least five executions failed in the rolling 24-hour window.
+
+Each alert includes a stable ID and deduplication key, severity, firing state, observation timestamp, summary and runbook path. Evaluation uses only aggregate telemetry and excludes tenant IDs, worker IDs, prompts, artifact contents and command output. Malformed timestamps do not trigger backlog alerts.
+
+**Operational boundary:** these are stateless firing observations, not persisted incidents. Acknowledgement, assignment, resolution/reopen history, notification delivery, alert ownership and MAC-controlled threshold configuration remain unimplemented. The baseline thresholds must be tuned against real staging workload before production paging is enabled.
