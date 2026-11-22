@@ -12,6 +12,7 @@ from pymongo import AsyncMongoClient
 
 from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.execution_runs import ExecutionRun, ExecutionRunStatus, MongoExecutionRunStore
+from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
 
@@ -32,6 +33,7 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
     database = client[database_name]
     audit = MongoAuditEventStore(database["audit_events"])
     snapshots = MongoWorkspaceSnapshotStore(database)
+    artifacts = MongoExecutionArtifactStore(database)
     runs = MongoExecutionRunStore(
         database["execution_runs"], database["execution_run_events"], client,
         audit_store=audit,
@@ -52,6 +54,7 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         assert topology.get("setName") or topology.get("msg") == "isdbgrid"
         await audit.initialize()
         await snapshots.initialize()
+        await artifacts.initialize()
         await runs.initialize()
         await database["tasks"].insert_one(task)
         await database["task_events"].create_index(
@@ -117,15 +120,33 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
             organization_id=run.organization_id, run_id=run_id,
             worker_id="worker-integration", lease_token=claimed.lease_token,
         )
+        artifact = await artifacts.put(
+            organization_id=run.organization_id, project_id=run.project_id,
+            task_id=run.task_id, run_id=run.id, exit_code=0, duration_ms=123,
+            timed_out=False, stdout="api_key=super_secret_value_123456", stderr="",
+            stdout_truncated=False, stderr_truncated=False,
+        )
+        loaded_artifact = await artifacts.get_for_tenant(
+            organization_id=run.organization_id, project_id=run.project_id,
+            task_id=run.task_id, run_id=run.id,
+        )
+        assert artifact["run_id"] == run.id
+        assert loaded_artifact is not None
+        assert "super_secret_value_123456" not in loaded_artifact["stdout"]
+        assert "[REDACTED]" in loaded_artifact["stdout"]
         completed = await runs.finish(
             organization_id=run.organization_id, run_id=run_id,
             worker_id="worker-integration", lease_token=claimed.lease_token,
             outcome=ExecutionRunStatus.COMPLETED,
+            tasks=database["tasks"], task_events=database["task_events"],
         )
         assert running.status is ExecutionRunStatus.RUNNING
         assert collecting.status is ExecutionRunStatus.COLLECTING
         assert completed.status is ExecutionRunStatus.COMPLETED
         assert completed.lease_token is None
+        finalized_task = await database["tasks"].find_one({"_id": task_id})
+        assert finalized_task["status"] == "validating"
+        assert finalized_task["version"] == 6
 
         await database["workspace_snapshots"].update_one(
             {"_id": snapshot["snapshot_id"]},
