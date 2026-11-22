@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     execution_workspace_root: str | None = None
     execution_worker_id: str | None = None
     mad_metrics_token: SecretStr | None = None
-    mac_platform_operators_json: str = ""
+    mac_platform_operators_json: str = Field(default="", max_length=262_144)
     auth_issuer: str | None = None
     auth_audience: str | None = None
     auth_jwks_url: str | None = None
