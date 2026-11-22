@@ -211,6 +211,36 @@ class MongoExecutionRunStore:
         })
         return self._from_document(row) if row else None
 
+    async def list_for_project(
+        self, *, organization_id: str, project_id: str, limit: int = 50,
+        requester_issuer: str | None = None, requester_subject: str | None = None,
+        before_created_at: datetime | None = None, before_run_id: str | None = None,
+    ) -> tuple[list[ExecutionRun], bool]:
+        """Return a stable, bounded project history; optional requester scope limits members to their own runs."""
+        _identifier(organization_id, "organization_id")
+        _identifier(project_id, "project_id")
+        if not 1 <= limit <= 100:
+            raise ValueError("execution history page size must be between 1 and 100")
+        if (requester_issuer is None) != (requester_subject is None):
+            raise ValueError("requester identity must include both issuer and subject")
+        query: dict[str, Any] = {
+            "organization_id": organization_id, "project_id": project_id,
+        }
+        if requester_issuer is not None:
+            query["requester_issuer"] = requester_issuer
+            query["requester_subject"] = requester_subject
+        if (before_created_at is None) != (before_run_id is None):
+            raise ValueError("execution history cursor requires timestamp and run id")
+        if before_created_at is not None and before_run_id is not None:
+            _identifier(before_run_id, "before_run_id")
+            query["$or"] = [
+                {"created_at": {"$lt": before_created_at}},
+                {"created_at": before_created_at, "_id": {"$lt": before_run_id}},
+            ]
+        cursor = self._runs.find(query).sort([("created_at", -1), ("_id", -1)]).limit(limit + 1)
+        rows = await cursor.to_list(length=limit + 1)
+        return [self._from_document(row) for row in rows[:limit]], len(rows) > limit
+
     async def get(self, *, organization_id: str, run_id: str) -> ExecutionRun | None:
         _identifier(organization_id, "organization_id")
         _identifier(run_id, "run_id")

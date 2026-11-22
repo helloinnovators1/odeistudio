@@ -204,3 +204,12 @@ No phase is complete because its screens exist. Each capability needs working be
 - [ ] Integrate ODID browser login/token refresh and connect the IDE NEXUS composer.
 - [ ] Add durable conversation records, streaming/reconnect/cancellation and scoped workspace tools.
 - [ ] Keep write tools and command execution disabled until safe patch/approval and isolated execution services are complete.
+
+
+## NEXUS project-wide execution history — implementation increment (2026-11-22)
+
+- Added a bounded project execution-history endpoint at `GET /api/v1/organizations/{organization_id}/projects/{project_id}/executions`.
+- The endpoint revalidates active organization membership and project access. Project owners can inspect all project runs; other active project members see only runs requested by their exact verified issuer + subject identity.
+- Added stable descending keyset pagination using the pair `before_created_at` + `before_run_id`, with page sizes capped at 100. The API rejects incomplete cursors and returns only the existing public run projection; worker lease tokens and internal execution arguments are not exposed.
+- History reads are audited and fail closed if audit storage is unavailable. The Mongo store uses the existing organization/project/created-at index and does not perform unbounded collection scans.
+- Added route tests for requester scoping, audit metadata and incomplete-cursor rejection. Exact-head CI and merge are pending; no production deployment or live tenant acceptance is implied.

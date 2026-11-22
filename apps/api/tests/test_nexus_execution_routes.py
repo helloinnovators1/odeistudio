@@ -121,6 +121,12 @@ class Runs:
             return self.run
         return None
 
+    async def list_for_project(self, **values):
+        self.history_query = values
+        if self.run is None:
+            return [], False
+        return [self.run], False
+
     async def list_events(self, **_values):
         return ([{"event_id": "event-1", "type": "execution.queued", "version": 0,
                   "occurred_at": datetime.now(timezone.utc)}], False)
@@ -194,6 +200,32 @@ def payload(**overrides):
 def test_profile_loader_requires_digest_pinned_server_owned_profiles():
     with pytest.raises(ValueError):
         load_execution_profiles(Settings(execution_profiles_json='[{"name":"bad","image":"latest","command":["sh"]}]'))
+
+
+def test_project_execution_history_is_scoped_to_requester_and_audited(execution_state):
+    _database, audit, _tasks, _snapshots, runs = execution_state
+    created = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=payload(),
+    ).json()
+    response = TestClient(app).get(
+        "/api/v1/organizations/org-1/projects/project-1/executions?limit=25"
+    )
+    assert response.status_code == 200, response.text
+    assert [row["run_id"] for row in response.json()["runs"]] == [created["run_id"]]
+    assert runs.history_query["requester_issuer"] == "https://identity.example/"
+    assert runs.history_query["requester_subject"] == "task-owner"
+    assert runs.history_query["limit"] == 25
+    assert audit.events[-1]["action"] == "nexus.execution.history.read"
+    assert audit.events[-1]["metadata"]["owner_scope"] is False
+
+
+def test_project_execution_history_rejects_partial_cursor(execution_state):
+    response = TestClient(app).get(
+        "/api/v1/organizations/org-1/projects/project-1/executions?before_run_id=run-1"
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INVALID_EXECUTION_CURSOR"
 
 
 def test_execution_requires_both_explicit_consents(execution_state):

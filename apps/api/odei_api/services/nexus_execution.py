@@ -5,6 +5,7 @@ import base64
 import binascii
 import logging
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -132,6 +133,104 @@ def _validate_archive(archive: bytes) -> tuple[str, int, int]:
         root = Path(temporary)
         record = WorkspaceSnapshotIngestor(root).ingest(archive)
         return record.sha256, record.file_count, record.total_bytes
+
+
+@router.get(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/executions",
+    tags=["execution"],
+)
+async def list_project_executions(
+    request: Request,
+    organization_id: str = PathParam(min_length=1, max_length=128),
+    project_id: str = PathParam(min_length=1, max_length=128),
+    limit: int = Query(default=50, ge=1, le=100),
+    before_created_at: datetime | None = None,
+    before_run_id: str | None = None,
+    principal: Principal = principal_dependency,
+) -> dict:
+    """List durable project execution history; members see only runs they requested."""
+    if before_run_id is not None and (
+        len(before_run_id) > 128 or not before_run_id
+        or not before_run_id[0].isalnum()
+        or any(not (char.isalnum() or char in "_.:@/-") for char in before_run_id)
+    ):
+        raise HTTPException(status_code=422, detail={
+            "code": "INVALID_EXECUTION_CURSOR",
+            "message": "The execution history cursor is invalid.",
+        })
+    if (before_created_at is None) != (before_run_id is None):
+        raise HTTPException(status_code=422, detail={
+            "code": "INVALID_EXECUTION_CURSOR",
+            "message": "Both before_created_at and before_run_id are required for pagination.",
+        })
+    database = getattr(request.app.state, "mongo_database", None)
+    store = getattr(request.app.state, "execution_run_store", None)
+    if database is None or store is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "EXECUTION_STORAGE_UNAVAILABLE",
+            "message": "Execution history storage is not configured.",
+        })
+    try:
+        await require_organization_membership(
+            database["organization_memberships"], principal=principal,
+            organization_id=organization_id,
+        )
+        project = await require_project_access(
+            database["projects"], database["project_memberships"],
+            organization_id=organization_id, project_id=project_id,
+            identity_issuer=principal.issuer, identity_subject=principal.subject,
+        )
+        is_owner = (
+            project.get("owner_issuer") == principal.issuer
+            and project.get("owner_subject") == principal.subject
+        )
+        rows, has_more = await store.list_for_project(
+            organization_id=organization_id, project_id=project_id, limit=limit,
+            requester_issuer=None if is_owner else principal.issuer,
+            requester_subject=None if is_owner else principal.subject,
+            before_created_at=before_created_at, before_run_id=before_run_id,
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "EXECUTION_HISTORY_UNAVAILABLE",
+            "message": "Execution history is temporarily unavailable.",
+        }) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={
+            "code": "INVALID_EXECUTION_CURSOR",
+            "message": "The execution history cursor is invalid.",
+        }) from exc
+
+    audit = getattr(request.app.state, "audit_event_store", None)
+    if audit is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is unavailable.",
+        })
+    try:
+        await audit.append(
+            organization_id=organization_id, actor_issuer=principal.issuer,
+            actor_subject=principal.subject, action="nexus.execution.history.read",
+            target_type="nexus_project", target_id=project_id, outcome="success",
+            request_id=uuid4().hex,
+            metadata={"returned_count": len(rows), "has_more": has_more,
+                      "owner_scope": is_owner},
+        )
+    except Exception as exc:
+        logger.error("NEXUS execution history audit failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail={
+            "code": "AUDIT_STORE_UNAVAILABLE", "message": "Execution history could not be audited.",
+        }) from exc
+    next_cursor = None
+    if rows and has_more:
+        last = rows[-1]
+        next_cursor = {
+            "before_created_at": last.created_at.isoformat() if last.created_at else None,
+            "before_run_id": last.id,
+        }
+    return {
+        "runs": [_public_run(run) for run in rows],
+        "has_more": has_more, "next_cursor": next_cursor,
+    }
 
 
 @router.get(
