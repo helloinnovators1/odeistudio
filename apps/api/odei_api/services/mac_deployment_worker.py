@@ -122,6 +122,8 @@ class MacDeploymentWorker:
         environment = str(attempt.get("environment", ""))
         provider_name = str(attempt.get("provider", ""))
         revision_number = attempt.get("revision")
+        if attempt.get("state") != "running" or attempt.get("worker_id") != self.worker_id:
+            raise MacDeploymentConflict("Worker must own a claimed running deployment attempt")
         adapter = self.providers.get(provider_name)
         try:
             if adapter is None:
