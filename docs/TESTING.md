@@ -35,3 +35,18 @@ For every validation report the exact command, environment, exit code, test coun
 `tests/test_task_store_mongodb_integration.py` is an opt-in integration test enabled by `MONGODB_TEST_URI`. The API CI workflow starts a disposable MongoDB 7.0 replica set for a dedicated Ubuntu job and verifies task creation plus task lifecycle and audit writes in one real transaction. It deliberately injects an audit failure during approval and verifies that task status/version and lifecycle events roll back, then verifies a successful approval transaction. The cross-platform unit matrix skips this test when no replica-set URI is configured. A green unit/fake-transaction test is not a substitute for the dedicated live MongoDB integration job.
 
 - Live replica-set integration evidence: API CI [44794850821](https://github.com/helloinnovators1/odeistudio/actions/runs/44794850821), `mongodb-integration` job passed the real MongoDB 7.0 transaction test (`1 passed in 0.24s`). This proves the tested create/rollback/approve scenario against that disposable CI replica set, not a production Atlas deployment or every transaction failure mode.
+
+
+## Browser end-to-end acceptance
+
+The web package includes a Playwright Chromium suite for the initial unauthenticated IDE/NEXUS entry state, the NEXUS keyboard shortcut, and horizontal overflow at a 320px viewport.
+
+Run locally from `apps/web`:
+
+```bash
+npm install
+npx playwright install chromium
+npm run test:e2e
+```
+
+CI runs the browser suite after the unit tests and production build. Playwright 1.65.1 requires Node.js 22 or newer; the web CI and dependency-audit jobs therefore use Node 22. These smoke tests do not replace authenticated ODID staging flows, screen-reader/manual accessibility review, cross-browser testing, or visual-regression baselines.
