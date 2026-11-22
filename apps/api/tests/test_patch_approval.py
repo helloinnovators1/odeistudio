@@ -211,7 +211,6 @@ def test_pinned_public_key_map_is_validated_before_companion_writes():
     ],
 )
 def test_capability_digest_rejects_file_directory_path_collisions(paths):
-    _, _, files = _fixture()
     content = "new"
     items = [
         {
