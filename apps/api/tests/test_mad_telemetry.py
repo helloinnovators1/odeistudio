@@ -162,3 +162,15 @@ def test_mad_metrics_endpoint_rejects_invalid_token_and_returns_safe_metrics(mon
     assert allowed.status_code == 200
     assert allowed.json()["workers"]["state"] == "unknown"
     assert "tenant" not in allowed.text.lower()
+
+
+def test_mad_metrics_token_configuration_requires_32_ascii_characters():
+    from pydantic import SecretStr, ValidationError
+
+    from odei_api.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(mad_metrics_token=SecretStr("too-short"))
+    with pytest.raises(ValidationError):
+        Settings(mad_metrics_token=SecretStr("non-ascii-" + "é" * 30))
+    assert Settings(mad_metrics_token=SecretStr("x" * 32)).mad_metrics_token is not None
