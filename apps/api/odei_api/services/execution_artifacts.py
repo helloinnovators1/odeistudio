@@ -110,7 +110,7 @@ class MongoExecutionArtifactStore:
         deleted = 0
         for row in rows:
             active_run = await self._runs.find_one({
-                "organization_id": row["organization_id"], "run_id": row["run_id"],
+                "organization_id": row["organization_id"], "_id": row["run_id"],
                 "status": {"$in": ["queued", "leased", "running", "collecting"]},
             })
             if active_run is not None:
