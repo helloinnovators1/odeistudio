@@ -32,7 +32,12 @@ class Collection:
 class Database:
     def __init__(self):
         self.collections = {
-            "organization_memberships": Collection({"status": "active"}),
+            "organization_memberships": Collection({
+                "organization_id": "org-1",
+                "identity_issuer": "https://identity.example/",
+                "identity_subject": "task-owner",
+                "status": "active",
+            }),
             "projects": Collection({
                 "organization_id": "org-1", "project_id": "project-1",
                 "status": "active", "owner_issuer": "https://identity.example/",
