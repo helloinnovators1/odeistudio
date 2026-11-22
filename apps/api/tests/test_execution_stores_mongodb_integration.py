@@ -38,7 +38,7 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         database["execution_runs"], database["execution_run_events"], client,
         audit_store=audit,
     )
-    task_id, snapshot_id, run_id = uuid4().hex, uuid4().hex, uuid4().hex
+    task_id, run_id = uuid4().hex, uuid4().hex
     now = datetime.now(timezone.utc)
     archive = zip_bytes()
     digest = "a" * 64
