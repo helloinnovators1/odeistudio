@@ -7,7 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal
@@ -33,22 +33,22 @@ class EnvironmentDraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     config: dict[str, Any]
     change_summary: StrictStr = Field(min_length=1, max_length=500)
-    expected_latest_version: int | None = Field(default=None, ge=1)
+    expected_latest_version: StrictInt | None = Field(default=None, ge=1)
 
 
 class RevisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    version: int = Field(ge=1)
-    expected_latest_version: int = Field(ge=1)
+    version: StrictInt = Field(ge=1)
+    expected_latest_version: StrictInt = Field(ge=1)
 
 
 class PromotionRequest(RevisionRequest):
-    expected_active_version: int = Field(ge=0)
+    expected_active_version: StrictInt = Field(ge=0)
 
 
 class RollbackRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    target_version: int = Field(ge=1)
+    target_version: StrictInt = Field(ge=1)
     expected_latest_version: int = Field(ge=1)
     change_summary: StrictStr = Field(min_length=1, max_length=500)
 
