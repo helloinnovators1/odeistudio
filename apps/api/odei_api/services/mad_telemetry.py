@@ -128,3 +128,70 @@ async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
             "cancelled": cancelled_24h,
         },
     }
+
+
+# Conservative defaults; tune against real staging workload before production paging.
+_QUEUE_BACKLOG_ALERT_SECONDS = 15 * 60
+_FAILED_EXECUTIONS_ALERT_COUNT = 5
+
+
+def evaluate_mad_alerts(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    """Derive deterministic operational alerts from aggregate telemetry only."""
+    workers = metrics.get("workers", {})
+    queue = metrics.get("queue", {})
+    executions = metrics.get("executions_24h", {})
+    observed_at = metrics.get("observed_at")
+    alerts: list[dict[str, Any]] = []
+    queued = int(queue.get("queued", 0) or 0)
+    active = int(queue.get("active", 0) or 0)
+    fresh_workers = int(workers.get("fresh", 0) or 0)
+    if (queued or active) and fresh_workers == 0:
+        alerts.append({
+            "id": "mad.execution.worker_pool_unavailable",
+            "deduplication_key": "execution-worker-pool-unavailable",
+            "severity": "critical", "status": "firing",
+            "summary": "Execution work exists but no worker heartbeat is fresh.",
+            "observed_at": observed_at,
+            "runbook": "docs/runbooks/MAD_EXECUTION_WORKERS.md",
+        })
+    elif workers.get("state") == "degraded":
+        alerts.append({
+            "id": "mad.execution.worker_pool_degraded",
+            "deduplication_key": "execution-worker-pool-degraded",
+            "severity": "warning", "status": "firing",
+            "summary": "One or more execution workers are stale or stopping.",
+            "observed_at": observed_at,
+            "runbook": "docs/runbooks/MAD_EXECUTION_WORKERS.md",
+        })
+    oldest = queue.get("oldest_queued_at")
+    if queued and isinstance(oldest, str) and isinstance(observed_at, str):
+        try:
+            oldest_at = datetime.fromisoformat(oldest.replace("Z", "+00:00"))
+            observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+            if oldest_at.tzinfo is None:
+                oldest_at = oldest_at.replace(tzinfo=timezone.utc)
+            if observed.tzinfo is None:
+                observed = observed.replace(tzinfo=timezone.utc)
+            age_seconds = max(0, int((observed - oldest_at).total_seconds()))
+        except (TypeError, ValueError, OverflowError):
+            age_seconds = 0
+        if age_seconds >= _QUEUE_BACKLOG_ALERT_SECONDS:
+            alerts.append({
+                "id": "mad.execution.queue_backlog",
+                "deduplication_key": "execution-queue-backlog",
+                "severity": "warning", "status": "firing",
+                "summary": "The oldest queued execution has exceeded the 15-minute baseline.",
+                "observed_at": observed_at, "age_seconds": age_seconds,
+                "runbook": "docs/runbooks/MAD_EXECUTION_WORKERS.md",
+            })
+    failed = int(executions.get("failed", 0) or 0)
+    if failed >= _FAILED_EXECUTIONS_ALERT_COUNT:
+        alerts.append({
+            "id": "mad.execution.failure_burst",
+            "deduplication_key": "execution-failure-burst",
+            "severity": "warning", "status": "firing",
+            "summary": "At least five executions failed in the rolling 24-hour window.",
+            "observed_at": observed_at, "failed_24h": failed,
+            "runbook": "docs/runbooks/MAD_EXECUTION_WORKERS.md",
+        })
+    return alerts
