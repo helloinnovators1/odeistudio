@@ -122,6 +122,10 @@ async def test_mac_deployment_attempt_idempotency_claim_and_verification_on_mong
             attempt_id=first["_id"], worker_id="integration-worker",
         )
         assert running["state"] == "running"
+        await deployments.record_provider_deployment(
+            attempt_id=first["_id"], worker_id="integration-worker",
+            provider_deployment_id="provider-deploy-1",
+        )
         succeeded = await deployments.finish(
             attempt_id=first["_id"], worker_id="integration-worker",
             verified=True, provider_deployment_id="provider-deploy-1",
@@ -188,6 +192,10 @@ async def test_mac_deployment_lease_reclaim_fences_stale_worker_on_mongodb():
             attempt_id=attempt["_id"], worker_id="worker-after-crash",
         )
         assert second["attempt_count"] == 2
+        await deployments.record_provider_deployment(
+            attempt_id=attempt["_id"], worker_id="worker-after-crash",
+            provider_deployment_id="provider-deploy-recovered",
+        )
         with pytest.raises(MacDeploymentConflict):
             await deployments.finish(
                 attempt_id=attempt["_id"], worker_id="worker-before-crash",
