@@ -81,3 +81,17 @@
 .mad-incident details summary{cursor:pointer}
 .mad-incident details ol{display:grid;gap:4px;margin:6px 0;padding-left:17px}
 .mad-incident details li{font-size:8px;overflow-wrap:anywhere}
+
+/* MAC environment governance controls */
+.mac-environment-panel{display:grid;gap:9px;margin:0 10px 12px;padding:11px;border:1px solid #465366;border-radius:7px;background:#121a24;max-height:48vh;overflow:auto}
+.mac-environment-panel .nexus-task-heading{align-items:center}
+.mac-field{display:grid;gap:5px;color:#8994a4;font-size:9px;letter-spacing:.08em}
+.mac-field select,.mac-field input,.mac-field textarea{box-sizing:border-box;width:100%;min-width:0;padding:8px;border:1px solid #424d5c;border-radius:5px;background:#11161e;color:#e7eaf0;font:10px/1.5 ui-monospace,monospace}
+.mac-field textarea{resize:vertical;white-space:pre;tab-size:2}
+.mac-state-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.mac-state-summary span{display:grid;gap:3px;padding:7px;border:1px solid #303b49;border-radius:5px;background:#0e141c;color:#8794a4;font-size:8px}
+.mac-state-summary strong{color:#d8e2ec;font-size:10px;overflow-wrap:anywhere}
+.mac-history{color:#9aa6b4;font-size:9px}
+.mac-history summary{cursor:pointer}
+.mac-history ol{display:grid;gap:5px;margin:7px 0;padding-left:18px}
+.mac-history li{overflow-wrap:anywhere}

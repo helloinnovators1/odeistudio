@@ -269,6 +269,31 @@ class AuditEventStore:
         self.events.append(event)
 
 
+class FakeMongoSession:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return False
+
+    async def with_transaction(self, callback):
+        return await callback(self)
+
+
+class FakeMongoClient:
+    def start_session(self):
+        return FakeMongoSession()
+
+
+class FakeIncidentStore:
+    def __init__(self):
+        self.alerts = []
+
+    async def record_alerts(self, alerts, *, session):
+        assert session is not None
+        self.alerts.extend(alerts)
+
+
 def test_mad_operator_route_requires_verified_scope_and_audits_denial():
     from fastapi.testclient import TestClient
 
@@ -305,9 +330,14 @@ def test_mad_operator_route_returns_aggregate_metrics_and_audits_success():
 
     previous_database = getattr(app.state, "mongo_database", None)
     previous_audit = getattr(app.state, "audit_event_store", None)
+    previous_incidents = getattr(app.state, "mad_incident_store", None)
+    previous_client = getattr(app.state, "mongo_client", None)
     audit = AuditEventStore()
+    incidents = FakeIncidentStore()
     app.state.mongo_database = MetricsDatabase([], [])
     app.state.audit_event_store = audit
+    app.state.mad_incident_store = incidents
+    app.state.mongo_client = FakeMongoClient()
     app.dependency_overrides[get_current_principal] = lambda: Principal(
         subject="operator-1", issuer="https://identity.example.test/",
         scopes=frozenset({"mad:read"}),
@@ -318,6 +348,8 @@ def test_mad_operator_route_returns_aggregate_metrics_and_audits_success():
         app.dependency_overrides.pop(get_current_principal, None)
         app.state.mongo_database = previous_database
         app.state.audit_event_store = previous_audit
+        app.state.mad_incident_store = previous_incidents
+        app.state.mongo_client = previous_client
     assert response.status_code == 200
     assert response.json()["workers"]["state"] == "unknown"
     assert response.json()["alerts"] == []
@@ -340,8 +372,12 @@ def test_mad_operator_route_fails_closed_when_access_audit_write_fails():
 
     previous_database = getattr(app.state, "mongo_database", None)
     previous_audit = getattr(app.state, "audit_event_store", None)
+    previous_incidents = getattr(app.state, "mad_incident_store", None)
+    previous_client = getattr(app.state, "mongo_client", None)
     app.state.mongo_database = MetricsDatabase([], [])
     app.state.audit_event_store = FailingAuditStore()
+    app.state.mad_incident_store = FakeIncidentStore()
+    app.state.mongo_client = FakeMongoClient()
     app.dependency_overrides[get_current_principal] = lambda: Principal(
         subject="operator-1", issuer="https://identity.example.test/",
         scopes=frozenset({"mad:read"}),
@@ -352,5 +388,7 @@ def test_mad_operator_route_fails_closed_when_access_audit_write_fails():
         app.dependency_overrides.pop(get_current_principal, None)
         app.state.mongo_database = previous_database
         app.state.audit_event_store = previous_audit
+        app.state.mad_incident_store = previous_incidents
+        app.state.mongo_client = previous_client
     assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "AUDIT_STORE_UNAVAILABLE"
+    assert response.json()["detail"]["code"] == "MAD_INCIDENTS_UNAVAILABLE"
