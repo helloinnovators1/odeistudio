@@ -320,6 +320,7 @@ export default function App() {
       onClose={() => setChatOpen(false)}
       isOpen={chatOpen}
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
+      workspaceContext={token && workspace ? { accessToken: token, workspaceId: workspace, files } : null}
     />
   );
 
