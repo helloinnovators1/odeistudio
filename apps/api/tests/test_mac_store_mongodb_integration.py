@@ -359,9 +359,12 @@ async def test_separate_revision_store_runtime_cutover_and_lifecycle():
         assert current["active_version"] == 2
         assert [item["version"] for item in current["versions"]] == [1, 2]
         assert await revisions.count_documents({"environment": "staging"}) == 2
-        # Revision documents are separate; metadata no longer grows with history.
-        assert "versions" in metadata  # legacy copy retained until retention is approved
-        assert "versions" not in await environments.find_one({"_id": "staging"})
+        # The old embedded array is retained as a frozen recovery copy; new
+        # revisions are written only to the separate collection.
+        assert [item["version"] for item in metadata["versions"]] == [1]
+        persisted_metadata = await environments.find_one({"_id": "staging"})
+        assert [item["version"] for item in persisted_metadata["versions"]] == [1]
+        assert await revisions.find_one({"environment": "staging", "version": 2}) is not None
     finally:
         await client.drop_database(database_name)
         await client.close()
