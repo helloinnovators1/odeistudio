@@ -6,8 +6,8 @@ Client-supplied role claims and request parameters are never consulted.
 from __future__ import annotations
 
 import json
-from urllib.parse import urlsplit
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 
