@@ -21,6 +21,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS chat API](NEXUS_CHAT_API.md) — authenticated project-scoped chat contract, consent, redaction, audit and read-only limits.
 - [NEXUS patch proposals](PATCH_PROPOSALS.md) — bounded multi-file patch validation, content hashes, diff output and review workflow.
 - [Local approved patch application](LOCAL_PATCH_APPLICATION.md) — signed, challenge-bound one-file local apply flow, companion verification and remaining rollback/recovery limits.
+- [NEXUS execution panel](NEXUS_EXECUTION_PANEL.md) — approved task execution UI, bounded workspace archive creation, consent gates, status polling and cancellation.
 - [Master Admin Console requirements](MAC_REQUIREMENTS.md) — central configuration and governance plane.
 - [Master Admin Dashboard](MAD.md) — operational and executive visibility.
 - [Data model](DATA_MODEL.md) — canonical entities, tenancy and persistence rules.
@@ -48,16 +49,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 5. Never place credentials, tokens, connection strings or private customer data in documentation.
 
 - [NEXUS Task Planning and Approval](NEXUS_TASKS.md) — task planning, ownership, approval semantics and execution boundaries.
-- [NEXUS Isolated Execution Engine](EXECUTION_ENGINE.md) — OCI sandbox boundaries, worker lifecycle, execution policy and acceptance gates.
 
 - [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization and verification contract for the merged one-file local companion apply path, plus rollback and production release limits.
 
-- [NEXUS Durable Execution Runs](EXECUTION_RUNS.md) — durable run lifecycle, transactional events, worker leases and cancellation intent.
-
-- [Safe Workspace Snapshots](WORKSPACE_SNAPSHOTS.md) — bounded ZIP ingestion, path validation, content hashing and disposable workspace extraction.
-
-- [NEXUS Execution API](EXECUTION_API.md) — authenticated, approval-gated run creation, GridFS snapshot storage, task/run transactions and API deployment gates.
-
-- [NEXUS Execution Worker Operations](EXECUTION_WORKER.md) — standalone worker deployment, leases, sandbox lifecycle, cancellation, artifact retention and production controls.
-
-- [NEXUS Execution Panel](NEXUS_EXECUTION_PANEL.md) — browser-to-companion snapshot preparation, separate upload/execution consent, approved profiles, run polling, cancellation and result retrieval.
+- [Ecosystem integration and release gates](ECOSYSTEM_INTEGRATION_RELEASE_GATES.md) — dependency-ordered execution integration, NEXUS/ODID acceptance, MAC/MAD completion, Windows device validation and production release gates.
