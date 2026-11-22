@@ -144,11 +144,20 @@ async def list_project_executions(
     organization_id: str = PathParam(min_length=1, max_length=128),
     project_id: str = PathParam(min_length=1, max_length=128),
     limit: int = Query(default=50, ge=1, le=100),
-    before_created_at: datetime | None = Query(default=None),
-    before_run_id: str | None = Query(default=None, min_length=1, max_length=128),
+    before_created_at: datetime | None = None,
+    before_run_id: str | None = None,
     principal: Principal = principal_dependency,
 ) -> dict:
     """List durable project execution history; members see only runs they requested."""
+    if before_run_id is not None and (
+        len(before_run_id) > 128 or not before_run_id
+        or not before_run_id[0].isalnum()
+        or any(not (char.isalnum() or char in "_.:@/-") for char in before_run_id)
+    ):
+        raise HTTPException(status_code=422, detail={
+            "code": "INVALID_EXECUTION_CURSOR",
+            "message": "The execution history cursor is invalid.",
+        })
     if (before_created_at is None) != (before_run_id is None):
         raise HTTPException(status_code=422, detail={
             "code": "INVALID_EXECUTION_CURSOR",
