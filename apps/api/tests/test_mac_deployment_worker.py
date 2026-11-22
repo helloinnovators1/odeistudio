@@ -145,3 +145,31 @@ async def test_worker_reclaims_persisted_provider_deployment_and_only_reverifies
     assert secrets.calls == []
     assert provider.verified_id == ("provider-existing-123", "staging")
     assert store.finished["provider_deployment_id"] == "provider-existing-123"
+
+
+@pytest.mark.asyncio
+async def test_worker_cancels_secret_resolution_when_operation_deadline_expires():
+    class HangingSecrets:
+        def __init__(self):
+            self.cancelled = False
+
+        async def resolve(self, reference, *, environment, provider):
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+
+    import asyncio
+
+    store = FakeStore(attempt())
+    secrets = HangingSecrets()
+    worker = MacDeploymentWorker(
+        store=store, environment_store=FakeEnvironmentStore(),
+        secret_resolver=secrets, providers={"aws": FakeProvider()},
+        worker_id="worker-secret-timeout", operation_timeout_seconds=1,
+    )
+    result = await worker.run_once()
+    assert result["state"] == "failed"
+    assert secrets.cancelled is True
+    assert store.failed is not None
