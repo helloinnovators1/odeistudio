@@ -20,6 +20,7 @@ class MongoExecutionArtifactStore:
 
     def __init__(self, database: Any):
         self._metadata = database["execution_artifacts"]
+        self._runs = database["execution_runs"]
         self._stdout = AsyncGridFSBucket(database, bucket_name="execution_stdout")
         self._stderr = AsyncGridFSBucket(database, bucket_name="execution_stderr")
 
@@ -108,6 +109,12 @@ class MongoExecutionArtifactStore:
         rows = await cursor.to_list(length=limit)
         deleted = 0
         for row in rows:
+            active_run = await self._runs.find_one({
+                "organization_id": row["organization_id"], "run_id": row["run_id"],
+                "status": {"$in": ["queued", "leased", "running", "collecting"]},
+            })
+            if active_run is not None:
+                continue
             await self._stdout.delete(row["stdout_blob_id"])
             await self._stderr.delete(row["stderr_blob_id"])
             await self._metadata.delete_one({"_id": row["_id"], "created_at": {"$lte": cutoff}})
