@@ -53,3 +53,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization and verification contract for the merged one-file local companion apply path, plus rollback and production release limits.
 
 - [NEXUS Durable Execution Runs](EXECUTION_RUNS.md) — durable run lifecycle, transactional events, worker leases and cancellation intent.
+
+- [Safe Workspace Snapshots](WORKSPACE_SNAPSHOTS.md) — bounded ZIP ingestion, path validation, content hashing and disposable workspace extraction.
