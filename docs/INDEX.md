@@ -26,11 +26,13 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [API and event contracts](API_AND_EVENTS.md) — API conventions and asynchronous event model.
 
 ## Integrations and operations
+- [MAD operations](MAD.md) — aggregate telemetry, alert evaluation, ODID-scoped operator read API and operational limitations.
+- [MAD execution worker runbook](runbooks/MAD_EXECUTION_WORKERS.md) — triage and safe recovery guidance for worker/queue/failure alerts.
 - [Hosting integrations](HOSTING_INTEGRATIONS.md) — hosting, cloud, registrar and DNS adapters.
 - [Provider capability research](PROVIDER_CAPABILITY_RESEARCH.md) — verified initial provider surfaces and limits.
 - [Deployment and environments](DEPLOYMENT.md) — local, preview, staging and production deployment.
 - [Quality and testing](TESTING.md) — test pyramid, security checks and release gates.
-- [Desktop project ingestion](DESKTOP_INGESTION.md) — safe, user-authorized local project indexing without ZIP packaging.
+- [Desktop project ingestion](DESKTOP_INGESTION.md) — safe, user-authorized local project indexing without ZIP packaging, plus the `odei-companion --diagnose` prerequisite command.
 - [Web workspace client](../apps/web/README.md) — Monaco read-only workspace, local pairing and configurable NEXUS panel.
 - [Project lifecycle and membership API](API_AND_EVENTS.md#project-lifecycle-and-membership-routes) — tenant-scoped projects and owner-managed members.
 

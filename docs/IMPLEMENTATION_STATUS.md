@@ -7,22 +7,23 @@ This is the authoritative current status. Sections after the historical separato
 | Capability | Repository state | External acceptance still required |
 |---|---|---|
 | NEXUS chat and project workflows | Integrated: ODID PKCE foundation, authorized organization/project selection, consent, composer, streaming/cancellation, durable owner-scoped conversations, attached-excerpt inspection, task planning/approval and proposal review | Real ODID issuer/client/redirect/resource/scopes, production API issuer/JWKS/CORS, staging identity and tenant tests |
-| Local companion and approved apply | Integrated: explicit folder selection, bounded read-only scanning, pairing and signed challenge-bound single-file apply | Install and test on the actual Windows 10 build 18362.1256 device; signed installer/update and key rotation |
+| Local companion and approved apply | Integrated: explicit folder selection, bounded read-only scanning, pairing, signed challenge-bound single-file apply and local prerequisite diagnostics (`odei-companion --diagnose`, PR #39) | Run diagnostics and actual folder-picker/pairing/apply tests on Windows 10 build 18362.1256; signed installer/update and key rotation |
 | Multi-file apply and durable recovery | Not implemented | Transaction journal, rollback, crash recovery and acceptance tests |
 | NEXUS execution stack | PRs #26–#33 merged; PR #35 adds durable execution-event history to the chat panel. The stack includes OCI sandbox foundation, durable runs/leases/events, bounded snapshots, authenticated execution API, standalone worker and artifact retrieval | Dedicated Linux worker, reviewed immutable profiles, hardened isolation, production storage/secrets, staging E2E and incident/recovery drills; cross-task run history and richer review remain open |
-| MAD | Worker heartbeat, protected aggregate execution metrics, deterministic stateless alerts for unavailable/degraded workers, aged queue backlog and failure bursts, plus worker runbook (PR #36) | Authenticated dashboard UI, broad infrastructure telemetry, persisted incident lifecycle, alert delivery, operator authorization and staging-calibrated thresholds |
+| MAD | Worker heartbeat, protected aggregate metrics, stateless worker/queue/failure alerts and runbook (PR #36); ODID-scoped `mad:read` operator metrics API with audited success/denial and fail-closed audit behavior (PR #38) | Actual ODID scope registration/staging tests, dashboard UI, broad infrastructure telemetry, persisted incident lifecycle, alert delivery and staging-calibrated thresholds |
 | MAC | Requirements and architecture documented; not a complete operational control plane | Server-enforced operator RBAC/ABAC, KMS/vault integration, provider adapters, approvals, audit, rotation and rollback |
 | Agents Window / CLI / cloud or background agents | Not implemented as complete product workflows | Agent lifecycle, policy enforcement, tools, orchestration, observability and acceptance |
 | Production deployment | Not completed or claimed | Real provider configuration, staging acceptance, backups/restore, release provenance, approval, monitored rollout and rollback |
 
 ### Mainline and CI evidence
 
-- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26) through [#36](https://github.com/helloinnovators1/odeistudio/pull/36), including #34 documentation, #35 NEXUS event history and #36 MAD alert evaluation, are merged.
-- Current mainline after the latest integration: `cdf699961f87769df7368e3db776148daa171ce9`.
+- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26) through [#39](https://github.com/helloinnovators1/odeistudio/pull/39), including #35 NEXUS event history, #36 MAD alert evaluation, #37 status documentation, #38 scoped MAD operator API and #39 companion diagnostics, are merged.
+- Current mainline after the latest integration: `be1f36fb3796608cb619114e5be75f19da1f733b`.
 - PR #35 exact head `a37382578933e43aacc1feba8476a6eeace4c6b4` passed web, MongoDB integration, Windows/Ubuntu Python 3.10/3.12, CodeQL, dependency audits and secret scanning before merge.
 - PR #36 exact head `df40221e885f538f90725f2c3c4f4761cc8f619c` passed the complete 11-check suite: Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning before merge.
-- These are GitHub-hosted checks on the named PR heads. They do not prove the user's historical Windows 10 build 18362.1256 device works.
-- GitHub-hosted Windows CI is not proof of compatibility with the user's Windows 10 version 1903 / build 18362.1256 device.
+- PR #38 exact head `eb469750d8f781b281f00196397a018e15576240` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
+- PR #39 exact head `776be4e7d9dbfff7d4fb024d7c93c2810845f408` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
+- These are GitHub-hosted checks. The new companion diagnostic is a prerequisite report, not proof that the user's historical Windows 10 build 18362.1256 device works.
 
 ### Security and release boundaries
 
