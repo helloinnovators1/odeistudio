@@ -306,15 +306,17 @@ async def _transition_project_task(
                 "denied", reason="project_owner_approval_required",
             )
             raise HTTPException(status_code=403, detail={"code": "PROJECT_OWNER_APPROVAL_REQUIRED", "message": "Only the project owner can approve this task."})
+        cancelled_with_run = False
         if next_status is TaskStatus.CANCELLED:
             run_store = getattr(request.app.state, "execution_run_store", None)
-            if run_store is not None:
+            database = getattr(request.app.state, "mongo_database", None)
+            if run_store is not None and database is not None:
                 active_run = await run_store.get_active_for_task(
                     organization_id=organization_id, project_id=project_id, task_id=task_id,
                 )
                 if active_run is not None:
                     try:
-                        await run_store.request_cancel(
+                        cancellation = await run_store.request_cancel(
                             organization_id=organization_id, run_id=active_run.id,
                             actor_id="authenticated-user",
                             audit_event={
@@ -328,7 +330,13 @@ async def _transition_project_task(
                                 "request_id": uuid4().hex,
                                 "metadata": {"source": "task_cancel"},
                             },
+                            tasks=database["tasks"], task_events=database["task_events"],
+                            task_audit_event=_task_audit_event(
+                                principal, organization_id, task_id, "nexus.task.cancel",
+                                {"version": payload.expected_version + 1, "source": "task_cancel"},
+                            ),
                         )
+                        cancelled_with_run = cancellation.status is TaskStatus.CANCELLED or cancellation.status.value == "cancelled"
                     except ExecutionRunConflict:
                         latest_run = await run_store.get(
                             organization_id=organization_id, run_id=active_run.id,
@@ -337,16 +345,21 @@ async def _transition_project_task(
                             "completed", "failed", "cancelled", "expired",
                         } and not latest_run.cancel_requested:
                             raise
-        updated = await store.transition(
-            organization_id=organization_id, task_id=task_id,
-            next_status=next_status, expected_version=payload.expected_version,
-            actor_id=identity_owner_key(principal.issuer, principal.subject),
-            audit_event=_task_audit_event(
-                principal, organization_id, task_id,
-                "nexus.task.approve" if next_status is TaskStatus.APPROVED else "nexus.task.cancel",
-                {"version": payload.expected_version + 1},
-            ),
-        )
+        if cancelled_with_run:
+            updated = await store.get(organization_id=organization_id, task_id=task_id)
+            if updated is None or updated.status is not TaskStatus.CANCELLED:
+                raise RuntimeError("Queued execution was cancelled but task state could not be confirmed")
+        else:
+            updated = await store.transition(
+                organization_id=organization_id, task_id=task_id,
+                next_status=next_status, expected_version=payload.expected_version,
+                actor_id=identity_owner_key(principal.issuer, principal.subject),
+                audit_event=_task_audit_event(
+                    principal, organization_id, task_id,
+                    "nexus.task.approve" if next_status is TaskStatus.APPROVED else "nexus.task.cancel",
+                    {"version": payload.expected_version + 1},
+                ),
+            )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task was not found."}) from exc
     except InvalidTaskTransition as exc:
