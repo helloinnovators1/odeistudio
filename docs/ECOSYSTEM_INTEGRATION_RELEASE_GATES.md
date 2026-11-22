@@ -2,15 +2,17 @@
 
 **Reviewed:** 2026-11-22  
 **Status:** PR integration merged to `main`; production readiness remains unverified and is not claimed.  
-**Integrated main commit:** `47fcd781a39bfff27a60eee7bc77b5ea9fe4685c` (superseded by follow-up fixes as they merge).  
+**Integrated main commit:** `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db` (PR #49 MAD dashboard).  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
 
-- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged; GitHub reports no open PRs in this integration set.
-- The assembled main commit passed Windows and Ubuntu Python 3.10/3.12, MongoDB integration, web, dependency-audit and secret-scanning jobs. CodeQL was still running at the last exact-head inspection; recheck it on the final release commit.
-- Merging is not deployment. Real ODID configuration, provisioned worker/runtime, production secret manager, staging E2E, MAD UI/alerting, MAC control-plane acceptance and Windows 10 build 18362 device acceptance remain external/product gates.
-- The eight PR descriptions below record their original scope; they are historical scope descriptions, not open work items.
+- PRs #26–#47 are merged. PR #49 adds the authenticated MAD operator dashboard and is merged at `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db`.
+- PR #50 remains open and adds MAC versioned environment governance, authenticated/audited lifecycle API with atomic mutation/success-audit transactions, and a NEXUS MAC panel. Exact code-head API CI and security scans passed; PR #50 is not merged or deployed and still requires review/integration gates.
+- The MAD dashboard is now in NEXUS with aggregate metrics, alerts, persisted incidents and audited incident lifecycle actions. Real ODID operator/scope provisioning, broad production telemetry and alert delivery remain open.
+- The MAC panel supports versioned configuration drafts, author submission, distinct-identity approval, active-configuration pointer promotion and rollback drafts. It does not execute cloud deployments. Secret-manager integration, provider deployers, deployment verification, revision archival and production acceptance remain open.
+- The older PR descriptions below record their original scope and are historical scope descriptions, not a complete current-status list.
+
 
 
 This document records verified repository/CI evidence separately from external acceptance. A green pull-request workflow proves only that the tested commit passed those jobs. It does not prove that the change is merged, deployed, configured against a real identity provider, or accepted on the target Windows device.
@@ -138,3 +140,12 @@ The target device reported by the project owner is Windows 10 version 1903, OS b
 ## 9. Operational truth
 
 The eight execution PRs (#26–#33) are merged into main. On the assembled main commit recorded above, Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web checks, dependency audits and secret scanning passed; CodeQL was still in progress at the last check and must be verified on the final release commit. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
+
+
+## MAC transactional audit implementation — 2026-11-22
+
+- Successful MAC lifecycle mutations and their success audit records now share one MongoDB transaction/session. If the audit insert fails, the mutation is rolled back. Failure/denial records are appended separately after the aborted transaction.
+- The transaction requires a replica set or sharded MongoDB topology. The API readiness check reports transaction support and rejects standalone MongoDB.
+- Route-level tests assert that the MAC store operation and audit insert receive the same session. A real replica-set integration test also verifies that an audit insert failure rolls back the MAC revision and that a successful operation persists the revision and audit event together. Exact code head `909caf02edd077146e8a78f2f700fb02c83ec305` passed API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807), including Windows/Ubuntu Python 3.10/3.12 and real MongoDB replica-set integration.
+- PR #50 remains open and unmerged. The promotion endpoint still changes only the active configuration pointer; it is not a provider deployment.
+- Remaining MAC release gates: separate immutable revision collection with retention/archival; external secret-manager authorization/resolution in a server-side worker; provider adapter; durable idempotent deployment attempts; provider health verification and rollback; real ODID staging permissions; operational acceptance.

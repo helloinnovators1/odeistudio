@@ -37,6 +37,7 @@ import {
   type NexusPatchProposalSummary,
 } from "./nexus-patch-proposals";
 import { getMadExecutionMetrics, listMadIncidents, transitionMadIncident, type MadIncident, type MadMetrics } from "./mad-operations";
+import { approveMacEnvironment, createMacEnvironmentDraft, getMacEnvironment, promoteMacEnvironment, rollbackMacEnvironment, submitMacEnvironment, updateMacEnvironmentDraft, type MacEnvironmentRecord } from "./mac-environments";
 import "./nexus-chat-panel.css";
 
 interface Props {
@@ -116,6 +117,13 @@ export default function NexusChatPanel({
   const [madError, setMadError] = useState("");
   const [madIncludeResolved, setMadIncludeResolved] = useState(false);
   const [madAssignee, setMadAssignee] = useState("");
+  const [macOpen, setMacOpen] = useState(false);
+  const [macEnvironmentId, setMacEnvironmentId] = useState<"development" | "staging" | "production">("staging");
+  const [macRecord, setMacRecord] = useState<MacEnvironmentRecord | null>(null);
+  const [macBusy, setMacBusy] = useState(false);
+  const [macError, setMacError] = useState("");
+  const [macConfigText, setMacConfigText] = useState("{\n  \"replicas\": 2\n}");
+  const [macChangeSummary, setMacChangeSummary] = useState("");
   const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState("");
@@ -261,6 +269,7 @@ export default function NexusChatPanel({
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+      setMacOpen(false); setMacRecord(null); setMacError("");
       setNotice(message);
     };
     const remaining = access.expiresAt - Date.now();
@@ -763,6 +772,96 @@ export default function NexusChatPanel({
     }
   }
 
+  async function refreshMacEnvironment() {
+    if (!access || !config.apiBaseUrl || macBusy) return;
+    setMacBusy(true);
+    setMacError("");
+    try {
+      const result = await getMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken);
+      setMacRecord(result.environment);
+      const current = result.environment.versions.find((item) => item.version === result.environment.latest_version);
+      if (current) {
+        setMacConfigText(JSON.stringify(current.config, null, 2));
+        setMacChangeSummary(current.change_summary);
+      }
+    } catch (cause) {
+      setMacRecord(null);
+      setMacError(errorMessage(cause));
+    } finally {
+      setMacBusy(false);
+    }
+  }
+
+  async function saveMacDraft() {
+    if (!access || !config.apiBaseUrl || macBusy) return;
+    setMacBusy(true);
+    setMacError("");
+    try {
+      const parsed: unknown = JSON.parse(macConfigText);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new TypeError("Environment configuration must be a JSON object.");
+      }
+      const configValues = parsed as Record<string, unknown>;
+      if (!macChangeSummary.trim()) throw new TypeError("Enter a change summary before saving.");
+      const latest = macRecord?.latest_version ?? 0;
+      const current = macRecord?.versions.find((item) => item.version === latest);
+      const result = current?.status === "draft"
+        ? await updateMacEnvironmentDraft(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+            current.version, latest, configValues, macChangeSummary)
+        : await createMacEnvironmentDraft(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+            configValues, macChangeSummary, macRecord ? latest : undefined);
+      if ("environment" in result) setMacRecord(result.environment);
+      else {
+        const refreshed = await getMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken);
+        setMacRecord(refreshed.environment);
+      }
+      setNotice("MAC draft saved. It has not been approved or deployed.");
+    } catch (cause) {
+      setMacError(errorMessage(cause));
+    } finally {
+      setMacBusy(false);
+    }
+  }
+
+  async function runMacTransition(action: "submit" | "approve" | "promote" | "rollback") {
+    if (!access || !config.apiBaseUrl || !macRecord || macBusy) return;
+    const latest = macRecord.latest_version;
+    const revision = macRecord.versions.find((item) => item.version === latest);
+    if (!revision) { setMacError("Load a current revision before performing this action."); return; }
+    setMacBusy(true);
+    setMacError("");
+    try {
+      if (action === "submit") {
+        await submitMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken, latest, latest);
+      } else if (action === "approve") {
+        await approveMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken, latest, latest);
+      } else if (action === "promote") {
+        await promoteMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+          latest, latest, macRecord.active_version);
+      } else {
+        if (macRecord.active_version < 1) throw new Error("There is no active revision to roll back to.");
+        await rollbackMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+          macRecord.active_version, latest, macChangeSummary || "Operator-requested rollback");
+      }
+      const refreshed = await getMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken);
+      setMacRecord(refreshed.environment);
+      const current = refreshed.environment.versions.find((item) => item.version === refreshed.environment.latest_version);
+      if (current) {
+        setMacConfigText(JSON.stringify(current.config, null, 2));
+        setMacChangeSummary(current.change_summary);
+      }
+      setNotice(action === "promote"
+        ? "MAC active configuration pointer updated. No provider deployment has been executed."
+        : action === "rollback"
+          ? "Rollback draft created for review; no active configuration was changed."
+          : "MAC revision lifecycle action completed.");
+    } catch (cause) {
+      setMacError(errorMessage(cause));
+    } finally {
+      setMacBusy(false);
+    }
+  }
+
   function signOut() {
     const currentAccess = access;
     const pendingRefresh = refreshPromiseRef.current;
@@ -794,6 +893,7 @@ export default function NexusChatPanel({
     setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
     setChatError(""); setProjectError(""); setOrganizationError("");
     setMadOpen(false); setMadMetrics(null); setMadIncidents([]); setMadError(""); setMadAssignee("");
+    setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
     setPatchProposals([]); setSelectedPatch(null); setPatchError("");
     setNotice("Signed out. In-memory access/refresh tokens and conversation were cleared.");
   }
@@ -996,7 +1096,7 @@ export default function NexusChatPanel({
       <div className="pane-heading">
         <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
         <div className="nexus-header-actions">
-          {access && <><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
+          {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>
       </div>
@@ -1135,6 +1235,61 @@ export default function NexusChatPanel({
       )}
 
       <div className="nexus-transcript" role="log" aria-label="Conversation" aria-live="polite">
+      {access && macOpen && (
+        <section className="mac-environment-panel" aria-label="MAC environment governance">
+          <div className="nexus-task-heading">
+            <strong>MAC ENVIRONMENT GOVERNANCE</strong>
+            <button type="button" className="nexus-link-button" onClick={() => void refreshMacEnvironment()} disabled={macBusy}>
+              {macBusy ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+          <p className="nexus-muted">Versioned configuration, independent approval and promotion. Provider deployments are not executed by this panel.</p>
+          <label className="mac-field" htmlFor="mac-environment">ENVIRONMENT
+            <select id="mac-environment" value={macEnvironmentId} disabled={macBusy}
+              onChange={(event) => { setMacEnvironmentId(event.target.value as typeof macEnvironmentId); setMacRecord(null); setMacError(""); }}>
+              <option value="development">Development</option>
+              <option value="staging">Staging</option>
+              <option value="production">Production</option>
+            </select>
+          </label>
+          {macError && <p className="nexus-error" role="alert">{macError}</p>}
+          {macRecord && (
+            <div className="mac-state-summary">
+              <span>Latest revision: <strong>{macRecord.latest_version}</strong></span>
+              <span>Active revision: <strong>{macRecord.active_version || "None"}</strong></span>
+              <span>Current state: <strong>{macRecord.versions.find((item) => item.version === macRecord.latest_version)?.status ?? "Unknown"}</strong></span>
+            </div>
+          )}
+          <label className="mac-field" htmlFor="mac-config">CONFIGURATION JSON
+            <textarea id="mac-config" rows={7} spellCheck={false} value={macConfigText}
+              onChange={(event) => setMacConfigText(event.target.value)} disabled={macBusy} />
+          </label>
+          <label className="mac-field" htmlFor="mac-change-summary">CHANGE SUMMARY
+            <input id="mac-change-summary" value={macChangeSummary} maxLength={500}
+              onChange={(event) => setMacChangeSummary(event.target.value)} disabled={macBusy} />
+          </label>
+          <div className="mad-incident-actions">
+            <button type="button" disabled={macBusy || !macChangeSummary.trim()} onClick={() => void saveMacDraft()}>Save draft</button>
+            {macRecord?.versions.find((item) => item.version === macRecord.latest_version)?.status === "draft" &&
+              <button type="button" disabled={macBusy} onClick={() => void runMacTransition("submit")}>Submit for approval</button>}
+            {macRecord?.versions.find((item) => item.version === macRecord.latest_version)?.status === "pending_approval" &&
+              <button type="button" disabled={macBusy} onClick={() => void runMacTransition("approve")}>Approve</button>}
+            {macRecord?.versions.find((item) => item.version === macRecord.latest_version)?.status === "approved" &&
+              <button type="button" disabled={macBusy} onClick={() => void runMacTransition("promote")}>Promote config</button>}
+            {(macRecord?.active_version ?? 0) > 0 &&
+              <button type="button" disabled={macBusy || !macChangeSummary.trim()} onClick={() => void runMacTransition("rollback")}>Create rollback draft</button>}
+          </div>
+          {macRecord && (
+            <details className="mac-history">
+              <summary>Revision history ({macRecord.versions.length})</summary>
+              <ol>{macRecord.versions.slice().reverse().map((item) => (
+                <li key={item.version}>v{item.version} · {item.status} · {item.change_summary}</li>
+              ))}</ol>
+            </details>
+          )}
+          <p className="nexus-disclaimer">API authorization and audit are authoritative. Approval is separate from deployment. Promotion changes the active configuration pointer only; use a separately configured and verified deployment executor for infrastructure changes.</p>
+        </section>
+      )}
       {access && madOpen && (
         <section className="mad-operator-panel" aria-label="Master Admin Dashboard">
           <div className="nexus-task-heading">

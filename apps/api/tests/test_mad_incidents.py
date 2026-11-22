@@ -38,7 +38,7 @@ class IncidentCollection:
     async def create_index(self, keys, **options):
         self.indexes.append((keys, options))
 
-    async def find_one(self, query):
+    async def find_one(self, query, session=None):
         return deepcopy(self.documents.get(query["_id"]))
 
     async def insert_one(self, document):
@@ -47,7 +47,7 @@ class IncidentCollection:
             raise DuplicateKeyError("duplicate")
         self.documents[document["_id"]] = deepcopy(document)
 
-    async def update_one(self, query, update):
+    async def update_one(self, query, update, session=None):
         current = self.documents.get(query["_id"])
         if current is None:
             return UpdateResult(0)
@@ -173,6 +173,22 @@ async def test_incident_store_rejects_stale_versions_invalid_transitions_and_unk
         )
 
 
+class FakeMongoSession:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+    async def with_transaction(self, callback):
+        return await callback(self)
+
+
+class FakeMongoClient:
+    def start_session(self):
+        return FakeMongoSession()
+
+
 class AuditStore:
     def __init__(self):
         self.events = []
@@ -192,8 +208,10 @@ def test_mad_incident_routes_enforce_scopes_and_audit_transitions():
     audit = AuditStore()
     previous_incidents = getattr(app.state, "mad_incident_store", None)
     previous_audit = getattr(app.state, "audit_event_store", None)
+    previous_client = getattr(app.state, "mongo_client", None)
     app.state.mad_incident_store = incident_store
     app.state.audit_event_store = audit
+    app.state.mongo_client = FakeMongoClient()
     app.dependency_overrides[get_current_principal] = lambda: Principal(
         subject="operator-1", issuer="https://identity.example.test/",
         scopes=frozenset({"mad:read"}),
@@ -232,3 +250,4 @@ def test_mad_incident_routes_enforce_scopes_and_audit_transitions():
         app.dependency_overrides.pop(get_current_principal, None)
         app.state.mad_incident_store = previous_incidents
         app.state.audit_event_store = previous_audit
+        app.state.mongo_client = previous_client
