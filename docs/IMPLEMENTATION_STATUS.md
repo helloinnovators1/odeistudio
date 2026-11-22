@@ -11,18 +11,19 @@ This is the authoritative current status. Sections after the historical separato
 | Multi-file apply and durable recovery | Not implemented | Transaction journal, rollback, crash recovery and acceptance tests |
 | NEXUS execution stack | PRs #26–#33 merged; PR #35 adds durable execution-event history to the chat panel. The stack includes OCI sandbox foundation, durable runs/leases/events, bounded snapshots, authenticated execution API, standalone worker and artifact retrieval | Dedicated Linux worker, reviewed immutable profiles, hardened isolation, production storage/secrets, staging E2E and incident/recovery drills; cross-task run history and richer review remain open |
 | MAD | Worker heartbeat, protected aggregate metrics, stateless worker/queue/failure alerts and runbook (PR #36); ODID-scoped `mad:read` operator metrics API with audited success/denial and fail-closed audit behavior (PR #38) | Actual ODID scope registration/staging tests, dashboard UI, broad infrastructure telemetry, persisted incident lifecycle, alert delivery and staging-calibrated thresholds |
-| MAC | Requirements and architecture documented; not a complete operational control plane | Server-enforced operator RBAC/ABAC, KMS/vault integration, provider adapters, approvals, audit, rotation and rollback |
+| MAC | PR #41 adds deployment-owned exact issuer/subject platform roles, a fixed permission matrix, `GET /api/v1/mac/access`, append-only access audit and a fail-closed permission guard | Configure real operator assignments through approved deployment change; privileged feature modules, KMS/vault, provider adapters, dual-control approvals, access review, rotation and rollback |
 | Agents Window / CLI / cloud or background agents | Not implemented as complete product workflows | Agent lifecycle, policy enforcement, tools, orchestration, observability and acceptance |
 | Production deployment | Not completed or claimed | Real provider configuration, staging acceptance, backups/restore, release provenance, approval, monitored rollout and rollback |
 
 ### Mainline and CI evidence
 
-- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26) through [#39](https://github.com/helloinnovators1/odeistudio/pull/39), including #35 NEXUS event history, #36 MAD alert evaluation, #37 status documentation, #38 scoped MAD operator API and #39 companion diagnostics, are merged.
-- Current mainline after the latest integration: `be1f36fb3796608cb619114e5be75f19da1f733b`.
+- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26) through [#41](https://github.com/helloinnovators1/odeistudio/pull/41), including #35 NEXUS event history, #36 MAD alert evaluation, #38 scoped MAD operator API, #39 companion diagnostics, #40 status documentation and #41 MAC RBAC foundation, are merged.
+- Current mainline after the latest integration: `c95b6088250ab9f98f2c3e0d2167bff4bac780df`.
 - PR #35 exact head `a37382578933e43aacc1feba8476a6eeace4c6b4` passed web, MongoDB integration, Windows/Ubuntu Python 3.10/3.12, CodeQL, dependency audits and secret scanning before merge.
 - PR #36 exact head `df40221e885f538f90725f2c3c4f4761cc8f619c` passed the complete 11-check suite: Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning before merge.
 - PR #38 exact head `eb469750d8f781b281f00196397a018e15576240` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
 - PR #39 exact head `776be4e7d9dbfff7d4fb024d7c93c2810845f408` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
+- PR #41 exact head `c4a559b495e3e8bec99416c70fb9aeda41d08c5a` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
 - These are GitHub-hosted checks. The new companion diagnostic is a prerequisite report, not proof that the user's historical Windows 10 build 18362.1256 device works.
 
 ### Security and release boundaries
