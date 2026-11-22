@@ -55,3 +55,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Ecosystem integration and release gates](ECOSYSTEM_INTEGRATION_RELEASE_GATES.md) — dependency-ordered execution integration, NEXUS/ODID acceptance, MAC/MAD completion, Windows device validation and production release gates.
 
 - [NEXUS Durable Execution Runs](EXECUTION_RUNS.md) — durable run lifecycle, transactional events, worker leases and cancellation intent.
+
+- [Safe Workspace Snapshots](WORKSPACE_SNAPSHOTS.md) — bounded ZIP ingestion, path validation, content hashing and disposable workspace extraction.
