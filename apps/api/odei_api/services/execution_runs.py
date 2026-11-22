@@ -58,7 +58,7 @@ def validate_execution_request(*, profile_id: str, snapshot_sha256: str,
     if not isinstance(snapshot_sha256, str) or not _SHA256.fullmatch(snapshot_sha256):
         raise ValueError("snapshot_sha256 must be a lowercase SHA-256 digest")
     if isinstance(arguments, (str, bytes)) or not isinstance(arguments, (tuple, list)):
-        raise ValueError("arguments must be a bounded argument vector")
+        raise TypeError("arguments must be a bounded argument vector")
     if len(arguments) > _MAX_ARGS:
         raise ValueError("too many execution arguments")
     result = tuple(arguments)
