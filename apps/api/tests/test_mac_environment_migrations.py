@@ -148,3 +148,50 @@ async def test_revision_backfill_rejects_gapped_legacy_history():
         await backfill_mac_environment_revisions(
             Environments(legacy), Revisions(), session="transaction",
         )
+
+
+@pytest.mark.asyncio
+async def test_revision_backfill_detects_bson_type_mismatch():
+    from datetime import datetime, timezone
+
+    timestamp = datetime(2026, 11, 22, tzinfo=timezone.utc)
+    legacy = [{
+        "_id": "staging",
+        "environment": "staging",
+        "latest_version": 1,
+        "versions": [{
+            "version": 1, "status": "draft",
+            "created_at": timestamp, "config": {"replicas": 2},
+        }],
+    }]
+    revisions = Revisions([{
+        "_id": "staging:1",
+        "environment": "staging",
+        "version": 1,
+        "status": "draft",
+        "created_at": timestamp.isoformat(),
+        "config": {"replicas": 2},
+    }])
+    with pytest.raises(MacRevisionMigrationConflict):
+        await backfill_mac_environment_revisions(
+            Environments(legacy), revisions, session="transaction",
+        )
+
+
+@pytest.mark.asyncio
+async def test_revision_backfill_rejects_reserved_identity_override_fields():
+    legacy = [{
+        "_id": "staging",
+        "environment": "staging",
+        "latest_version": 1,
+        "versions": [{
+            "version": 1, "_id": "attacker-controlled",
+            "status": "draft", "config": {"replicas": 2},
+        }],
+    }]
+    revisions = Revisions()
+    with pytest.raises(MacRevisionMigrationConflict):
+        await backfill_mac_environment_revisions(
+            Environments(legacy), revisions, session="transaction",
+        )
+    assert revisions.records == {}
