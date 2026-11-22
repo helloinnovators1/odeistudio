@@ -24,14 +24,15 @@ def make_archive():
 class Runs:
     def __init__(self, run):
         self.run = run
+        self.available = run
         self.finished = None
 
     async def claim_next(self, **_kwargs):
-        run, self.run = self.run, None
+        run, self.available = self.available, None
         return run
 
     async def mark_running(self, **_kwargs):
-        self.run.status = ExecutionRunStatus.RUNNING
+        return None
 
     async def mark_collecting(self, **_kwargs):
         pass
