@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-11-22  
 **Status:** PR #49 MAD dashboard and NEXUS hardening PRs #52, #53 and #56 are merged. This integration candidate combines MAC/MAD transactional governance with the NEXUS project-load race fix; production readiness is not claimed.  
-**Current main commit at review:** `cd03e40605327324adb9cf2284f659f4f1e582a0`.  
+**Current main commit at review:** `50221094e7560810f7d7a5e98eb4a41d0809108e`.  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
