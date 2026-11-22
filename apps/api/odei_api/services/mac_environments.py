@@ -7,6 +7,7 @@ only after a revision reaches the approved state.
 """
 from __future__ import annotations
 
+import math
 import re
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -47,7 +48,9 @@ def validate_environment_config(config: Mapping[str, Any]) -> dict[str, Any]:
                 raise MacEnvironmentError("Configuration value is too long")
             if _SECRET_KEY.search(key) and not _SECRET_REF.fullmatch(value):
                 raise MacEnvironmentError("Secret values must be external secret:// references")
-        elif not isinstance(value, (bool, int, float)) or isinstance(value, bool) is False and isinstance(value, int) and abs(value) > 2**53:
+        elif (not isinstance(value, (bool, int, float))
+              or isinstance(value, int) and not isinstance(value, bool) and abs(value) > 2**53
+              or isinstance(value, float) and not math.isfinite(value)):
             raise MacEnvironmentError("Configuration values must be bounded JSON scalars")
         result[key] = value
     return result
