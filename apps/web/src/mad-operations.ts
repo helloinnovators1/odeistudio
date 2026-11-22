@@ -116,7 +116,7 @@ function validateIncident(value: MadIncident): MadIncident {
 export async function getMadExecutionMetrics(
   apiBaseUrl: string, accessToken: string, fetcher: Fetcher = fetch, signal?: AbortSignal,
 ): Promise<MadMetrics> {
-  const value = await request<MadMetrics>(apiBaseUrl, "/api/v1/mad/execution-metrics", accessToken, fetcher);
+  const value = await request<MadMetrics>(apiBaseUrl, "/api/v1/mad/execution-metrics", accessToken, fetcher, "GET", undefined, signal);
   return validateMetrics(value);
 }
 export async function listMadIncidents(
@@ -127,7 +127,7 @@ export async function listMadIncidents(
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new RangeError("MAD incident page size must be between 1 and 200.");
   const query = new URLSearchParams({ include_resolved: String(options.includeResolved ?? false), limit: String(limit) });
   const payload = await request<{ incidents: MadIncident[] }>(
-    apiBaseUrl, "/api/v1/mad/incidents?" + query.toString(), accessToken, options.fetcher ?? fetch,
+    apiBaseUrl, "/api/v1/mad/incidents?" + query.toString(), accessToken, options.fetcher ?? fetch, "GET", undefined, options.signal,
   );
   if (!Array.isArray(payload.incidents) || payload.incidents.length > limit) throw new Error("MAD API returned an unexpected incident-list contract.");
   const incidents = payload.incidents.map(validateIncident);
