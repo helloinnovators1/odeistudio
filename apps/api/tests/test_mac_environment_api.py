@@ -188,3 +188,43 @@ def test_mac_lifecycle_routes_forward_verified_actor_and_compare_and_set_version
     assert [item.status_code for item in (update, submit, approve, promote, rollback)] == [200, 200, 200, 200, 201]
     assert all(call[1]["actor"] == _actor_id(principal) for call in store.calls)
     assert [event["outcome"] for event in audit.events] == ["success"] * 5
+
+
+def test_mac_success_audit_uses_same_mongo_transaction_session():
+    from types import SimpleNamespace
+    import asyncio
+    from odei_api.security.auth import Principal
+    from odei_api.services.mac_environment_api import _mutate_with_audit
+
+    class Session:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): return False
+        async def with_transaction(self, callback): return await callback(self)
+
+    class Client:
+        async def start_session(self): return Session()
+
+    class Store:
+        def __init__(self): self.session = None
+        async def create_draft(self, **kwargs):
+            self.session = kwargs["session"]
+            return {"version": 1}
+
+    class Audit:
+        def __init__(self): self.session = None
+        async def append(self, **kwargs): self.session = kwargs["session"]
+
+    session_client = Client()
+    store, audit = Store(), Audit()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        mongo_database=SimpleNamespace(client=session_client)
+    )))
+    principal = Principal(subject="operator-1", issuer=ISSUER)
+    result = asyncio.run(_mutate_with_audit(
+        request, store, audit, principal, "mac.environment.draft.create",
+        "staging", "create_draft", environment="staging", actor="oidc-actor",
+        config={"replicas": 2}, change_summary="Initial",
+    ))
+    assert result["version"] == 1
+    assert store.session is audit.session
+    assert store.session is not None
