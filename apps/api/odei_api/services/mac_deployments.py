@@ -135,8 +135,28 @@ class MongoMacDeploymentStore:
         if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 20:
             raise MacDeploymentError("Maximum attempts must be between 1 and 20")
         now = datetime.now(timezone.utc)
+        # Expired attempts at the retry ceiling must become visible terminal failures,
+        # not remain permanently stuck in the running state.
+        while True:
+            exhausted = await self.attempts.find_one_and_update(
+                {"state": "running", "attempt_count": {"$gte": max_attempts},
+                 "lease_expires_at": {"$lte": now}},
+                {"$set": {
+                    "state": "failed", "lease_expires_at": None, "verified": False,
+                    "result_summary": "Worker lease expired and retry limit was exhausted",
+                    "finished_at": now, "updated_at": now,
+                }},
+                sort=[("lease_expires_at", ASCENDING)],
+                return_document=True,
+            )
+            if exhausted is None:
+                break
         return await self.attempts.find_one_and_update(
-            {"state": "queued", "attempt_count": {"$lt": max_attempts}},
+            {"attempt_count": {"$lt": max_attempts},
+             "$or": [
+                 {"state": "queued"},
+                 {"state": "running", "lease_expires_at": {"$lte": now}},
+             ]},
             {"$set": {"state": "running", "worker_id": worker_id,
                       "lease_expires_at": now + timedelta(seconds=lease_seconds),
                       "started_at": now, "updated_at": now},
