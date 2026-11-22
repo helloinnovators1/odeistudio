@@ -1,7 +1,4 @@
 """Route-level tests for authenticated MAC environment governance."""
-import json
-from types import SimpleNamespace
-
 
 
 ISSUER = "https://identity.example.test/"
@@ -55,6 +52,7 @@ class EnvironmentStore:
 
 def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
     import importlib
+    import json
 
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -70,7 +68,7 @@ def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
     }])
     monkeypatch.setattr(
         mac_environment_api, "get_settings",
-        lambda: SimpleNamespace(mac_platform_operators_json=registry),
+        lambda: type("Settings", (), {"mac_platform_operators_json": registry})(),
     )
     app = FastAPI()
     app.include_router(router)
