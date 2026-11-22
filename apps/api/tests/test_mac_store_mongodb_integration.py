@@ -235,7 +235,7 @@ async def test_mac_revision_backfill_is_transactional_idempotent_and_read_only_i
         pytest.skip("MONGODB_TEST_URI is not configured")
 
     client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
-    database_name = f"odei_mac_revision_migration_test_{uuid4().hex}"
+    database_name = f"macmig_{uuid4().hex}"
     database = client[database_name]
     environments = database["mac_environments"]
     revisions = database["mac_environment_revisions"]
