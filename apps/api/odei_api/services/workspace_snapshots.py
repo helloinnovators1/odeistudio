@@ -20,6 +20,12 @@ _ALLOWED_COMPRESSION = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
 _RESERVED_WINDOWS = {"CON", "PRN", "AUX", "NUL"} | {
     f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
 }
+_SENSITIVE_DIRECTORIES = {".git", ".ssh", ".aws", ".azure", ".kube", ".gnupg"}
+_ALLOWED_ENV_TEMPLATES = {".env.example", ".env.sample", ".env.template", ".env.dist"}
+_SENSITIVE_NAMES = {
+    ".npmrc", ".pypirc", ".netrc", ".git-credentials", "credentials",
+    "credentials.json", "secrets.json", "id_rsa", "id_ed25519",
+}
 
 
 class SnapshotError(ValueError):
@@ -78,6 +84,20 @@ class WorkspaceSnapshotIngestor:
         parts = raw.split("/")
         if not raw or any(part in {"", ".", ".."} for part in parts):
             raise SnapshotError("archive entry contains traversal or empty path segments")
+        lowered = tuple(part.casefold() for part in parts)
+        basename = lowered[-1]
+        if any(part in _SENSITIVE_DIRECTORIES for part in lowered):
+            raise SnapshotError("snapshot contains a sensitive metadata or credential directory")
+        if basename in _SENSITIVE_NAMES or basename.endswith((".pem", ".key", ".p12", ".pfx", ".jks")):
+            raise SnapshotError("snapshot contains a credential or private-key file")
+        if basename.startswith(".env") and basename not in _ALLOWED_ENV_TEMPLATES:
+            raise SnapshotError("snapshot contains an environment file that may hold secrets")
+        if basename.startswith("service-account") and basename.endswith(".json"):
+            raise SnapshotError("snapshot contains a service-account credential file")
+        if basename.endswith("-credentials.json"):
+            raise SnapshotError("snapshot contains a credential file")
+        if lowered[:2] == (".docker", "config.json"):
+            raise SnapshotError("snapshot contains Docker registry credentials")
         for part in parts:
             if (
                 part.endswith((".", " "))
@@ -149,9 +169,11 @@ class WorkspaceSnapshotIngestor:
         destination = self.root / snapshot_id
         file_digests: list[tuple[str, int, str]] = []
         total_written = 0
+        destination_created = False
         try:
             entries = self._inspect(archive)
             destination.mkdir(mode=0o700, parents=False, exist_ok=False)
+            destination_created = True
             for info, parts, is_directory in entries:
                 target = destination.joinpath(*parts)
                 if is_directory:
@@ -204,10 +226,12 @@ class WorkspaceSnapshotIngestor:
                 file_count=len(file_digests), total_bytes=total_written,
             )
         except (zipfile.BadZipFile, RuntimeError, OSError) as exc:
-            shutil.rmtree(destination, ignore_errors=True)
+            if destination_created:
+                shutil.rmtree(destination, ignore_errors=True)
             raise SnapshotError("snapshot archive could not be safely extracted") from exc
         except Exception:
-            shutil.rmtree(destination, ignore_errors=True)
+            if destination_created:
+                shutil.rmtree(destination, ignore_errors=True)
             raise
         finally:
             archive.close()
