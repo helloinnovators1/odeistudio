@@ -203,7 +203,7 @@ def test_mac_success_audit_uses_same_mongo_transaction_session():
         async def with_transaction(self, callback): return await callback(self)
 
     class Client:
-        async def start_session(self): return Session()
+        def start_session(self): return Session()
 
     class Store:
         def __init__(self): self.session = None
