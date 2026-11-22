@@ -6,6 +6,7 @@ Client-supplied role claims and request parameters are never consulted.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -32,6 +33,7 @@ MAC_ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "read_only_auditor": frozenset({"mac:read", "mac:audit:read"}),
 }
 _ALLOWED_ROLES = frozenset(MAC_ROLE_PERMISSIONS)
+_AUDIT_SUBJECT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
 
 
 def parse_mac_operator_registry(raw: str) -> dict[tuple[str, str], tuple[str, ...]]:
@@ -71,8 +73,7 @@ def parse_mac_operator_registry(raw: str) -> dict[tuple[str, str], tuple[str, ..
         ):
             raise ValueError("MAC operator issuer is invalid")
         if (
-            not isinstance(subject, str) or not subject
-            or subject != subject.strip() or len(subject) > 256
+            not isinstance(subject, str) or not _AUDIT_SUBJECT.fullmatch(subject)
         ):
             raise ValueError("MAC operator subject is invalid")
         if (
