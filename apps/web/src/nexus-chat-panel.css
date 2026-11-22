@@ -51,3 +51,5 @@
   font-size: .7rem;
   overflow-wrap: anywhere;
 }
+
+.nexus-execution-history{display:grid;gap:8px;margin:12px;padding:10px;border:1px solid #465366;border-radius:7px;background:#121a24}.nexus-execution-history ol{display:grid;gap:8px;margin:0;padding:0;list-style:none}.nexus-execution-history li{display:grid;gap:3px;padding:8px;border:1px solid #303b49;border-radius:5px;background:#0e141c}.nexus-execution-history li>div{display:flex;justify-content:space-between;gap:8px;color:#b9c8db;font-size:9px}.nexus-execution-history li>small{color:#8d9bad;font-size:9px;overflow-wrap:anywhere}.nexus-execution-history .nexus-task-heading{align-items:center}.nexus-execution-history .nexus-link-button{white-space:nowrap}

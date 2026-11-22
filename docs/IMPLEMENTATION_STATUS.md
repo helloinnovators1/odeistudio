@@ -496,3 +496,11 @@ Still outstanding: a short-lived single-use approval capability independently ve
 - Added stable descending keyset pagination using the pair `before_created_at` + `before_run_id`, with page sizes capped at 100. The API rejects incomplete cursors and returns only the existing public run projection; worker lease tokens and internal execution arguments are not exposed.
 - History reads are audited and fail closed if audit storage is unavailable. The Mongo store uses the existing organization/project/created-at index and does not perform unbounded collection scans.
 - Added route tests for requester scoping, audit metadata and incomplete-cursor rejection. Exact-head CI and merge are pending; no production deployment or live tenant acceptance is implied.
+
+
+## NEXUS project execution history — Studio panel integration (2026-11-22)
+
+- Added a typed browser transport for the project-wide execution-history API, including strict page-size checks, stable cursor parameters, response validation, bearer-only requests and abort support.
+- Connected the NEXUS panel to load project execution history after authenticated organization/project selection. The panel shows status, profile, task, creation time, run ID and attempt count, with bounded “load older” pagination.
+- History state is cleared on project/session changes; in-flight requests are aborted and generation-checked to prevent stale results from a previous project appearing in the current panel.
+- Added browser transport tests for authenticated cursor pagination and rejection of invalid limits/incomplete cursors. Exact-head CI is required before merge.
