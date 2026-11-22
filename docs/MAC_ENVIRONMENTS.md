@@ -81,10 +81,12 @@ environment/revision/provider is a conflict.
 
 The attempt ledger uses a separate MongoDB collection and indexes for unique
 environment-scoped idempotency, environment history, and worker queue ordering.
-Its state transitions are compare-and-set guarded:
+Its state transitions are compare-and-set guarded and worker leases expire:
 
-- `queued -> running`: one worker claims the attempt and owns it.
-- `running -> succeeded`: the owning worker records a positive verification.
+- `queued -> running`: one worker claims the attempt with a bounded 15–900 second lease.
+- `running -> running`: the owning worker renews its lease with a heartbeat.
+- A crashed worker's expired lease can be reclaimed by another worker, subject to a bounded attempt count. The new worker replaces the old owner; stale workers cannot heartbeat, complete or fail the reclaimed attempt.
+- `running -> succeeded`: the current lease owner records a positive verification.
 - `running -> verification_failed`: provider execution completed but verification
   did not pass.
 - `running -> failed`: the owning worker records an execution failure.
@@ -101,3 +103,22 @@ compensation/rollback, and deployment UI. A queued record is not a deployment;
 neither API acceptance nor a worker claim is evidence that infrastructure changed.
 Provider credentials and a concrete provider/environment configuration are required
 before a real deployment can be executed safely.
+
+
+### Worker lease and crash-recovery contract
+
+The deployment store now persists `attempt_count` and `lease_expires_at`.
+`claim()` uses a single MongoDB compare-and-set update to claim a queued
+attempt or reclaim a running attempt whose lease has expired. The default lease
+is 120 seconds; callers may request 15–900 seconds and at most 20 attempts
+(the default maximum is five). `heartbeat()` can renew only a currently valid
+lease held by the same worker. Completion and failure require that same
+unexpired lease. Reclaiming changes the worker owner, fencing out the old
+worker from subsequent ledger writes.
+
+This provides durable lease ownership and crash recovery in the ledger; it is
+not a substitute for provider-side idempotency. A worker must still use a stable
+provider idempotency token and reconcile ambiguous provider outcomes before
+retrying, otherwise a timeout after a provider accepted a request could create
+duplicate infrastructure changes. No worker process or provider adapter is
+configured by this change.
