@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from odei_api.security.auth import Principal
 from odei_api.services.mac_environment_api import _mutate_with_audit
 
-
 ISSUER = "https://identity.example.test/"
 OTHER_ISSUER = "https://other-identity.example.test/"
 
