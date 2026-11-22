@@ -552,5 +552,6 @@ Still outstanding: a short-lived single-use approval capability independently ve
 
 - PR [#54](https://github.com/helloinnovators1/odeistudio/pull/54) changes the companion's `proposal_version` field from coercive `int` to Pydantic `StrictInt`, rejecting JSON booleans at the local companion HTTP boundary.
 - Added a regression test for `true` being rejected as a proposal version.
-- Exact-head API CI is pending for `1e8ecd51e63df716cd73204ddfb70869166d74a9`; no pass is claimed yet.
+- Exact-head API CI passed on `1e8ecd51e63df716cd73204ddfb70869166d74a9`: 6/6 jobs, including Ubuntu and Windows Python 3.10/3.12, web tests/build, and MongoDB integration.
+- Exact-head Security Scanning passed: 4/4 jobs, including CodeQL, Python/web dependency audits, and secret scanning.
 - This is schema hardening only. The companion apply route remains single-file; durable multi-file transactions, journaling, rollback and crash recovery are not enabled.
