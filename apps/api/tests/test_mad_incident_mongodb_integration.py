@@ -147,7 +147,7 @@ async def test_mad_alert_observations_and_success_audit_are_atomic():
         assert event is not None
         assert event["outcome"] == "success"
         assert event["metadata"] == {
-            "authorization_scope": "mad:read",
+            "required_scope": "mad:read",
             "alert_count": 1,
         }
     finally:
