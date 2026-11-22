@@ -29,6 +29,7 @@ from odei_api.services.nexus_patch_proposals import router as nexus_patch_propos
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.execution_runs import MongoExecutionRunStore
+from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 from odei_api.services.planning import PlanningError, create_task_plan
@@ -99,12 +100,16 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             snapshot_store = MongoWorkspaceSnapshotStore(application.state.mongo_database)
             await snapshot_store.initialize()
             application.state.workspace_snapshot_store = snapshot_store
+            artifact_store = MongoExecutionArtifactStore(application.state.mongo_database)
+            await artifact_store.initialize()
+            application.state.execution_artifact_store = artifact_store
         else:
             application.state.task_store = None
             application.state.conversation_store = None
             application.state.patch_proposal_store = None
             application.state.execution_run_store = None
             application.state.workspace_snapshot_store = None
+            application.state.execution_artifact_store = None
         yield
     finally:
         if client is not None:
