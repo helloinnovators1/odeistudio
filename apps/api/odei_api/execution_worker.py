@@ -9,6 +9,7 @@ import asyncio
 import logging
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -30,7 +31,7 @@ logger = logging.getLogger("odei.execution.worker")
 class ExecutionWorker:
     """Lease-supervised worker that verifies immutable snapshots before sandbox execution."""
 
-    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root):
+    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root, tasks, task_events):
         self.worker_id = worker_id
         self.runs = runs
         self.snapshots = snapshots
@@ -38,6 +39,8 @@ class ExecutionWorker:
         self.registry = registry
         self.sandbox = sandbox
         self.workspace_root = Path(workspace_root).resolve(strict=True)
+        self.tasks = tasks
+        self.task_events = task_events
 
     def _audit(self, run: ExecutionRun, *, action: str, outcome: str, metadata=None):
         from uuid import uuid4
@@ -110,6 +113,7 @@ class ExecutionWorker:
                         outcome=ExecutionRunStatus.CANCELLED,
                         audit_event=self._audit(run, action="nexus.execution.cancelled",
                                                 outcome="success", metadata={"phase": "sandbox"}),
+                        tasks=self.tasks, task_events=self.task_events,
                     )
                     return True
             result = await sandbox_task
@@ -144,6 +148,7 @@ class ExecutionWorker:
                     metadata={"exit_code": result.exit_code, "timed_out": result.timed_out,
                               "duration_ms": result.duration_ms},
                 ),
+                tasks=self.tasks, task_events=self.task_events,
             )
             return True
         except asyncio.CancelledError:
@@ -165,6 +170,7 @@ class ExecutionWorker:
                         worker_id=self.worker_id, lease_token=lease_token, outcome=outcome,
                         audit_event=self._audit(run, action="nexus.execution.failed",
                                                 outcome="failure", metadata={"error_type": type(exc).__name__}),
+                        tasks=self.tasks, task_events=self.task_events,
                     )
             except Exception as finish_error:
                 logger.warning("Could not finalize execution run %s (%s)", run.id, type(finish_error).__name__)
@@ -174,9 +180,12 @@ class ExecutionWorker:
                 shutil.rmtree(workspace, ignore_errors=True)
 
     async def serve(self, *, idle_seconds: float = 1.0) -> None:
+        last_cleanup = 0.0
         while True:
             await self.runs.expire_exhausted(actor_id=self.worker_id, limit=50)
-            await self.snapshots.delete_expired(limit=50)
+            if time.monotonic() - last_cleanup >= 60:
+                await self.snapshots.delete_expired(limit=50)
+                last_cleanup = time.monotonic()
             worked = await self.run_once()
             if not worked:
                 await asyncio.sleep(idle_seconds)
@@ -215,6 +224,7 @@ async def _main() -> None:
     worker = ExecutionWorker(
         worker_id=worker_id, runs=runs, snapshots=snapshots, artifacts=artifacts,
         registry=registry, sandbox=sandbox, workspace_root=workspace_root,
+        tasks=database["tasks"], task_events=database["task_events"],
     )
     try:
         await worker.serve()
