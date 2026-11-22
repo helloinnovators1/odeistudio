@@ -24,6 +24,14 @@ _SECRET_KEY = re.compile(r"(?:secret|password|passwd|token|api[_-]?key|access[_-
 _SECRET_REF = re.compile(r"^secret://[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$")
 
 
+def _valid_secret_reference(value: str) -> bool:
+    """Reject ambiguous or traversal-like paths before a vault adapter sees a reference."""
+    if not _SECRET_REF.fullmatch(value):
+        return False
+    segments = value[len("secret://"):].split("/")
+    return all(segment and segment not in {".", ".."} for segment in segments)
+
+
 class MacEnvironmentError(ValueError):
     """Invalid environment configuration or lifecycle operation."""
 
@@ -45,7 +53,7 @@ def validate_environment_config(config: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(key, str) or not _CONFIG_KEY.fullmatch(key):
             raise MacEnvironmentError("Configuration key is invalid")
         if _SECRET_KEY.search(key):
-            if not isinstance(value, str) or not _SECRET_REF.fullmatch(value):
+            if not isinstance(value, str) or not _valid_secret_reference(value):
                 raise MacEnvironmentError("Secret values must be external secret:// references")
         elif isinstance(value, str):
             if len(value) > 2048:
