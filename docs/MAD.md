@@ -34,3 +34,23 @@ Alerts have severity, source, timestamp, affected service/tenant, deduplication 
 - Tenant-scoped operators cannot see other tenants' metrics.
 - Cost figures reconcile to provider usage records and state currency/window.
 - No secret values or sensitive command output appear in dashboard telemetry.
+
+
+## Implemented execution telemetry foundation
+
+The current backend change adds an internal, token-authenticated execution-metrics endpoint at `GET /api/v1/internal/mad/execution-metrics`. It is deliberately not a browser dashboard API and is excluded from the public OpenAPI schema. It reports only aggregate values:
+
+- Worker heartbeat totals, fresh workers and stale workers. Freshness threshold: 60 seconds.
+- Queued and active execution-run counts, plus the oldest queued timestamp.
+- Completed, failed and cancelled execution counts over the preceding 24 hours (UTC).
+- An observation timestamp and explicit unknown/degraded states when there are no workers or a queue has no fresh worker.
+
+The standalone worker writes a low-cardinality heartbeat at startup, while idle, during long-running execution and on shutdown. Heartbeats contain a worker identifier, idle/busy/stopping state, optional active run identifier, protocol version and timestamps. They do not contain hostnames, environment variables, tenant identifiers, prompts, command output or credentials. Heartbeat records expire after 30 days.
+
+### Internal endpoint security
+
+Configure `MAD_METRICS_TOKEN` as a high-entropy secret in the API environment. Send it in the `X-ODEI-MAD-Token` header from a trusted server-side operations client. The endpoint fails closed if the token is absent or invalid, does not accept browser identity tokens as an alternative, and must additionally be protected by private networking, ingress allowlists and secret rotation. Never put this token in browser code, source control, telemetry, URLs or logs.
+
+### Current scope and non-claims
+
+This is a first operational telemetry slice, not the complete MAD product. It does not yet provide the MAD web dashboard, MAC-managed operator identities and roles, incident lifecycle, alert delivery, integrations/deployment status, model-cost reconciliation, product analytics, or tenant-visible drill-down. Those capabilities remain gated on the MAC governance model and their authoritative data sources. A green CI run is not evidence of production monitoring or deployment.
