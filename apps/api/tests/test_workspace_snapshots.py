@@ -138,7 +138,10 @@ def test_rejects_likely_credential_material_inside_file_content(tmp_path, secret
 def test_secret_scanner_detects_patterns_split_across_stream_chunks(tmp_path):
     root = tmp_path / "workspaces"
     root.mkdir()
-    archive = make_zip([("src/config.txt", b"A" * 65_530 + b"api_key=" + b"x" * 40)])
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_STORED) as zipped:
+        zipped.writestr("src/config.txt", b"A" * 65_530 + b"api_key=" + b"x" * 40)
+    archive = stream.getvalue()
     with pytest.raises(SnapshotError, match="likely credential"):
         WorkspaceSnapshotIngestor(root).ingest(archive)
     assert list(root.iterdir()) == []
