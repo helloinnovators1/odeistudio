@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from gridfs.errors import NoFile
 from gridfs.asynchronous import AsyncGridFSBucket
+from gridfs.errors import NoFile
 
 
 class SnapshotStoreError(RuntimeError):
