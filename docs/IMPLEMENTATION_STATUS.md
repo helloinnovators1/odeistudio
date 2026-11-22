@@ -559,3 +559,13 @@ Still outstanding: a short-lived single-use approval capability independently ve
 - These PRs remain open and unmerged pending independent review. Their passing CI/security runs do not imply production deployment.
 
 The NEXUS local companion remains intentionally single-file per apply request. Durable multi-file transactions, journal recovery, rollback and cross-platform acceptance remain outstanding.
+
+
+## NEXUS local patch snapshot consistency — in review (2026-11-22)
+
+- PR [#56](https://github.com/helloinnovators1/odeistudio/pull/56) hardens the existing single-file apply path on both POSIX and Windows. It compares device, inode, mode, size, modification time and change time before and after reading, and rejects a snapshot if metadata or byte count changed.
+- Added deterministic regression tests for concurrent same-length overwrites. The Windows test explicitly advances mtime to avoid filesystem timestamp-resolution flakiness.
+- Exact-head API CI [45047023019](https://github.com/helloinnovators1/odeistudio/actions/runs/45047023019) passed 6/6 jobs, including Windows Python 3.10/3.12, Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration.
+- Exact-head Security Scanning [45047023065](https://github.com/helloinnovators1/odeistudio/actions/runs/45047023065) passed 4/4 jobs, including CodeQL, dependency audits and secret scanning.
+- An earlier Windows test run failed because the simulated same-size write did not deterministically change the observed timestamp. The regression was corrected and the exact-head matrix passed.
+- This is snapshot consistency hardening only. It does not enable multi-file writes, transaction journaling, crash recovery or rollback. PR #56 remains open and unmerged pending independent review.
