@@ -262,6 +262,8 @@ export default function NexusChatPanel({
     }
     let active = true;
     const controller = new AbortController();
+    setExecutionProfiles([]);
+    setExecutionProfileId("");
     setExecutionError("");
     void listNexusExecutionProfiles(
       config.apiBaseUrl, organizationId, projectId, accessToken, fetch, controller.signal,
