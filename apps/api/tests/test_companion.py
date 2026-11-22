@@ -959,6 +959,12 @@ def test_windows_patch_read_rejects_file_modified_during_snapshot(tmp_path, monk
                 os.write(writer, b"change")
             finally:
                 os.close(writer)
+            # Set a deterministic, distinct mtime instead of relying on the
+            # runner filesystem's timestamp tick resolution.
+            os.utime(
+                target,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1_000_000_000),
+            )
         return data
 
     monkeypatch.setattr(
