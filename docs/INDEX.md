@@ -61,3 +61,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS Execution API](EXECUTION_API.md) — authenticated, approval-gated run creation, GridFS snapshot storage, task/run transactions and API deployment gates.
 
 - [NEXUS Execution Worker Operations](EXECUTION_WORKER.md) — standalone worker deployment, leases, sandbox lifecycle, cancellation, artifact retention and production controls.
+
+- [NEXUS Execution Chat Panel](NEXUS_EXECUTION_PANEL.md) — NEXUS task-to-execution UI, consent, run status, events, cancellation and artifact review.
