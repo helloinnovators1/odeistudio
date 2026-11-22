@@ -2,7 +2,7 @@
 
 This module accepts a bounded ZIP byte stream and extracts it into a fresh, random direct child of a worker-owned workspace root. It never calls ZIP extractall and never trusts archive paths.
 
-Controls include compressed archive size, entry count, per-file and aggregate expanded size, compression ratio, supported compression methods, encrypted-entry rejection, normalized case-insensitive duplicate rejection, Windows-reserved path rejection, path traversal and absolute-path rejection, symlink/special-file rejection, file/directory prefix conflict detection, exclusive file creation, no-follow final file opens where supported, content hashing, and cleanup on failure.
+Controls include compressed archive size, entry count, per-file and aggregate expanded size, compression ratio, supported compression methods, encrypted-entry rejection, normalized case-insensitive duplicate rejection, Windows-reserved path rejection, path traversal and absolute-path rejection, symlink/special-file rejection, file/directory prefix conflict detection, known credential-path exclusions (.env files other than safe templates, VCS/SSH/cloud credential directories, private-key and registry credential files), exclusive file creation, no-follow final file opens where supported, content hashing, and cleanup on failure.
 
 The resulting digest is a deterministic manifest digest over sorted normalized relative paths, file sizes and per-file SHA-256 hashes. It is not a digest of the raw ZIP container.
 
