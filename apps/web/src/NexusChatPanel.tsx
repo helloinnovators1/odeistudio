@@ -565,7 +565,9 @@ export default function NexusChatPanel({
         ? "Queued execution and task were cancelled."
         : "Cancellation requested. The worker will terminate the sandbox and confirm cleanup.");
     } catch (cause) {
-      if (!controller.signal.aborted) setExecutionError(errorMessage(cause));
+      if (!controller.signal.aborted && generation === executionGenerationRef.current) {
+        setExecutionError(errorMessage(cause));
+      }
     } finally {
       if (executionAbortRef.current === controller) executionAbortRef.current = null;
       setExecutionBusy(false);
