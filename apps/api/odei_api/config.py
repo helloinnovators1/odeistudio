@@ -1,6 +1,6 @@
-from functools import lru_cache
 import json
 import re
+from functools import lru_cache
 from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, model_validator
