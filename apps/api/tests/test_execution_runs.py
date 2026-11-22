@@ -1,6 +1,12 @@
 from __future__ import annotations
+
 import pytest
-from odei_api.services.execution_runs import ExecutionRun, ExecutionRunStatus, validate_execution_request
+
+from odei_api.services.execution_runs import (
+    ExecutionRun,
+    ExecutionRunStatus,
+    validate_execution_request,
+)
 
 def make_run(**overrides):
     values = {"id": "run-1", "organization_id": "org-1", "project_id": "project-1",
