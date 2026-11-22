@@ -358,7 +358,7 @@ class MongoExecutionRunStore:
                           "lease_token": None if next_status in _TERMINAL else lease_token,
                           "lease_expires_at": None if next_status in _TERMINAL else current["lease_expires_at"]},
                  "$inc": {"version": 1},
-                 **({"$unset": {"active_task_id": ""}} if target is ExecutionRunStatus.CANCELLED else {})},
+                 **({"$unset": {"active_task_id": ""}} if next_status in _TERMINAL else {})},
                 return_document=ReturnDocument.AFTER, session=session)
             if updated is None:
                 raise ExecutionRunConflict("execution run changed concurrently")
@@ -414,7 +414,8 @@ class MongoExecutionRunStore:
                           "worker_id": None if target is ExecutionRunStatus.CANCELLED else current.get("worker_id"),
                           "lease_token": None if target is ExecutionRunStatus.CANCELLED else current.get("lease_token"),
                           "lease_expires_at": None if target is ExecutionRunStatus.CANCELLED else current.get("lease_expires_at")},
-                 "$inc": {"version": 1}},
+                 "$inc": {"version": 1},
+                 **({"$unset": {"active_task_id": ""}} if target is ExecutionRunStatus.CANCELLED else {})},
                 return_document=ReturnDocument.AFTER, session=session)
             if updated is None:
                 raise ExecutionRunConflict("execution run changed concurrently")
@@ -439,7 +440,8 @@ class MongoExecutionRunStore:
             project_id=row["project_id"], task_id=row["task_id"],
             requester_issuer=row["requester_issuer"], requester_subject=row["requester_subject"],
             profile_id=row["profile_id"], snapshot_sha256=row["snapshot_sha256"],
-            arguments=tuple(row["arguments"]), status=ExecutionRunStatus(row["status"]),
+            arguments=tuple(row["arguments"]), snapshot_id=row.get("snapshot_id"),
+            status=ExecutionRunStatus(row["status"]),
             version=row["version"], attempts=row["attempts"], max_attempts=row["max_attempts"],
             worker_id=row.get("worker_id"), lease_token=row.get("lease_token"),
             lease_expires_at=row.get("lease_expires_at"), cancel_requested=row.get("cancel_requested", False),
