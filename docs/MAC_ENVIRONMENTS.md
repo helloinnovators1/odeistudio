@@ -222,6 +222,17 @@ Run the continuous worker with:
 odei-mac-deployment-worker --poll-interval 2
 ```
 
+Build the non-root worker image from the repository root:
+
+```sh
+docker build -f apps/api/Dockerfile.mac-worker -t odei-mac-worker:local apps/api
+```
+
+The image runs as UID/GID 10001, uses SIGTERM as its stop signal, and starts
+only the worker entry point. Supply MongoDB, provider-factory and secret-resolver
+configuration through the deployment platform's secret/config injection; do not
+bake credentials or adapter modules into the image.
+
 This is a packaged, fail-closed process entry point—not proof of an operational
 worker deployment. Provider and secret-manager factory modules must be reviewed,
 installed and configured by the deployment owner; credentials, network policy,
