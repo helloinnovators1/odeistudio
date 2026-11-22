@@ -1,17 +1,17 @@
 # Ecosystem integration and release gates
 
 **Reviewed:** 2026-11-22  
-**Status:** PR integration merged to `main`; production readiness remains unverified and is not claimed.  
+**Status:** PR #49 MAD dashboard is merged; MAC/MAD transactional governance is consolidated in PR #55 and remains under review. Production readiness is not claimed.  
 **Integrated main commit:** `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db` (PR #49 MAD dashboard).  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
 
 - PRs #26–#47 are merged. PR #49 adds the authenticated MAD operator dashboard and is merged at `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db`.
-- PR #50 remains open and adds MAC versioned environment governance, authenticated/audited lifecycle API with atomic mutation/success-audit transactions, and a NEXUS MAC panel. Exact code-head API CI and security scans passed; PR #50 is not merged or deployed and still requires review/integration gates.
+- PRs #50 and #51 are closed as superseded; their MAC environment-governance and MAD transactional-audit work is consolidated in [PR #55](https://github.com/helloinnovators1/odeistudio/pull/55). PR #55 is open, unmerged and undeployed pending independent review.
 - The MAD dashboard is now in NEXUS with aggregate metrics, alerts, persisted incidents and audited incident lifecycle actions. Real ODID operator/scope provisioning, broad production telemetry and alert delivery remain open.
 - The MAC panel supports versioned configuration drafts, author submission, distinct-identity approval, active-configuration pointer promotion and rollback drafts. It does not execute cloud deployments. Secret-manager integration, provider deployers, deployment verification, revision archival and production acceptance remain open.
-- The older PR descriptions below record their original scope and are historical scope descriptions, not a complete current-status list.
+- The earlier PR descriptions below record their original scope and are historical scope descriptions, not a complete current-status list.
 
 
 
@@ -147,5 +147,6 @@ The eight execution PRs (#26–#33) are merged into main. On the assembled main 
 - Successful MAC lifecycle mutations and their success audit records now share one MongoDB transaction/session. If the audit insert fails, the mutation is rolled back. Failure/denial records are appended separately after the aborted transaction.
 - The transaction requires a replica set or sharded MongoDB topology. The API readiness check reports transaction support and rejects standalone MongoDB.
 - Route-level tests assert that the MAC store operation and audit insert receive the same session. A real replica-set integration test also verifies that an audit insert failure rolls back the MAC revision and that a successful operation persists the revision and audit event together. Exact code head `909caf02edd077146e8a78f2f700fb02c83ec305` passed API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807), including Windows/Ubuntu Python 3.10/3.12 and real MongoDB replica-set integration.
-- PR #50 remains open and unmerged. The promotion endpoint still changes only the active configuration pointer; it is not a provider deployment.
-- Remaining MAC release gates: separate immutable revision collection with retention/archival; external secret-manager authorization/resolution in a server-side worker; provider adapter; durable idempotent deployment attempts; provider health verification and rollback; real ODID staging permissions; operational acceptance.
+- PRs #50 and #51 are closed as superseded by PR #55, which consolidates both implementations on current `main`. The consolidated code head `d408f68efc6085309f48c77bfd635705d47c4173` passed API CI 6/6 and Security Scanning 4/4; the current documentation reconciliation is being reverified on the updated PR head.
+- PR #55 is open and unmerged pending independent review. The promotion endpoint changes only the active configuration pointer; it is not a provider deployment.
+- Remaining MAC release gates: production secret-manager adapter and authorization, concrete provider adapter, provider-side idempotency/reconciliation, provider health verification and rollback/compensation, operator-applied revision migration, real ODID staging permissions, worker deployment, monitoring and operational acceptance.
