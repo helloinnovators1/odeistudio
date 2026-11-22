@@ -88,3 +88,33 @@ def test_rejects_invalid_zip_and_archive_size(tmp_path):
         ingestor.ingest(b"x" * 11)
     with pytest.raises(SnapshotError, match="valid ZIP"):
         WorkspaceSnapshotIngestor(root).ingest(b"not a zip")
+
+@pytest.mark.parametrize("name", [
+    ".env", ".env.production", ".aws/credentials", ".ssh/id_rsa",
+    "private.pem", "signing.key", ".docker/config.json", "service-account-prod.json",
+])
+def test_rejects_known_secret_and_credential_paths(tmp_path, name):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    with pytest.raises(SnapshotError, match="credential|private-key|environment|sensitive"):
+        WorkspaceSnapshotIngestor(root).ingest(make_zip([(name, b"secret material")]))
+
+
+def test_allows_documented_environment_templates(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    record = WorkspaceSnapshotIngestor(root).ingest(
+        make_zip([(".env.example", b"API_URL=https://example.invalid")])
+    )
+    assert (record.path / ".env.example").is_file()
+
+
+def test_enforces_entry_count_and_aggregate_expanded_size(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    too_many = make_zip([("a.txt", b"a"), ("b.txt", b"b")])
+    with pytest.raises(SnapshotError, match="too many"):
+        WorkspaceSnapshotIngestor(root, max_files=1).ingest(too_many)
+    expanded = make_zip([("a.txt", b"a" * 40), ("b.txt", b"b" * 40)])
+    with pytest.raises(SnapshotError, match="aggregate"):
+        WorkspaceSnapshotIngestor(root, max_total_bytes=64).ingest(expanded)
