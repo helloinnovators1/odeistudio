@@ -41,6 +41,12 @@ class MongoExecutionArtifactStore:
             raise ValueError("execution output exceeds its storage limit")
         if not 0 <= duration_ms <= 600_000:
             raise ValueError("execution duration is invalid")
+        existing = await self._metadata.find_one({
+            "organization_id": organization_id, "project_id": project_id,
+            "task_id": task_id, "run_id": run_id,
+        })
+        if existing is not None:
+            return self.public_metadata(existing)
         safe_stdout = redact_secrets(stdout)
         safe_stderr = redact_secrets(stderr)
         stdout_id = await self._stdout.upload_from_stream(
