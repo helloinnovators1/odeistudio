@@ -1276,7 +1276,7 @@ export default function NexusChatPanel({
               <button type="button" disabled={macBusy} onClick={() => void runMacTransition("approve")}>Approve</button>}
             {macRecord?.versions.find((item) => item.version === macRecord.latest_version)?.status === "approved" &&
               <button type="button" disabled={macBusy} onClick={() => void runMacTransition("promote")}>Promote config</button>}
-            {macRecord?.active_version > 0 &&
+            {(macRecord?.active_version ?? 0) > 0 &&
               <button type="button" disabled={macBusy || !macChangeSummary.trim()} onClick={() => void runMacTransition("rollback")}>Create rollback draft</button>}
           </div>
           {macRecord && (
