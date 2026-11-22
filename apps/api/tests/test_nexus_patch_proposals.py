@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
 import hashlib
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -319,7 +319,7 @@ def test_apply_capability_fails_closed_without_signing_configuration(patch_state
     assert unconfirmed.status_code == 422
 
 
-def test_apply_capability_rejects_multi_file_proposals_until_atomic_apply_exists(patch_state, monkeypatch):
+def test_multi_file_apply_capability_is_rejected(patch_state, monkeypatch):
     client = TestClient(app)
     payload = _payload()
     payload["base_files"]["second.py"] = "print('old')"
