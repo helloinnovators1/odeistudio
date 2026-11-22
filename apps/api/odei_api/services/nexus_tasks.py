@@ -23,6 +23,7 @@ from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
 from odei_api.services.planning import PlanningError, create_task_plan
+from odei_api.services.execution_runs import ExecutionRunConflict
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import (
     InvalidTaskTransition,
@@ -305,6 +306,37 @@ async def _transition_project_task(
                 "denied", reason="project_owner_approval_required",
             )
             raise HTTPException(status_code=403, detail={"code": "PROJECT_OWNER_APPROVAL_REQUIRED", "message": "Only the project owner can approve this task."})
+        if next_status is TaskStatus.CANCELLED:
+            run_store = getattr(request.app.state, "execution_run_store", None)
+            if run_store is not None:
+                active_run = await run_store.get_active_for_task(
+                    organization_id=organization_id, project_id=project_id, task_id=task_id,
+                )
+                if active_run is not None:
+                    try:
+                        await run_store.request_cancel(
+                            organization_id=organization_id, run_id=active_run.id,
+                            actor_id=identity_owner_key(principal.issuer, principal.subject),
+                            audit_event={
+                                "organization_id": organization_id,
+                                "actor_issuer": principal.issuer,
+                                "actor_subject": principal.subject,
+                                "action": "nexus.execution.cancel",
+                                "target_type": "nexus_execution_run",
+                                "target_id": active_run.id,
+                                "outcome": "success",
+                                "request_id": uuid4().hex,
+                                "metadata": {"source": "task_cancel"},
+                            },
+                        )
+                    except ExecutionRunConflict:
+                        latest_run = await run_store.get(
+                            organization_id=organization_id, run_id=active_run.id,
+                        )
+                        if latest_run is not None and latest_run.status.value not in {
+                            "completed", "failed", "cancelled", "expired",
+                        } and not latest_run.cancel_requested:
+                            raise
         updated = await store.transition(
             organization_id=organization_id, task_id=task_id,
             next_status=next_status, expected_version=payload.expected_version,
