@@ -101,8 +101,15 @@ Every successful or denied read/transition is written to the append-only
 platform audit store. State transitions also append an incident history item
 with actor, action, timestamp and version; each incident retains the latest 200
 history entries to keep MongoDB documents bounded. The compare-and-set update rejects
-stale versions with HTTP 409. No tenant IDs, prompts, command output, artifact
-contents, hostnames or secrets are stored in incident records.
+stale versions with HTTP 409. Successful state transitions and their append-only
+success audit events now commit in the same MongoDB transaction. If the audit
+insert fails, the incident state change is rolled back; the API fails closed and
+returns a safe service error. Denial events are written separately because no
+state mutation is performed. This requires a replica-set or sharded MongoDB
+topology with transaction support. A real MongoDB replica-set integration test
+verifies both rollback on audit failure and joint state/audit commit. No tenant
+IDs, prompts, command output, artifact contents, hostnames or secrets are stored
+in incident records.
 
 This increment does not implement the MAD dashboard UI, external paging/email
 delivery, configurable thresholds, MAC-managed role provisioning or production
