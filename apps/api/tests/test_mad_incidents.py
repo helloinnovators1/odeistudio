@@ -1,4 +1,5 @@
 from copy import deepcopy
+import asyncio
 
 import pytest
 
@@ -165,3 +166,64 @@ async def test_incident_store_rejects_stale_versions_invalid_transitions_and_unk
             incident_id="missing-incident", action="resolve",
             actor="operator-1", expected_version=1,
         )
+
+
+class AuditStore:
+    def __init__(self):
+        self.events = []
+
+    async def append(self, **event):
+        self.events.append(event)
+
+
+def test_mad_incident_routes_enforce_scopes_and_audit_transitions():
+    from fastapi.testclient import TestClient
+
+    from odei_api.main import app
+    from odei_api.security.auth import Principal, get_current_principal
+
+    collection = IncidentCollection()
+    incident_store = MongoMadIncidentStore(collection)
+    audit = AuditStore()
+    previous_incidents = getattr(app.state, "mad_incident_store", None)
+    previous_audit = getattr(app.state, "audit_event_store", None)
+    app.state.mad_incident_store = incident_store
+    app.state.audit_event_store = audit
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject="operator-1", issuer="https://identity.example.test/",
+        scopes=frozenset({"mad:read"}),
+    )
+    try:
+        denied = TestClient(app).post(
+            "/api/v1/mad/incidents/example-incident/transitions",
+            json={"action": "resolve", "expected_version": 1},
+        )
+        assert denied.status_code == 403
+        assert audit.events[-1]["outcome"] == "denied"
+
+        asyncio.run(incident_store.record_alerts([{
+            "id": "mad.execution.queue_backlog",
+            "deduplication_key": "example-incident",
+            "severity": "warning",
+            "summary": "Queue is delayed.",
+            "runbook": "docs/runbooks/MAD_EXECUTION_WORKERS.md",
+        }]))
+        app.dependency_overrides[get_current_principal] = lambda: Principal(
+            subject="operator-1", issuer="https://identity.example.test/",
+            scopes=frozenset({"mad:incident:manage", "mad:read"}),
+        )
+        client = TestClient(app)
+        listed = client.get("/api/v1/mad/incidents")
+        assert listed.status_code == 200
+        assert listed.json()["incidents"][0]["status"] == "firing"
+        changed = client.post(
+            "/api/v1/mad/incidents/example-incident/transitions",
+            json={"action": "acknowledge", "expected_version": 1},
+        )
+        assert changed.status_code == 200
+        assert changed.json()["incident"]["status"] == "acknowledged"
+        assert audit.events[-1]["action"] == "mad.incident.acknowledge"
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        app.state.mad_incident_store = previous_incidents
+        app.state.audit_event_store = previous_audit
