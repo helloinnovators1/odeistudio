@@ -2,9 +2,6 @@
 import json
 from types import SimpleNamespace
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.mac_environment_api import _actor_id, router
 
@@ -60,6 +57,9 @@ class EnvironmentStore:
 
 def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
     import importlib
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
 
     mac_environment_api = importlib.import_module("odei_api.services.mac_environment_api")
     registry = json.dumps([{
