@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Any
 
 from bson.json_util import CANONICAL_JSON_OPTIONS, dumps
-
 from pymongo import ASCENDING
 
 
