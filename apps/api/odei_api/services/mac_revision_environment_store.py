@@ -42,6 +42,21 @@ class MongoMacRevisionEnvironmentStore:
             [("environment", ASCENDING), ("created_at", DESCENDING)],
             name="mac_environment_revision_history",
         )
+        # Fail closed during rollout: never serve an incomplete history if an
+        # operator has not completed the transactional legacy backfill.
+        async for metadata in self.collection.find({}):
+            latest = metadata.get("latest_version", 0)
+            if isinstance(latest, bool) or not isinstance(latest, int) or latest < 0:
+                raise MacEnvironmentConflict("Environment latest-version pointer is invalid")
+            cursor = self.revisions.find(
+                {"environment": metadata.get("environment", metadata.get("_id"))},
+                {"version": 1, "_id": 0},
+            ).sort("version", ASCENDING)
+            stored_versions = [item["version"] async for item in cursor]
+            if stored_versions != list(range(1, latest + 1)):
+                raise MacEnvironmentConflict(
+                    "MAC revision history is incomplete; run and verify the revision migration before startup"
+                )
 
     async def get(self, environment: str, *, session: Any | None = None) -> dict[str, Any]:
         if environment not in {"development", "staging", "production"}:
