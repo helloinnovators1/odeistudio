@@ -560,5 +560,6 @@ Exact code head `ea966eb0f072473f682a7cfd79a62658b709aa1e` passed API CI
 [45023666183](https://github.com/helloinnovators1/odeistudio/actions/runs/45023666183),
 including Windows/Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration.
 Security Scanning [45023666145](https://github.com/helloinnovators1/odeistudio/actions/runs/45023666145)
-is still running. No concrete provider adapter, secret manager or deployed worker
-service is configured, so no cloud deployment is claimed.
+also passed, including dependency audits, secret scanning and CodeQL. No concrete
+provider adapter, secret manager or deployed worker service is configured, so no
+cloud deployment is claimed.
