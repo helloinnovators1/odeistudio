@@ -336,7 +336,7 @@ async def _transition_project_task(
                                 {"version": payload.expected_version + 1, "source": "task_cancel"},
                             ),
                         )
-                        cancelled_with_run = cancellation.status is TaskStatus.CANCELLED or cancellation.status.value == "cancelled"
+                        cancelled_with_run = cancellation.status.value == "cancelled"
                     except ExecutionRunConflict:
                         latest_run = await run_store.get(
                             organization_id=organization_id, run_id=active_run.id,
