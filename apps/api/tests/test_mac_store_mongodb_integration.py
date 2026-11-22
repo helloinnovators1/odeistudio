@@ -298,3 +298,70 @@ async def test_mac_revision_backfill_is_transactional_idempotent_and_read_only_i
     finally:
         await client.drop_database(database_name)
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_separate_revision_store_runtime_cutover_and_lifecycle():
+    from odei_api.services.mac_revision_environment_store import MongoMacRevisionEnvironmentStore
+
+    uri = os.getenv("MONGODB_TEST_URI")
+    if not uri:
+        pytest.skip("MONGODB_TEST_URI is not configured")
+
+    client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
+    database_name = f"macrev_{uuid4().hex}"
+    database = client[database_name]
+    environments = database["mac_environments"]
+    revisions = database["mac_environment_revisions"]
+    store = MongoMacRevisionEnvironmentStore(environments, revisions)
+    try:
+        topology = await client.admin.command("hello")
+        assert topology.get("setName") or topology.get("msg") == "isdbgrid"
+
+        # Existing embedded history must be migrated before the new runtime starts.
+        await environments.insert_one({
+            "_id": "staging", "environment": "staging",
+            "latest_version": 1, "active_version": 0,
+            "versions": [{"version": 1, "status": "draft", "config": {"replicas": 2}}],
+        })
+        with pytest.raises(MacEnvironmentConflict, match="revision history is incomplete"):
+            await store.initialize()
+
+        from odei_api.services.mac_environment_migrations import backfill_mac_environment_revisions
+        async with client.start_session() as session:
+            async def migrate(active_session):
+                return await backfill_mac_environment_revisions(
+                    environments, revisions, session=active_session,
+                )
+            assert await session.with_transaction(migrate) == {"copied": 1, "already_present": 0}
+
+        await store.initialize()
+        record = await store.get("staging")
+        assert record["versions"][0]["config"] == {"replicas": 2}
+        metadata = await environments.find_one({"_id": "staging"})
+        assert metadata["latest_version"] == 1
+
+        await store.create_revision(
+            environment="staging", expected_latest_version=1, actor="oidc-author",
+            config={"replicas": 3}, change_summary="Scale staging",
+        )
+        await store.submit_for_approval(
+            environment="staging", version=2, expected_latest_version=2, actor="oidc-author",
+        )
+        await store.approve(
+            environment="staging", version=2, expected_latest_version=2, actor="oidc-reviewer",
+        )
+        await store.promote(
+            environment="staging", version=2, expected_active_version=0,
+            expected_latest_version=2, actor="oidc-operator",
+        )
+        current = await store.get("staging")
+        assert current["active_version"] == 2
+        assert [item["version"] for item in current["versions"]] == [1, 2]
+        assert await revisions.count_documents({"environment": "staging"}) == 2
+        # Revision documents are separate; metadata no longer grows with history.
+        assert "versions" in metadata  # legacy copy retained until retention is approved
+        assert "versions" not in await environments.find_one({"_id": "staging"})
+    finally:
+        await client.drop_database(database_name)
+        await client.close()
