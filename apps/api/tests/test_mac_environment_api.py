@@ -1,4 +1,5 @@
 """Route-level tests for authenticated MAC environment governance."""
+import importlib
 import json
 from types import SimpleNamespace
 
@@ -6,7 +7,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from odei_api.security.auth import Principal, get_current_principal
-from odei_api.services import mac_environment_api
 from odei_api.services.mac_environment_api import _actor_id, router
 
 
@@ -60,6 +60,7 @@ class EnvironmentStore:
 
 
 def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
+    mac_environment_api = importlib.import_module("odei_api.services.mac_environment_api")
     registry = json.dumps([{
         "issuer": principal.issuer,
         "subject": principal.subject,
