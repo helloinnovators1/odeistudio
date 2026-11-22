@@ -48,15 +48,25 @@ class MongoMacRevisionEnvironmentStore:
             latest = metadata.get("latest_version", 0)
             if isinstance(latest, bool) or not isinstance(latest, int) or latest < 0:
                 raise MacEnvironmentConflict("Environment latest-version pointer is invalid")
+            environment = metadata.get("environment", metadata.get("_id"))
+            if environment not in {"development", "staging", "production"}:
+                raise MacEnvironmentConflict("Environment metadata identity is invalid")
+            active = metadata.get("active_version", 0)
+            if isinstance(active, bool) or not isinstance(active, int) or not 0 <= active <= latest:
+                raise MacEnvironmentConflict("Environment active-version pointer is invalid")
             cursor = self.revisions.find(
-                {"environment": metadata.get("environment", metadata.get("_id"))},
-                {"version": 1, "_id": 0},
+                {"environment": environment},
+                {"version": 1, "status": 1, "_id": 0},
             ).sort("version", ASCENDING)
-            stored_versions = [item["version"] async for item in cursor]
-            if stored_versions != list(range(1, latest + 1)):
+            stored = [item async for item in cursor]
+            if [item["version"] for item in stored] != list(range(1, latest + 1)):
                 raise MacEnvironmentConflict(
                     "MAC revision history is incomplete; run and verify the revision migration before startup"
                 )
+            if active and not any(
+                item["version"] == active and item["status"] == "promoted" for item in stored
+            ):
+                raise MacEnvironmentConflict("Active environment revision is not marked promoted")
 
     async def get(self, environment: str, *, session: Any | None = None) -> dict[str, Any]:
         if environment not in {"development", "staging", "production"}:
