@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from odei_api.services.mac_deployments import (
@@ -30,9 +32,29 @@ class Attempts:
 
     async def find_one_and_update(self, query, update, return_document=True):
         item = self.items.get(query["_id"])
-        if item is None or any(item.get(k) != v for k, v in query.items()):
+        if item is None:
             return None
-        item.update(update["$set"])
+        def matches(candidate, condition):
+            for key, value in condition.items():
+                if key == "$or":
+                    if not any(matches(candidate, branch) for branch in value):
+                        return False
+                elif isinstance(value, dict):
+                    actual = candidate.get(key)
+                    if "$lt" in value and not (actual is not None and actual < value["$lt"]):
+                        return False
+                    if "$lte" in value and not (actual is not None and actual <= value["$lte"]):
+                        return False
+                    if "$gt" in value and not (actual is not None and actual > value["$gt"]):
+                        return False
+                elif candidate.get(key) != value:
+                    return False
+            return True
+        if not matches(item, query):
+            return None
+        item.update(update.get("$set", {}))
+        for key, value in update.get("$inc", {}).items():
+            item[key] = item.get(key, 0) + value
         return dict(item)
 
 
@@ -100,3 +122,58 @@ async def test_worker_ownership_and_bounded_result_are_enforced():
             attempt_id=attempt["_id"], worker_id="worker-1", verified=True,
             provider_deployment_id=None, result_summary="x" * 501,
         )
+
+
+
+@pytest.mark.asyncio
+async def test_worker_lease_heartbeat_expiry_reclaim_and_fencing():
+    attempts = Attempts()
+    store = MongoMacDeploymentStore(attempts, Environments())
+    attempt = await store.create_attempt(
+        environment="staging", version=7, provider="aws",
+        idempotency_key="lease-request-123", actor="oidc-operator",
+    )
+    first = await store.claim(
+        attempt_id=attempt["_id"], worker_id="worker-1", lease_seconds=15,
+    )
+    assert first["attempt_count"] == 1
+    assert first["lease_expires_at"] > datetime.now(timezone.utc)
+    renewed = await store.heartbeat(
+        attempt_id=attempt["_id"], worker_id="worker-1", lease_seconds=60,
+    )
+    assert renewed["lease_expires_at"] > first["lease_expires_at"]
+    with pytest.raises(MacDeploymentConflict):
+        await store.claim(attempt_id=attempt["_id"], worker_id="worker-2")
+
+    # Simulate a crashed worker by expiring its persisted lease.
+    attempts.items[attempt["_id"]]["lease_expires_at"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+    second = await store.claim(
+        attempt_id=attempt["_id"], worker_id="worker-2", lease_seconds=30,
+    )
+    assert second["attempt_count"] == 2
+    with pytest.raises(MacDeploymentConflict):
+        await store.finish(
+            attempt_id=attempt["_id"], worker_id="worker-1", verified=True,
+            provider_deployment_id="stale-worker", result_summary="Stale completion",
+        )
+    completed = await store.finish(
+        attempt_id=attempt["_id"], worker_id="worker-2", verified=True,
+        provider_deployment_id="deployment-2", result_summary="Verified",
+    )
+    assert completed["state"] == "succeeded"
+    assert completed["lease_expires_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_worker_lease_and_retry_limits_reject_invalid_values():
+    store = MongoMacDeploymentStore(Attempts(), Environments())
+    attempt = await store.create_attempt(
+        environment="staging", version=7, provider="aws",
+        idempotency_key="lease-request-456", actor="oidc-operator",
+    )
+    with pytest.raises(MacDeploymentError):
+        await store.claim(attempt_id=attempt["_id"], worker_id="worker-1", lease_seconds=True)
+    with pytest.raises(MacDeploymentError):
+        await store.claim(attempt_id=attempt["_id"], worker_id="worker-1", max_attempts=0)
