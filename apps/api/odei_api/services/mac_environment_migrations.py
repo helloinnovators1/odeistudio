@@ -6,8 +6,9 @@ writes is a separate deployment step; this module never silently changes it.
 """
 from __future__ import annotations
 
-from bson.json_util import CANONICAL_JSON_OPTIONS, dumps
 from typing import Any
+
+from bson.json_util import CANONICAL_JSON_OPTIONS, dumps
 
 from pymongo import ASCENDING
 
