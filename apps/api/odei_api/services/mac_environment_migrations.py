@@ -6,7 +6,7 @@ writes is a separate deployment step; this module never silently changes it.
 """
 from __future__ import annotations
 
-import json
+from bson.json_util import CANONICAL_JSON_OPTIONS, dumps
 from typing import Any
 
 from pymongo import ASCENDING
@@ -18,7 +18,7 @@ class MacRevisionMigrationConflict(RuntimeError):
 
 def _canonical(value: Any) -> str:
     """Compare BSON-compatible values independent of mapping key order."""
-    return json.dumps(value, sort_keys=True, default=str, separators=(",", ":"))
+    return dumps(value, json_options=CANONICAL_JSON_OPTIONS, sort_keys=True, separators=(",", ":"))
 
 
 async def initialize_mac_revision_collection(collection: Any) -> None:
@@ -62,10 +62,14 @@ async def backfill_mac_environment_revisions(
             if isinstance(version, bool) or not isinstance(version, int) or version < 1 or version in seen:
                 raise MacRevisionMigrationConflict("Legacy revision sequence is invalid")
             seen.add(version)
+            if "_id" in revision or "environment" in revision:
+                raise MacRevisionMigrationConflict(
+                    "Legacy revision contains reserved identity fields"
+                )
             document = {
+                **revision,
                 "_id": f"{environment_name}:{version}",
                 "environment": environment_name,
-                **revision,
             }
             existing = await revisions.find_one(
                 {"_id": document["_id"]}, session=session
