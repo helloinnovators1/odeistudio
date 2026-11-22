@@ -4,12 +4,13 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from hmac import compare_digest
+from typing import Literal
 from uuid import uuid4
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 from pymongo.errors import PyMongoError
 from starlette.concurrency import run_in_threadpool
 
@@ -27,6 +28,12 @@ from odei_api.services.conversation_store import MongoConversationStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
+from odei_api.services.mad_incidents import (
+    MadIncidentConflict,
+    MadIncidentNotFound,
+    MadIncidentValidationError,
+    MongoMadIncidentStore,
+)
 from odei_api.services.mad_telemetry import collect_mad_execution_metrics, evaluate_mad_alerts
 from odei_api.services.nexus_conversations import router as nexus_conversations_router
 from odei_api.services.nexus_execution import router as nexus_execution_router
@@ -40,6 +47,14 @@ from odei_api.services.task_store import MongoTaskStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
 logger = logging.getLogger(__name__)
+
+
+class MadIncidentTransitionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["acknowledge", "assign", "resolve", "reopen"]
+    expected_version: int = Field(ge=1)
+    assignee: StrictStr | None = Field(default=None, min_length=1, max_length=128)
+
 settings = get_settings()
 auth_principal_dependency = Depends(get_current_principal)
 
@@ -60,10 +75,14 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.mongo_client = client
         application.state.mongo_database = client[database_name] if client and database_name else None
         application.state.audit_event_store = None
+        application.state.mad_incident_store = None
         if application.state.mongo_database is not None:
             audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
             await audit_store.initialize()
             application.state.audit_event_store = audit_store
+            incident_store = MongoMadIncidentStore(application.state.mongo_database["mad_incidents"])
+            await incident_store.initialize()
+            application.state.mad_incident_store = incident_store
             await application.state.mongo_database["projects"].create_index(
                 [("organization_id", 1), ("project_id", 1)], unique=True
             )
@@ -284,8 +303,98 @@ async def mad_operator_execution_metrics(
             detail={"code": "MAD_METRICS_UNAVAILABLE", "message": "Operational metrics are temporarily unavailable."},
         ) from exc
     metrics["alerts"] = evaluate_mad_alerts(metrics)
+    incident_store = getattr(request.app.state, "mad_incident_store", None)
+    if incident_store is not None:
+        try:
+            await incident_store.record_alerts(metrics["alerts"])
+        except Exception as exc:
+            logger.warning("MAD incident observation persistence failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident observations could not be persisted."}) from exc
     await append_access_audit("success")
     return metrics
+
+
+@app.get(f"{settings.api_prefix}/mad/incidents", tags=["mad"])
+async def mad_list_incidents(
+    request: Request,
+    include_resolved: bool = False,
+    limit: int = 100,
+    principal: Principal = auth_principal_dependency,
+) -> dict[str, object]:
+    audit_store = getattr(request.app.state, "audit_event_store", None)
+    incident_store = getattr(request.app.state, "mad_incident_store", None)
+    if audit_store is None or incident_store is None:
+        raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident and audit storage is unavailable."})
+    allowed = "mad:read" in principal.scopes
+    try:
+        await audit_store.append(
+            organization_id="platform", actor_issuer=principal.issuer,
+            actor_subject=principal.subject, action="mad.incidents.read",
+            target_type="platform_incidents", target_id="execution",
+            outcome="success" if allowed else "denied", request_id=uuid4().hex,
+            metadata={"include_resolved": include_resolved, "limit": limit},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Incident access audit could not be recorded."}) from exc
+    if not allowed:
+        raise HTTPException(status_code=403, detail={"code": "MAD_SCOPE_REQUIRED", "message": "The verified identity lacks the mad:read scope."})
+    try:
+        incidents = await incident_store.list_incidents(include_resolved=include_resolved, limit=limit)
+    except MadIncidentValidationError as exc:
+        raise HTTPException(status_code=422, detail={"code": "MAD_INCIDENT_QUERY_INVALID", "message": str(exc)}) from exc
+    for incident in incidents:
+        incident["id"] = incident.pop("_id", incident.get("incident_id"))
+    return {"incidents": incidents}
+
+
+@app.post(settings.api_prefix + "/mad/incidents/{incident_id}/transitions", tags=["mad"])
+async def mad_transition_incident(
+    incident_id: str,
+    payload: MadIncidentTransitionRequest,
+    request: Request,
+    principal: Principal = auth_principal_dependency,
+) -> dict[str, object]:
+    audit_store = getattr(request.app.state, "audit_event_store", None)
+    incident_store = getattr(request.app.state, "mad_incident_store", None)
+    if audit_store is None or incident_store is None:
+        raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident and audit storage is unavailable."})
+    allowed = "mad:incident:manage" in principal.scopes
+    if not allowed:
+        try:
+            await audit_store.append(
+                organization_id="platform", actor_issuer=principal.issuer,
+                actor_subject=principal.subject, action="mad.incident.transition",
+                target_type="platform_incident", target_id=incident_id,
+                outcome="denied", request_id=uuid4().hex,
+                metadata={"transition": payload.action},
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Incident denial audit could not be recorded."}) from exc
+        raise HTTPException(status_code=403, detail={"code": "MAD_INCIDENT_SCOPE_REQUIRED", "message": "The verified identity lacks mad:incident:manage."})
+    try:
+        incident = await incident_store.transition(
+            incident_id=incident_id, action=payload.action, actor=principal.subject,
+            expected_version=payload.expected_version, assignee=payload.assignee,
+        )
+    except MadIncidentNotFound as exc:
+        raise HTTPException(status_code=404, detail={"code": "MAD_INCIDENT_NOT_FOUND", "message": "Incident does not exist."}) from exc
+    except MadIncidentConflict as exc:
+        raise HTTPException(status_code=409, detail={"code": "MAD_INCIDENT_CONFLICT", "message": str(exc)}) from exc
+    except MadIncidentValidationError as exc:
+        raise HTTPException(status_code=422, detail={"code": "MAD_INCIDENT_TRANSITION_INVALID", "message": str(exc)}) from exc
+    try:
+        await audit_store.append(
+            organization_id="platform", actor_issuer=principal.issuer,
+            actor_subject=principal.subject, action="mad.incident." + payload.action,
+            target_type="platform_incident", target_id=incident_id,
+            outcome="success", request_id=uuid4().hex,
+            metadata={"version": incident["version"], "status": incident["status"]},
+        )
+    except Exception as exc:
+        logger.error("MAD incident transition audit failed after state change (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Incident changed but its audit record could not be confirmed; inspect incident history before retrying."}) from exc
+    incident["id"] = incident.pop("_id", incident.get("incident_id"))
+    return {"incident": incident}
 
 
 @app.get(f"{settings.api_prefix}/mac/access", tags=["mac"])
