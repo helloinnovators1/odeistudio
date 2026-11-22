@@ -2,18 +2,19 @@
 
 This roadmap is ordered by dependencies. Status is updated only from repository artifacts and completed test evidence. A checked item means the described artifact or test exists; it does not imply production readiness. A design document alone does not count as an implemented capability.
 
-## Current verified delivery position — 2026-11-21
+## Current verified delivery position — 2026-11-22
 
-This update supersedes older historical checklist statements below where they describe NEXUS capabilities as not yet integrated.
+This status supersedes older roadmap statements below. Older phase checklists remain historical and must be reconciled as the relevant implementation work is reviewed.
 
-- **NEXUS chat:** browser PKCE sign-in/callback foundation, authorized organization/project discovery, explicit cloud consent, streamed chat/cancellation, durable owner-scoped conversations, attached-excerpt inspection, review-only patch proposals, owner decisions and bounded task planning are integrated on main.
-- **Local apply:** merged in PR #24 as commit `1a5e6d9479b4a5b0dfac6d09b6dba61aac42163b`. The browser can apply an approved single-file proposal through a paired companion using a short-lived signed capability, a fresh one-use challenge, live base-hash verification and handle-relative atomic replacement. Windows CI passed Python 3.10/3.12; this is not yet validated on the user's Windows 10 build 18362 device.
-- **Recovery boundary:** multi-file transactions, durable rollback journals and crash recovery are not implemented. Single-file atomic replacement must not be described as a multi-file transaction or rollback capability.
-- **External release gates:** actual ODID issuer/client/redirect/resource/scope registration and token refresh/revocation contract; production API issuer/JWKS/CORS configuration; MongoDB replica-set deployment; model-provider credentials; local companion installation and end-to-end validation on Windows 10 build 18362.
-- **Execution engine:** no isolated terminal, command runner, build/test execution, package installation, artifact lifecycle or crash-safe execution journal is implemented. These remain the next engineering phase after NEXUS apply acceptance.
-- **MAC/MAD:** requirements and architecture documentation exist; central secret/environment/provider governance and operational dashboards/metrics are not implemented.
-- **Release discipline:** passing checks on a PR head do not constitute production deployment. Merge and deploy only after required checks, security review, Windows device acceptance, external configuration and smoke tests.
-
+- **NEXUS chat and identity:** browser PKCE foundation, refresh/revocation lifecycle, server-authorized organization/project selection, consent, streamed chat/cancellation, durable owner-scoped conversations, attached-excerpt inspection, task planning/approval and patch-proposal review are integrated. Real ODID registration and staging validation remain external.
+- **Local companion:** selected-folder scanning is designed to avoid manual ZIP packaging; read-only scanning and a signed challenge-bound single-file apply path are integrated. Multi-file transactions, durable rollback and crash recovery are not implemented. Actual Windows 10 build 18362.1256 device acceptance remains open.
+- **NEXUS execution:** PRs #26–#33 are merged to main. The integrated stack contains the OCI sandbox runner, durable run/event/lease persistence, bounded snapshot ingestion and GridFS storage, authenticated project/task execution routes, standalone worker, NEXUS panel consent/run integration, heuristic credential scanning, worker heartbeats and MAD aggregate metrics API. This is repository integration, not an operational worker service.
+- **Execution security:** before untrusted multi-tenant code is enabled, provision a dedicated Linux worker, pre-verified immutable image digests, hardened isolation (gVisor/Kata/microVM or equivalent), no host credentials, restricted egress, quotas, content/DLP/malware policy, backup/restore and crash/cancellation/recovery acceptance.
+- **MAD:** private aggregate execution telemetry API exists. The actual authenticated dashboard, broad infrastructure telemetry, alert routing, incidents and operational runbooks remain incomplete.
+- **MAC:** requirements and architecture exist; operational secret/environment lifecycle, provider adapters, privileged RBAC/ABAC, approvals, vault/KMS integration, audit, rotation and rollback remain incomplete.
+- **Agents Window / CLI / cloud/background agents:** not implemented as complete end-to-end workflows.
+- **CI:** on follow-up commit `21b6ffbf73dd575f29050c00a49cbe1abb3ceefe`, MongoDB integration, Windows/Ubuntu Python matrix, web, dependency audits and secret scanning were triggered. The latest check showed Windows Python 3.10 and CodeQL still running. Verify exact-head results before release.
+- **Production:** no deployment is claimed. Real ODID, MongoDB, model/provider, worker, secret-manager and hosting configuration; staging E2E; target Windows device acceptance; backup/restore and production rollback remain mandatory gates.
 
 ## Phase 0 — Repository and security baseline
 

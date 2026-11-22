@@ -25,7 +25,7 @@ The first backend is an OCI-container runner intended for a dedicated Linux work
 
 ## Snapshot contract
 
-The execution worker must build a new snapshot from an explicitly authorized project/workspace version. Snapshot ingestion must reject absolute paths, traversal, symlinks, hard links, device/FIFO/socket entries, duplicate normalized paths, oversized files and aggregate size/file-count overflow. It must record a content digest and provenance. Snapshot extraction and object-store persistence are not part of the current runner module and must be implemented before exposing execution to users.
+The authenticated execution API accepts only explicitly consented bounded workspace archives and validates them through the snapshot ingestor before GridFS storage. The worker retrieves tenant/project/task-bound metadata, re-ingests the archive into a fresh private workspace and verifies the deterministic content-manifest digest before invoking the sandbox. This path is integrated in the repository; production content/DLP/malware scanning policy, hardened runtime and live staging acceptance remain required.
 
 ## Tool and profile contract
 
@@ -33,21 +33,13 @@ NEXUS may select only profile identifiers registered by the server, such as `pyt
 
 ## Worker and persistence requirements
 
-The durable run/lease store is now implemented in services/execution_runs.py with transactional run/event writes, worker claim and heartbeat, lease expiry reclamation, version checks and cancellation intent. See EXECUTION_RUNS.md. It remains an internal persistence layer, not a public execution service. The next integration layer must provide:
-1. MongoDB-backed execution-run records and append-only events with optimistic versions.
-2. Atomic task/run/event/audit transitions and transaction-capable MongoDB topology.
-3. A worker lease with heartbeat, lease expiry, retry limits and idempotent completion.
-4. Cancellation that terminates the container and confirms cleanup.
-5. Bounded, redacted logs and artifacts with tenant-scoped retrieval and retention.
-6. Worker readiness and queue-depth metrics with freshness timestamps.
-7. Recovery for worker restart, lost lease, timeout, partial artifact upload and orphaned containers.
-8. API authorization on every read, create, approve, cancel and artifact request.
+The durable run/lease store is integrated with authenticated execution routes and the standalone worker. It provides transactional run/event/audit/task transitions, tenant-scoped access, worker leases and renewal, expiry reclamation, retry limits, cancellation intent, bounded redacted artifacts and retention. The operational recovery boundary remains subject to staging tests for worker crash/restart, duplicate delivery, cancellation races, partial GridFS writes, orphaned containers and orphaned blobs.
 
 ## Current implementation status
 
-The branch `feat/nexus-isolated-execution-engine` adds `services/execution_sandbox.py`, a shell-free OCI command builder and runner with digest-pinned profiles, network isolation, non-root execution, read-only root filesystem, capability drop, no-new-privileges, resource limits, bounded output, workspace containment checks, link/special-file rejection and cleanup attempts. Unit/contract tests are added for the security arguments, workspace validation and runner result handling.
+The integrated mainline includes `services/execution_sandbox.py`, a shell-free OCI command builder and runner with digest-pinned profiles, network isolation, non-root execution, read-only root filesystem, capability drop, no-new-privileges, resource limits, bounded output, workspace containment checks, link/special-file rejection and cleanup attempts. Unit/contract tests cover the security arguments, workspace validation and runner result handling.
 
-This remains an execution-backend foundation plus a durable run/lease persistence layer only. The API CI run on commit `df36b08` passed on Ubuntu and Windows with Python 3.10 and 3.12: Ubuntu reported 264 passed and 10 skipped on each version; Windows reported 266 passed and 8 skipped on each version. MongoDB replica-set integration and web tests/build passed. CodeQL, secret scanning and Python/web dependency audits also passed. The in-process server-approved profile registry is implemented, but it is not yet connected to authenticated tenant-scoped profile selection, NEXUS task approval, durable execution-run records, snapshot creation/storage, a worker queue, API routes, cancellation events, artifact retrieval or MAD metrics. No production command execution is enabled by this branch.
+The integrated repository now contains the authenticated tenant-scoped execution API, task approval/consent gate, snapshot storage, durable run/events, standalone worker, cancellation and artifact retrieval, plus worker heartbeat and private MAD aggregate metrics. The assembled mainline commit `47fcd781a39bfff27a60eee7bc77b5ea9fe4685c` passed the Windows/Ubuntu Python 3.10/3.12 matrix, MongoDB integration, web, dependency audits and secret scanning; CodeQL was still in progress at the last check. Follow-up commit `21b6ffbf73dd575f29050c00a49cbe1abb3ceefe` corrects MAD worker-state classification and adds regression tests; its exact-head CI must finish before the fix is considered verified. No production command execution is enabled until a dedicated hardened worker host, reviewed profiles and staging acceptance exist.
 
 ## Acceptance gates
 
@@ -63,12 +55,12 @@ This remains an execution-backend foundation plus a durable run/lease persistenc
 
 ## Workspace snapshot ingestion
 
-A bounded ZIP ingestion module is implemented on the stacked workspace-snapshot branch. It validates archive metadata and actual expanded bytes, rejects unsafe path/link entries and writes a deterministic content snapshot into a fresh worker directory. It is not yet exposed as an authenticated API or backed by durable object storage; do not use it as a direct browser-to-worker upload path until those controls are integrated.
+A bounded ZIP ingestion module is integrated into the authenticated execution API and worker path. It validates archive metadata and expanded bytes, rejects unsafe path/link entries and creates a deterministic content snapshot in a fresh worker directory. GridFS stores the archive and tenant-scoped metadata. Production scanning policy and staging acceptance remain open.
 
 
 ## Authenticated API and snapshot storage
 
-The API now provides authenticated project/task-scoped execution profile listing, execution creation with separate upload and execution consent, run reads, cursor-paginated events and cancellation requests. GridFS stores archive bytes; metadata and run records are tenant scoped. Creation atomically consumes the approved task and creates the run/event/audit records. See EXECUTION_API.md. This is still not a live worker deployment.
+The API provides authenticated project/task-scoped execution profile listing, execution creation with separate upload and execution consent, run reads, cursor-paginated events, cancellation requests and tenant-authorized artifact retrieval. GridFS stores archive bytes; metadata and run records are tenant scoped. Creation atomically consumes the approved task and creates the run/event/audit records. See EXECUTION_API.md. This is still not a live worker deployment.
 
 
 ## Standalone worker and result lifecycle

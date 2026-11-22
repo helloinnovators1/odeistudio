@@ -1,30 +1,38 @@
-## Current verified implementation snapshot — 2026-11-21
+# Implementation Status
 
-This snapshot supersedes earlier milestone notes below where they describe capabilities as still disabled or not yet implemented.
+## Current verified repository snapshot — 2026-11-22
 
-| NEXUS capability | Current repository state |
-|---|---|
-| ODID browser PKCE client and callback integration | Implemented as configurable browser foundation; real issuer/client registration and staging verification still required |
-| Authenticated identity and organization discovery | Browser flow and server-authorized organization/project selection integrated; production ODID configuration remains external |
-| Active composer and send interaction | Implemented |
-| Incremental AI streaming and browser cancellation | Implemented; provider-side cancellation is best-effort |
-| Durable project-scoped conversations | Implemented with owner isolation, bounded history and optimistic versions |
-| Task planning and owner approval | Implemented; approval records intent and does not execute |
-| Attached-file NEXUS inspection tools | Implemented for explicitly attached excerpts only; not whole-repository access |
-| Chat-generated file-change proposals | Merged in PR #21; persisted, redacted and owner-reviewable |
-| Persistent proposal history and diff review | Implemented on main |
-| Project-owner approve/reject decisions | Implemented on main; version checked; decision does not apply files |
-| Local file application | Implemented and merged in PR #24: one-file signed, challenge-bound companion apply with live base-hash verification and handle-relative atomic replacement. Requires explicit local write opt-in and matched server/companion signing configuration |
-| Multi-file apply, durable rollback and crash recovery | Not implemented; single-file atomicity is not a multi-file transaction or rollback journal |
-| Isolated terminal/test execution | Not implemented |
-| Agents Window, CLI, cloud/background agents, MAC/MAD | Not implemented beyond documented foundations |
-| Production deployment and real ODID staging | Not completed |
+This is the authoritative current status. Sections after the historical separator record prior implementation increments and must not override this snapshot.
 
-Merged chat-related increments: [PR #14](https://github.com/helloinnovators1/odeistudio/pull/14), [PR #18](https://github.com/helloinnovators1/odeistudio/pull/18), [PR #19](https://github.com/helloinnovators1/odeistudio/pull/19), and [PR #24](https://github.com/helloinnovators1/odeistudio/pull/24). Generated proposals and owner review are merged in [PR #21](https://github.com/helloinnovators1/odeistudio/pull/21). Signed apply-capability issuance was merged in [PR #22](https://github.com/helloinnovators1/odeistudio/pull/22). PR #24 merged as `1a5e6d9479b4a5b0dfac6d09b6dba61aac42163b`. Its exact source head passed Ubuntu/Windows Python 3.10/3.12, MongoDB replica-set integration, web tests/build, CodeQL, secret scanning and both dependency audits.
+| Capability | Repository state | External acceptance still required |
+|---|---|---|
+| NEXUS chat and project workflows | Integrated: ODID PKCE foundation, authorized organization/project selection, consent, composer, streaming/cancellation, durable owner-scoped conversations, attached-excerpt inspection, task planning/approval and proposal review | Real ODID issuer/client/redirect/resource/scopes, production API issuer/JWKS/CORS, staging identity and tenant tests |
+| Local companion and approved apply | Integrated: explicit folder selection, bounded read-only scanning, pairing and signed challenge-bound single-file apply | Install and test on the actual Windows 10 build 18362.1256 device; signed installer/update and key rotation |
+| Multi-file apply and durable recovery | Not implemented | Transaction journal, rollback, crash recovery and acceptance tests |
+| NEXUS execution stack | PRs #26–#33 merged to main: OCI sandbox foundation, durable runs/leases, bounded snapshots, authenticated execution API, standalone worker, chat-panel integration, credential heuristics and MAD worker metrics API | Dedicated Linux worker, reviewed immutable profiles, hardened isolation, production storage/secrets, staging E2E and incident/recovery drills |
+| MAD | Worker heartbeat and private aggregate execution metrics API implemented | Authenticated dashboard UI, complete service/queue/storage metrics, alerts, incidents, freshness and operator authorization |
+| MAC | Requirements and architecture documented; not a complete operational control plane | Server-enforced operator RBAC/ABAC, KMS/vault integration, provider adapters, approvals, audit, rotation and rollback |
+| Agents Window / CLI / cloud or background agents | Not implemented as complete product workflows | Agent lifecycle, policy enforcement, tools, orchestration, observability and acceptance |
+| Production deployment | Not completed or claimed | Real provider configuration, staging acceptance, backups/restore, release provenance, approval, monitored rollout and rollback |
 
-Important external gates: actual ODID issuer/discovery, public browser client ID, registered redirect URI, scopes/resource and access-token profile; production API issuer/audience/JWKS/client allowlist; MongoDB replica-set deployment; model credentials; approved hosting and CORS origins. Do not paste secrets or tokens into chat. The local companion has not been installed/run on the user's Windows 10 build 18362 machine, no desktop folders have been scanned, and no real browser-to-local-companion staging test has been completed.
+### Mainline and CI evidence
 
-Approval is not blanket write access. PR #22 adds an owner-only short-lived signed capability bound to a proposal, workspace, content digest and fresh companion challenge. PR #24 adds independent local verification and a single-file handle-relative atomic apply path. The browser only exposes Apply for an approved one-file proposal when the paired companion advertises `patch:apply`. Multi-file transactions, durable rollback/recovery, isolated execution and local Windows 10 build 18362 validation remain outstanding.
+- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged. GitHub reported no open PRs or open issues in the repository at the latest inspection.
+- Mainline integration commit: `47fcd781a39bfff27a60eee7bc77b5ea9fe4685c`.
+- Follow-up MAD telemetry correctness fix and documentation refresh: `21b6ffbf73dd575f29050c00a49cbe1abb3ceefe`.
+- On the follow-up commit, MongoDB integration, Windows/Ubuntu Python 3.10/3.12, web checks, Python/web dependency audits and secret scanning were started. At the latest inspection, the Windows Python 3.10 matrix and CodeQL were still running; do not report the commit fully green until both finish successfully.
+- GitHub-hosted Windows CI is not proof of compatibility with the user's Windows 10 version 1903 / build 18362.1256 device.
+
+### Security and release boundaries
+
+- A database credential was previously exposed in project setup material. Treat it as compromised until rotated in the source provider, all dependent services updated, and old credentials revoked. Never commit or paste secrets.
+- Secret-pattern heuristics are not a complete DLP or malware scanner and cannot guarantee that uploaded workspaces contain no secrets.
+- OCI container flags alone are not a complete hostile multi-tenant isolation boundary. Provision and validate a dedicated Linux worker with an appropriate hardened runtime (for example gVisor, Kata or microVM), no host credential mounts, restricted egress, quotas and monitoring.
+- Documentation and CI do not prove production provider connectivity, worker execution, desktop scanning, staging acceptance or deployment. No production deployment is claimed.
+
+### NEXUS interaction and local write constraints
+
+The browser editor remains read-only. The local companion's approved apply path is limited to a single file, requires project-owner approval, explicit local opt-in, a short-lived signed capability, a fresh one-use challenge and a live base-hash match. Multi-file transactions, durable rollback and crash recovery are not implemented. Execution success moves work into validation; it is not equivalent to task completion or user acceptance.
 
 ---
 
