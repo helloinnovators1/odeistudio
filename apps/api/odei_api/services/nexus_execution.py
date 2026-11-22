@@ -314,7 +314,7 @@ async def cancel_execution(
     try:
         updated = await store.request_cancel(
             organization_id=organization_id, run_id=run_id,
-            actor_id=identity_owner_key(principal.issuer, principal.subject),
+            actor_id="authenticated-user",
             audit_event=_audit_event(principal, organization_id, run_id, "nexus.execution.cancel"),
         )
     except ExecutionRunConflict as exc:
