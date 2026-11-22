@@ -54,6 +54,18 @@ The repository now includes a server-configured platform operator registry and a
 - API: `GET /api/v1/mac/access`, requiring a normal RS256/JWKS-verified ODEI access token. Roles are resolved only from the server configuration using the verified issuer and subject; token claims, browser parameters and organization membership roles do not grant platform privileges.
 - Roles currently defined: `platform_owner`, `super_admin`, `infrastructure_admin`, `security_admin` and `read_only_auditor`.
 - The response returns the resolved role names and the corresponding permission identifiers. The reusable `require_mac_permission` guard fails closed when a permission is absent.
+
+The current baseline permission mapping is:
+
+| Server-assigned role | Permissions |
+|---|---|
+| `platform_owner` | All current MAC permissions, including identity administration |
+| `super_admin` | MAC read, environment, secrets, providers, security, deployment approval and audit; excludes identity administration |
+| `infrastructure_admin` | MAC read, environment, provider and deployment approval |
+| `security_admin` | MAC read, secrets, security and audit |
+| `read_only_auditor` | MAC read and audit read only |
+
+Assignments use exact issuer/subject strings and subjects must fit the audit identity identifier contract. A signed token scope or browser-provided role cannot add to this permission set.
 - Successful and denied access checks are written to the append-only audit store under the platform scope. If audit storage or the audit write is unavailable, access fails closed.
 
 Example shape (replace all illustrative values through the deployment's approved configuration process; do not use this example as a real assignment):
