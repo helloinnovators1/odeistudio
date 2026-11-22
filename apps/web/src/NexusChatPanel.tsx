@@ -299,16 +299,17 @@ export default function NexusChatPanel({
 
   useEffect(() => {
     const accessToken = access?.accessToken;
+    const apiBaseUrl = config.apiBaseUrl;
     const runId = executionRun?.run_id;
     const taskId = executionRun?.task_id;
-    if (!accessToken || !runId || !taskId || !config.apiBaseUrl || !organizationId || !projectId) return;
+    if (!accessToken || !apiBaseUrl || !runId || !taskId || !organizationId || !projectId) return;
     let active = true;
     let timer: number | undefined;
     const controller = new AbortController();
     async function pollRun() {
       try {
         const updated = await getNexusExecution(
-          config.apiBaseUrl, organizationId, projectId, taskId, runId,
+          apiBaseUrl, organizationId, projectId, taskId, runId,
           accessToken, fetch, controller.signal,
         );
         if (!active) return;
@@ -317,7 +318,7 @@ export default function NexusChatPanel({
         if (terminal) {
           try {
             const artifacts = await getNexusExecutionArtifacts(
-              config.apiBaseUrl, organizationId, projectId, taskId, runId,
+              apiBaseUrl, organizationId, projectId, taskId, runId,
               accessToken, fetch, controller.signal,
             );
             if (active) setExecutionArtifacts(artifacts);
