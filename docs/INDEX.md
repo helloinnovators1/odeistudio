@@ -6,6 +6,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Ecosystem handbook](ECOSYSTEM.md) — product vision, ecosystem map, principles and end-to-end workflows.
 - [Architecture foundation](ARCHITECTURE.md) — system planes, boundaries and core architecture.
 - [Implementation status](IMPLEMENTATION_STATUS.md) — verified work, unverified items and next steps.
+- [Verified delivery snapshot — 2026-11-22](VERIFIED_DELIVERY_SNAPSHOT_2026-11-22.md) — current merged capabilities, CI evidence, safety boundaries and operational blockers.
 - [Implementation roadmap](ROADMAP.md) — phased delivery, dependencies and acceptance gates.
 - [Engineering standards](ENGINEERING_STANDARDS.md) — code quality, API, testing and contribution rules.
 - [Security and privacy](SECURITY.md) — threat model, secrets, isolation, identity and incident handling.
