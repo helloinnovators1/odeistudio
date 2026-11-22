@@ -14,9 +14,9 @@ import time
 import uuid
 from pathlib import Path
 
-from odei_api.config import get_settings
 from pymongo.errors import PyMongoError
 
+from odei_api.config import get_settings
 from odei_api.mongo_client import create_mongo_client
 from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
