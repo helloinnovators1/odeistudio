@@ -246,9 +246,94 @@ export default function NexusChatPanel({
   }, [messages, sending]);
 
   useEffect(() => {
-    setAttachActiveFile(false);
-    setUseAttachedTools(false);
-  }, [activeFile?.path, activeFile?.content]);
+    const accessToken = access?.accessToken;
+    if (!accessToken || !config.apiBaseUrl || !organizationId || !projectId) {
+      setExecutionProfiles([]);
+      setExecutionProfileId("");
+      setExecutionError("");
+      return;
+    }
+    let active = true;
+    const controller = new AbortController();
+    setExecutionError("");
+    void listNexusExecutionProfiles(
+      config.apiBaseUrl, organizationId, projectId, accessToken, fetch, controller.signal,
+    ).then((profiles) => {
+      if (!active) return;
+      setExecutionProfiles(profiles);
+      setExecutionProfileId((current) =>
+        profiles.some((profile) => profile.profile_id === current)
+          ? current : profiles[0]?.profile_id ?? "",
+      );
+      if (profiles.length === 0) setExecutionError("No server-approved execution profiles are configured.");
+    }).catch((cause: unknown) => {
+      if (active && !controller.signal.aborted) setExecutionError(errorMessage(cause));
+    });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId]);
+
+  useEffect(() => {
+    const accessToken = access?.accessToken;
+    const runId = executionRun?.run_id;
+    const taskId = executionRun?.task_id;
+    if (!accessToken || !runId || !taskId || !config.apiBaseUrl || !organizationId || !projectId) return;
+    let active = true;
+    let timer: number | undefined;
+    const controller = new AbortController();
+    async function pollRun() {
+      try {
+        const updated = await getNexusExecution(
+          config.apiBaseUrl, organizationId, projectId, taskId, runId,
+          accessToken, fetch, controller.signal,
+        );
+        if (!active) return;
+        setExecutionRun(updated);
+        const terminal = ["completed", "failed", "cancelled", "expired"].includes(updated.status);
+        if (terminal) {
+          try {
+            const artifacts = await getNexusExecutionArtifacts(
+              config.apiBaseUrl, organizationId, projectId, taskId, runId,
+              accessToken, fetch, controller.signal,
+            );
+            if (active) setExecutionArtifacts(artifacts);
+          } catch {
+            if (active) setExecutionArtifacts(null);
+          }
+          const taskStatus = updated.status === "completed" ? "validating"
+            : updated.status === "cancelled" ? "cancelled" : "failed";
+          setTaskPlan((current) => current && current.task_id === taskId && current.status !== taskStatus
+            ? { ...current, status: taskStatus, version: current.version + 1 }
+            : current);
+          setNotice(updated.status === "completed"
+            ? "Sandbox execution finished. The task is now awaiting validation and review."
+            : updated.status === "cancelled"
+              ? "Execution cancellation completed."
+              : "Execution ended without a successful sandbox result.");
+          return;
+        }
+        timer = window.setTimeout(() => void pollRun(), 2_000);
+      } catch (cause) {
+        if (!active || controller.signal.aborted) return;
+        setExecutionError(errorMessage(cause));
+        timer = window.setTimeout(() => void pollRun(), 4_000);
+      }
+    }
+    void pollRun();
+    return () => {
+      active = false;
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId, executionRun?.run_id]);
+
+  useEffect(() => {
+    setWorkspaceUploadConsent(false);
+    setCodeExecutionConsent(false);
+    setExecutionError("");
+  }, [workspaceContext?.workspaceId]);
 
   async function signIn() {
     if (!config.auth) {
