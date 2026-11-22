@@ -11,12 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from odei_api.companion import (
-    ApplyChallengeManager,
-    ApplyPatchRequest,
-    PairingManager,
-    create_companion_app,
-)
+from odei_api.companion import ApplyChallengeManager, PairingManager, create_companion_app
 from odei_api.config import Settings
 from odei_api.services.patch_approval import issue_patch_apply_capability
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
@@ -575,6 +570,30 @@ def _build_apply_client(tmp_path):
     return TestClient(app, base_url=BASE_URL), registry, pairing, code, workspace_id, settings, original
 
 
+def test_companion_apply_request_rejects_boolean_proposal_version():
+    from pydantic import ValidationError
+
+    from odei_api.companion import ApplyPatchRequest
+
+    payload = {
+        "organization_id": "org-1",
+        "project_id": "project-1",
+        "proposal_id": "proposal-1",
+        "proposal_version": True,
+        "companion_challenge": "c" * 32,
+        "capability": "signed-capability",
+        "files": [{
+            "path": "main.py",
+            "operation": "create",
+            "base_sha256": None,
+            "result_sha256": "0" * 64,
+            "content": "print('ODEI')",
+        }],
+    }
+    with pytest.raises(ValidationError):
+        ApplyPatchRequest.model_validate(payload)
+
+
 def test_companion_apply_challenge_is_short_lived_session_bound_and_one_use():
     now = [100.0]
     manager = ApplyChallengeManager(ttl_seconds=60, clock=lambda: now[0])
@@ -895,25 +914,3 @@ def test_companion_environment_diagnostics_reject_invalid_public_http_origin():
 
     report = diagnose_companion_environment(port=8765, allowed_origins=["http://studio.example.test"])
     assert report["checks"]["browser_origins"]["ok"] is False
-
-
-
-def test_apply_request_rejects_boolean_proposal_version() -> None:
-    replacement = "print('NEXUS')"
-    file_item = {
-        "path": "main.py",
-        "operation": "create",
-        "base_sha256": None,
-        "result_sha256": hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
-        "content": replacement,
-    }
-    with pytest.raises(ValueError):
-        ApplyPatchRequest.model_validate({
-            "organization_id": "org-1",
-            "project_id": "project-1",
-            "proposal_id": "proposal-1",
-            "proposal_version": True,
-            "companion_challenge": "c" * 32,
-            "capability": "placeholder",
-            "files": [file_item],
-        })
