@@ -20,6 +20,7 @@ dependencies = [
 [project.scripts]
 odei-companion = "odei_api.companion:main"
 odei-execution-worker = "odei_api.execution_worker:main"
+odei-mac-revision-migration = "odei_api.mac_revision_migration:main"
 
 [project.optional-dependencies]
 dev = [
