@@ -312,7 +312,7 @@ async def request_environment_deployment(
     principal: Principal = principal_dependency,
 ):
     _environment_store, audit = await _context(
-        request, principal, "mac:deployments:approve", environment
+        request, principal, "mac:deployments:request", environment
     )
     deployment_store = getattr(request.app.state, "mac_deployment_store", None)
     if deployment_store is None:
