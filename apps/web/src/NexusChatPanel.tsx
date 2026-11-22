@@ -18,8 +18,10 @@ import {
   createNexusExecution,
   getNexusExecution,
   getNexusExecutionArtifacts,
+  listNexusExecutionEvents,
   listNexusExecutionProfiles,
   type NexusExecutionArtifacts,
+  type NexusExecutionEvent,
   type NexusExecutionProfile,
   type NexusExecutionRun,
 } from "./nexus-executions";
@@ -113,6 +115,8 @@ export default function NexusChatPanel({
   const [workspaceUploadConsent, setWorkspaceUploadConsent] = useState(false);
   const [codeExecutionConsent, setCodeExecutionConsent] = useState(false);
   const [executionRun, setExecutionRun] = useState<NexusExecutionRun | null>(null);
+  const [executionEvents, setExecutionEvents] = useState<NexusExecutionEvent[]>([]);
+  const executionEventVersionRef = useRef(-1);
   const [executionArtifacts, setExecutionArtifacts] = useState<NexusExecutionArtifacts | null>(null);
   const [snapshotSummary, setSnapshotSummary] = useState("");
   const executionAbortRef = useRef<AbortController | null>(null);
@@ -235,7 +239,7 @@ export default function NexusChatPanel({
       setMessages([]); setConversations([]); setConversationId("");
       setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false); setChatError("");
       setTaskPlan(null); setTaskError(""); setPatchProposals([]); setSelectedPatch(null); setPatchError("");
-      setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionArtifacts(null);
+      setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
       setNotice(message);
@@ -331,6 +335,21 @@ export default function NexusChatPanel({
         );
         if (!active) return;
         setExecutionRun(updated);
+        const eventPage = await listNexusExecutionEvents(
+          apiBaseUrl, selectedOrganizationId, selectedProjectId, taskId, runId,
+          accessToken, executionEventVersionRef.current, fetch, controller.signal,
+        );
+        if (!active) return;
+        if (eventPage.events.length > 0) {
+          setExecutionEvents((current) => {
+            const known = new Set(current.map((event) => event.event_id));
+            return [...current, ...eventPage.events.filter((event) => !known.has(event.event_id))]
+              .sort((left, right) => left.version - right.version).slice(-100);
+          });
+          executionEventVersionRef.current = Math.max(
+            executionEventVersionRef.current, eventPage.next_after_version,
+          );
+        }
         const terminal = ["completed", "failed", "cancelled", "expired"].includes(updated.status);
         if (terminal) {
           try {
@@ -408,7 +427,7 @@ export default function NexusChatPanel({
     setConversationId("");
     setTaskPlan(null);
     setTaskError("");
-    setExecutionRun(null);
+    setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
     setExecutionArtifacts(null);
     setExecutionError("");
     setExecutionBusy(false);
@@ -448,7 +467,7 @@ export default function NexusChatPanel({
         goal, projectContext, controller.signal,
       );
       setTaskPlan(task);
-      setExecutionRun(null);
+      setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
       setExecutionArtifacts(null);
       setSnapshotSummary("");
       setDraft("");
@@ -534,6 +553,8 @@ export default function NexusChatPanel({
         return;
       }
       const now = new Date().toISOString();
+      executionEventVersionRef.current = -1;
+      setExecutionEvents([]);
       setExecutionRun({
         run_id: created.run_id, organization_id: organizationId,
         project_id: projectId, task_id: taskPlan.task_id,
@@ -639,7 +660,7 @@ export default function NexusChatPanel({
     setOrganizations([]); setOrganizationId(""); setProjects([]); setProjectId("");
     setMessages([]); setConversations([]); setConversationId("");
     setTaskPlan(null); setTaskError("");
-    setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionArtifacts(null);
+    setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
     setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
     setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
     setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
@@ -845,7 +866,7 @@ export default function NexusChatPanel({
               setProjectId("");
               setTaskPlan(null);
               setTaskError("");
-              setExecutionRun(null);
+              setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
               setExecutionArtifacts(null);
               setExecutionError("");
               setSnapshotSummary("");
@@ -882,7 +903,7 @@ export default function NexusChatPanel({
                 setProjectId(event.target.value);
                 setTaskPlan(null);
                 setTaskError("");
-                setExecutionRun(null);
+                setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
                 setExecutionArtifacts(null);
                 setExecutionError("");
                 setSnapshotSummary("");
@@ -1072,6 +1093,20 @@ export default function NexusChatPanel({
                 <small>Run: {executionRun.run_id}</small>
                 <small>Profile: {executionRun.profile_id} · Attempt {executionRun.attempts}/{executionRun.max_attempts}</small>
                 <small>Snapshot SHA-256: {executionRun.snapshot_sha256}</small>
+                <div className="nexus-execution-timeline" aria-label="Execution event history">
+                  <strong>RUN HISTORY</strong>
+                  {executionEvents.length === 0
+                    ? <p className="nexus-muted">Waiting for the first durable execution event…</p>
+                    : <ol>
+                      {executionEvents.map((event) => (
+                        <li key={event.event_id}>
+                          <span>{event.type.replaceAll("_", " ")}</span>
+                          <small>v{event.version} · {new Date(event.occurred_at).toLocaleString()}</small>
+                          {event.to_status && <small>{event.from_status ? event.from_status + " → " : ""}{event.to_status}</small>}
+                        </li>
+                      ))}
+                    </ol>}
+                </div>
                 {["queued", "leased", "running", "collecting"].includes(executionRun.status)
                   && !executionRun.cancel_requested && (
                   <button type="button" className="nexus-link-button" onClick={() => void cancelExecution()} disabled={executionBusy}>
