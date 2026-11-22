@@ -27,3 +27,8 @@ A bounded ZIP snapshot ingestor is now implemented in services/workspace_snapsho
 ## Authenticated API integration
 
 The execution API now consumes an already project-owner-approved task and atomically transitions it to executing while creating a durable queued run, run event, task event and audit record. Each run binds a durable snapshot object ID. See EXECUTION_API.md. Worker execution and artifact handling remain separate deployment gates.
+
+
+## Worker completion
+
+Worker terminal transitions now also update an executing task within the same MongoDB transaction: successful sandbox execution advances the task to validating; failure or cancellation advances it to the corresponding task state. Run completion, task event and audit event are committed together. The validating state is not task completion; validation and user acceptance remain separate.
