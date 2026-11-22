@@ -11,15 +11,24 @@ import {
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
-import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge } from "./companion";
+import { readWorkspaceFile, type CompanionFile } from "./companion";
+import { buildWorkspaceArchive } from "./workspace-archive";
+import {
+  cancelNexusExecution,
+  createNexusExecution,
+  getNexusExecution,
+  getNexusExecutionArtifacts,
+  listNexusExecutionProfiles,
+  type NexusExecutionArtifacts,
+  type NexusExecutionProfile,
+  type NexusExecutionRun,
+} from "./nexus-executions";
 import {
   approveNexusPatchProposal,
-  createNexusPatchApplyCapability,
   getNexusPatchProposal,
   listNexusPatchProposals,
   rejectNexusPatchProposal,
   type NexusPatchProposal,
-  type NexusPatchProposalFile,
   type NexusPatchProposalSummary,
 } from "./nexus-patch-proposals";
 import "./nexus-chat-panel.css";
@@ -28,10 +37,7 @@ interface Props {
   onClose: () => void;
   isOpen?: boolean;
   activeFile?: { path: string; content: string } | null;
-  companionToken?: string | null;
-  companionWorkspaceId?: string;
-  companionCanApply?: boolean;
-  onPatchApplied?: (file: NexusPatchProposalFile) => void | Promise<void>;
+  workspaceContext?: { accessToken: string; workspaceId: string; files: CompanionFile[] } | null;
 }
 
 interface TranscriptMessage extends NexusChatMessage {
@@ -71,7 +77,9 @@ function newMessageId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function NexusChatPanel({ onClose, isOpen = true, activeFile = null, companionToken = null, companionWorkspaceId = "", companionCanApply = false, onPatchApplied }: Props) {
+export default function NexusChatPanel({
+  onClose, isOpen = true, activeFile = null, workspaceContext = null,
+}: Props) {
   const config = useMemo(environmentConfig, []);
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -98,6 +106,17 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState("");
+  const [executionProfiles, setExecutionProfiles] = useState<NexusExecutionProfile[]>([]);
+  const [executionProfileId, setExecutionProfileId] = useState("");
+  const [executionBusy, setExecutionBusy] = useState(false);
+  const [executionError, setExecutionError] = useState("");
+  const [workspaceUploadConsent, setWorkspaceUploadConsent] = useState(false);
+  const [codeExecutionConsent, setCodeExecutionConsent] = useState(false);
+  const [executionRun, setExecutionRun] = useState<NexusExecutionRun | null>(null);
+  const [executionArtifacts, setExecutionArtifacts] = useState<NexusExecutionArtifacts | null>(null);
+  const [snapshotSummary, setSnapshotSummary] = useState("");
+  const executionAbortRef = useRef<AbortController | null>(null);
+  const executionGenerationRef = useRef(0);
   const [patchProposals, setPatchProposals] = useState<NexusPatchProposalSummary[]>([]);
   const [selectedPatch, setSelectedPatch] = useState<NexusPatchProposal | null>(null);
   const [patchBusy, setPatchBusy] = useState(false);
@@ -205,83 +224,50 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     if (!access) return;
     const expireSession = (message: string, error = "") => {
       authGenerationRef.current += 1;
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
       if (config.auth && access.refreshToken) {
-        void revokeODIDToken(config.auth, access.refreshToken, "refresh_token").catch(() => {
-          // Session state is cleared even if provider revocation is unavailable.
-        });
+        void revokeODIDToken(config.auth, access.refreshToken, "refresh_token").catch(() => {});
       }
-      setAccess(null);
-      setAuthBusy(false);
-      setAuthError(error);
-      setOrganizations([]);
-      setOrganizationId("");
-      setOrganizationError("");
-      setProjects([]);
-      setProjectId("");
-      setProjectError("");
-      setMessages([]);
-      setConversations([]);
-      setConversationId("");
-      setDraft("");
-      setConsent(false);
-      setAttachActiveFile(false);
-      setUseAttachedTools(false);
-      setChatError("");
-      setTaskPlan(null);
-      setTaskError("");
-      setPatchProposals([]);
-      setSelectedPatch(null);
-      setPatchError("");
+      setAccess(null); setAuthBusy(false); setAuthError(error);
+      setOrganizations([]); setOrganizationId(""); setOrganizationError("");
+      setProjects([]); setProjectId(""); setProjectError("");
+      setMessages([]); setConversations([]); setConversationId("");
+      setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false); setChatError("");
+      setTaskPlan(null); setTaskError(""); setPatchProposals([]); setSelectedPatch(null); setPatchError("");
+      setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionArtifacts(null);
+      setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
+      setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
       setNotice(message);
     };
     const remaining = access.expiresAt - Date.now();
-    if (remaining <= 0) {
-      expireSession("Your sign-in expired. Sign in again.");
-      return;
-    }
+    if (remaining <= 0) { expireSession("Your sign-in expired. Sign in again."); return; }
     const refreshToken = access.refreshToken;
     const refreshDelay = refreshToken
       ? Math.max(0, remaining - Math.min(60_000, Math.floor(remaining / 2)))
       : remaining;
     const generation = authGenerationRef.current;
     const timer = window.setTimeout(() => {
-      if (!refreshToken || !config.auth) {
-        expireSession("Your sign-in expired. Sign in again.");
-        return;
-      }
+      if (!refreshToken || !config.auth) { expireSession("Your sign-in expired. Sign in again."); return; }
       setAuthBusy(true);
       const controller = new AbortController();
       refreshAbortRef.current = controller;
       const refreshPromise = refreshODIDAccessToken(config.auth, refreshToken, { signal: controller.signal });
       refreshPromiseRef.current = refreshPromise;
-      void refreshPromise
-        .then((nextToken) => {
-          if (authGenerationRef.current !== generation) return;
-          setAccess(nextToken);
-          setAuthError("");
-          setNotice("Your ODID session was refreshed securely.");
-        })
-        .catch(() => {
-          if (authGenerationRef.current !== generation) return;
-          expireSession(
-            "Your ODID session could not be refreshed. Sign in again.",
-            "Session refresh failed. Please authenticate again.",
-          );
-        })
-        .finally(() => {
-          if (refreshPromiseRef.current === refreshPromise) refreshPromiseRef.current = null;
-          if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
-          if (authGenerationRef.current === generation) setAuthBusy(false);
-        });
+      void refreshPromise.then((nextToken) => {
+        if (authGenerationRef.current !== generation) return;
+        setAccess(nextToken); setAuthError(""); setNotice("Your ODID session was refreshed securely.");
+      }).catch(() => {
+        if (authGenerationRef.current !== generation) return;
+        expireSession("Your ODID session could not be refreshed. Sign in again.",
+          "Session refresh failed. Please authenticate again.");
+      }).finally(() => {
+        if (refreshPromiseRef.current === refreshPromise) refreshPromiseRef.current = null;
+        if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
+        if (authGenerationRef.current === generation) setAuthBusy(false);
+      });
     }, refreshDelay);
-    return () => {
-      window.clearTimeout(timer);
-      if (refreshAbortRef.current) {
-        authGenerationRef.current += 1;
-        refreshAbortRef.current.abort();
-        refreshAbortRef.current = null;
-      }
-    };
+    return () => window.clearTimeout(timer);
   }, [access, config.auth]);
 
   useEffect(() => {
@@ -292,6 +278,103 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setAttachActiveFile(false);
     setUseAttachedTools(false);
   }, [activeFile?.path, activeFile?.content]);
+
+  useEffect(() => {
+    const accessToken = access?.accessToken;
+    if (!accessToken || !config.apiBaseUrl || !organizationId || !projectId) {
+      setExecutionProfiles([]);
+      setExecutionProfileId("");
+      setExecutionError("");
+      return;
+    }
+    let active = true;
+    const controller = new AbortController();
+    setExecutionProfiles([]);
+    setExecutionProfileId("");
+    setExecutionError("");
+    void listNexusExecutionProfiles(
+      config.apiBaseUrl, organizationId, projectId, accessToken, fetch, controller.signal,
+    ).then((profiles) => {
+      if (!active) return;
+      setExecutionProfiles(profiles);
+      setExecutionProfileId((current) =>
+        profiles.some((profile) => profile.profile_id === current)
+          ? current : profiles[0]?.profile_id ?? "",
+      );
+      if (profiles.length === 0) setExecutionError("No server-approved execution profiles are configured.");
+    }).catch((cause: unknown) => {
+      if (active && !controller.signal.aborted) setExecutionError(errorMessage(cause));
+    });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId]);
+
+  useEffect(() => {
+    const accessToken = access?.accessToken ?? "";
+    const apiBaseUrl = config.apiBaseUrl ?? "";
+    const selectedOrganizationId = organizationId ?? "";
+    const selectedProjectId = projectId ?? "";
+    const runId = executionRun?.run_id ?? "";
+    const taskId = executionRun?.task_id ?? "";
+    if (!accessToken || !apiBaseUrl || !runId || !taskId
+      || !selectedOrganizationId || !selectedProjectId) return;
+    let active = true;
+    let timer: number | undefined;
+    const controller = new AbortController();
+    async function pollRun() {
+      try {
+        const updated = await getNexusExecution(
+          apiBaseUrl, selectedOrganizationId, selectedProjectId, taskId, runId,
+          accessToken, fetch, controller.signal,
+        );
+        if (!active) return;
+        setExecutionRun(updated);
+        const terminal = ["completed", "failed", "cancelled", "expired"].includes(updated.status);
+        if (terminal) {
+          try {
+            const artifacts = await getNexusExecutionArtifacts(
+              apiBaseUrl, selectedOrganizationId, selectedProjectId, taskId, runId,
+              accessToken, fetch, controller.signal,
+            );
+            if (active) setExecutionArtifacts(artifacts);
+          } catch {
+            if (active) setExecutionArtifacts(null);
+          }
+          const taskStatus = updated.status === "completed" ? "validating"
+            : updated.status === "cancelled" ? "cancelled" : "failed";
+          setTaskPlan((current) => current && current.task_id === taskId && current.status !== taskStatus
+            ? { ...current, status: taskStatus, version: current.version + 1 }
+            : current);
+          setNotice(updated.status === "completed"
+            ? "Sandbox execution finished. The task is now awaiting validation and review."
+            : updated.status === "cancelled"
+              ? "Execution cancellation completed."
+              : "Execution ended without a successful sandbox result.");
+          return;
+        }
+        timer = window.setTimeout(() => void pollRun(), 2_000);
+      } catch (cause) {
+        if (!active || controller.signal.aborted) return;
+        setExecutionError(errorMessage(cause));
+        timer = window.setTimeout(() => void pollRun(), 4_000);
+      }
+    }
+    void pollRun();
+    return () => {
+      active = false;
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId, executionRun?.run_id]);
+
+  useEffect(() => {
+    executionGenerationRef.current += 1;
+    setWorkspaceUploadConsent(false);
+    setCodeExecutionConsent(false);
+    setExecutionError("");
+  }, [workspaceContext?.workspaceId]);
 
   async function signIn() {
     if (!config.auth) {
@@ -311,6 +394,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
   async function loadProjects() {
     if (!access || !config.apiBaseUrl) return;
+    executionGenerationRef.current += 1;
     abortRef.current?.abort();
     taskAbortRef.current?.abort();
     setTaskPlan(null);
@@ -324,6 +408,13 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setConversationId("");
     setTaskPlan(null);
     setTaskError("");
+    setExecutionRun(null);
+    setExecutionArtifacts(null);
+    setExecutionError("");
+    setExecutionBusy(false);
+    setSnapshotSummary("");
+    setWorkspaceUploadConsent(false);
+    setCodeExecutionConsent(false);
     setConsent(false);
     try {
       const result = await listNexusProjects(config.apiBaseUrl, organizationId, access.accessToken);
@@ -357,6 +448,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         goal, projectContext, controller.signal,
       );
       setTaskPlan(task);
+      setExecutionRun(null);
+      setExecutionArtifacts(null);
+      setSnapshotSummary("");
       setDraft("");
       setConsent(false);
       setNotice("NEXUS created an approval-ready plan. No files or commands have been changed.");
@@ -381,12 +475,120 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
       );
       if (controller.signal.aborted) return;
       setTaskPlan(updated);
-      setNotice("Project owner approval recorded. Execution is not enabled; no files or commands were changed.");
+      setNotice("Project owner approval recorded. You may now select a local workspace snapshot and explicitly authorize isolated execution.");
     } catch (cause) {
       if (!controller.signal.aborted) setTaskError(errorMessage(cause));
     } finally {
       if (taskAbortRef.current === controller) taskAbortRef.current = null;
       setTaskBusy(false);
+    }
+  }
+
+  async function startExecution() {
+    if (
+      !access || !taskPlan || taskPlan.status !== "approved" || !workspaceContext
+      || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent
+      || executionBusy || !config.apiBaseUrl
+    ) return;
+    const generation = executionGenerationRef.current;
+    const controller = new AbortController();
+    executionAbortRef.current = controller;
+    setExecutionBusy(true);
+    setExecutionError("");
+    setExecutionArtifacts(null);
+    try {
+      const snapshot = await buildWorkspaceArchive(
+        workspaceContext.files,
+        (path) => readWorkspaceFile(
+          workspaceContext.accessToken, workspaceContext.workspaceId, path,
+        ),
+      );
+      if (controller.signal.aborted || generation !== executionGenerationRef.current) return;
+      if (snapshot.skippedCount > 0) {
+        const examples = snapshot.skippedPaths.slice(0, 8).join("\n");
+        const message = snapshot.skippedCount + " file(s) will be excluded from this snapshot."
+          + (examples ? "\n\nExamples:\n" + examples : "")
+          + "\n\nContinue with the partial, filtered workspace snapshot?";
+        if (!window.confirm(message)) return;
+      }
+      const created = await createNexusExecution(
+        config.apiBaseUrl, organizationId, projectId, taskPlan.task_id,
+        access.accessToken,
+        {
+          profileId: executionProfileId,
+          expectedTaskVersion: taskPlan.version,
+          snapshotZipBase64: snapshot.base64,
+        },
+        fetch, controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      if (generation !== executionGenerationRef.current) {
+        try {
+          await cancelNexusExecution(
+            config.apiBaseUrl, organizationId, projectId, taskPlan.task_id,
+            created.run_id, access.accessToken,
+          );
+        } catch {
+          // The run remains tenant-scoped and the backend lease/retention controls still apply.
+        }
+        return;
+      }
+      const now = new Date().toISOString();
+      setExecutionRun({
+        run_id: created.run_id, organization_id: organizationId,
+        project_id: projectId, task_id: taskPlan.task_id,
+        profile_id: created.profile_id, snapshot_sha256: created.snapshot.sha256,
+        status: "queued", version: 0, attempts: 0, max_attempts: 3,
+        cancel_requested: false, created_at: now, updated_at: now,
+      });
+      setTaskPlan({ ...taskPlan, status: "executing", version: taskPlan.version + 1 });
+      setWorkspaceUploadConsent(false);
+      setCodeExecutionConsent(false);
+      setSnapshotSummary(
+        snapshot.fileCount + " files · " + Math.ceil(snapshot.totalBytes / 1024) + " KiB"
+        + (snapshot.skippedCount ? " · " + snapshot.skippedCount + " skipped" : ""),
+      );
+      setNotice("Workspace snapshot uploaded. The approved server profile has been queued for isolated execution.");
+    } catch (cause) {
+      if (!controller.signal.aborted && generation === executionGenerationRef.current) {
+        setExecutionError(errorMessage(cause));
+      }
+    } finally {
+      if (executionAbortRef.current === controller) executionAbortRef.current = null;
+      setExecutionBusy(false);
+    }
+  }
+
+  async function cancelExecution() {
+    if (!access || !executionRun || !config.apiBaseUrl || executionBusy) return;
+    const generation = executionGenerationRef.current;
+    const controller = new AbortController();
+    executionAbortRef.current = controller;
+    setExecutionBusy(true);
+    setExecutionError("");
+    try {
+      const updated = await cancelNexusExecution(
+        config.apiBaseUrl, organizationId, projectId, executionRun.task_id,
+        executionRun.run_id, access.accessToken, fetch, controller.signal,
+      );
+      if (controller.signal.aborted || generation !== executionGenerationRef.current) return;
+      setExecutionRun(updated);
+      if (updated.status === "cancelled") {
+        setTaskPlan((current) => current && current.task_id === updated.task_id
+          && current.status !== "cancelled"
+          ? { ...current, status: "cancelled", version: current.version + 1 }
+          : current);
+      }
+      setNotice(updated.status === "cancelled"
+        ? "Queued execution and task were cancelled."
+        : "Cancellation requested. The worker will terminate the sandbox and confirm cleanup.");
+    } catch (cause) {
+      if (!controller.signal.aborted && generation === executionGenerationRef.current) {
+        setExecutionError(errorMessage(cause));
+      }
+    } finally {
+      if (executionAbortRef.current === controller) executionAbortRef.current = null;
+      setExecutionBusy(false);
     }
   }
 
@@ -416,56 +618,33 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     const currentAccess = access;
     const pendingRefresh = refreshPromiseRef.current;
     authGenerationRef.current += 1;
-    if (pendingRefresh) {
-      // Let a rotating refresh finish so sign-out can revoke the replacement token.
-      refreshAbortRef.current = null;
-    } else {
-      refreshAbortRef.current?.abort();
-      refreshAbortRef.current = null;
-    }
-    abortRef.current?.abort();
-    abortRef.current = null;
-    taskAbortRef.current?.abort();
-    taskAbortRef.current = null;
-    setAccess(null);
-    setAuthBusy(false);
-    setAuthError("");
+    if (pendingRefresh) refreshAbortRef.current = null;
+    else { refreshAbortRef.current?.abort(); refreshAbortRef.current = null; }
+    abortRef.current?.abort(); abortRef.current = null;
+    taskAbortRef.current?.abort(); taskAbortRef.current = null;
+    executionGenerationRef.current += 1; executionAbortRef.current = null;
+    setAccess(null); setAuthBusy(false); setAuthError("");
     try { clearODIDLoginTransaction(); } catch { /* no pending transaction to clear */ }
     if (config.auth && currentAccess) {
       void (async () => {
         let token = currentAccess.refreshToken ?? currentAccess.accessToken;
-        let hint: "refresh_token" | "access_token" = currentAccess.refreshToken
-          ? "refresh_token"
-          : "access_token";
+        let hint: "refresh_token" | "access_token" = currentAccess.refreshToken ? "refresh_token" : "access_token";
         if (pendingRefresh) {
-          try {
-            const refreshed = await pendingRefresh;
-            token = refreshed.refreshToken ?? refreshed.accessToken;
-            hint = refreshed.refreshToken ? "refresh_token" : "access_token";
-          } catch {
-            // Fall back to revoking the token held before the refresh attempt.
-          }
+          try { const refreshed = await pendingRefresh; token = refreshed.refreshToken ?? refreshed.accessToken;
+            hint = refreshed.refreshToken ? "refresh_token" : "access_token"; } catch {}
         }
-        await revokeODIDToken(config.auth!, token, hint).catch(() => {
-          // Local sign-out must complete even when provider revocation is unavailable.
-        });
+        await revokeODIDToken(config.auth!, token, hint).catch(() => {});
       })();
     }
-    setOrganizations([]);
-    setOrganizationId("");
-    setProjects([]);
-    setProjectId("");
-    setMessages([]);
-    setConversations([]);
-    setConversationId("");
-    setTaskPlan(null);
-    setTaskError("");
-    setDraft("");
-    setConsent(false);
-    setAttachActiveFile(false);
-    setUseAttachedTools(false);
-    setChatError("");
-    setProjectError("");
+    setOrganizations([]); setOrganizationId(""); setProjects([]); setProjectId("");
+    setMessages([]); setConversations([]); setConversationId("");
+    setTaskPlan(null); setTaskError("");
+    setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionArtifacts(null);
+    setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
+    setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+    setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
+    setChatError(""); setProjectError(""); setOrganizationError("");
+    setPatchProposals([]); setSelectedPatch(null); setPatchError("");
     setNotice("Signed out. In-memory access/refresh tokens and conversation were cleared.");
   }
 
@@ -506,54 +685,8 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           : item
       ));
       setNotice(decision === "approve"
-        ? "Project owner approval recorded. The file is unchanged until the approved one-file apply action is run through a trusted companion."
+        ? "Project owner approval recorded. The local file is unchanged; application is not enabled."
         : "Patch proposal rejected. The local file is unchanged.");
-    } catch (cause) {
-      setPatchError(errorMessage(cause));
-    } finally {
-      setPatchBusy(false);
-    }
-  }
-
-  async function applyApprovedPatch() {
-    if (
-      !access || !config.apiBaseUrl || !selectedPatch ||
-      selectedPatch.status !== "approved" || !selectedPatch.can_decide ||
-      !companionToken || !companionWorkspaceId || !companionCanApply ||
-      selectedPatch.files.length !== 1 || patchBusy
-    ) return;
-    setPatchBusy(true);
-    setPatchError("");
-    try {
-      const challenge = await createWorkspaceApplyChallenge(
-        companionToken, companionWorkspaceId,
-      );
-      const capability = await createNexusPatchApplyCapability(
-        config.apiBaseUrl, organizationId, projectId, access.accessToken,
-        selectedPatch.proposal_id, selectedPatch.version,
-        companionWorkspaceId, challenge.challenge,
-      );
-      const file = selectedPatch.files[0];
-      const applied = await applyApprovedWorkspacePatch(
-        companionToken, companionWorkspaceId,
-        {
-          organizationId, projectId,
-          proposalId: selectedPatch.proposal_id,
-          proposalVersion: selectedPatch.version,
-          challenge: challenge.challenge,
-          capability: capability.capability,
-          file,
-        },
-      );
-      setNotice("Approved patch applied. Refreshing the selected workspace from disk…");
-      try {
-        await onPatchApplied?.(file);
-        setNotice(applied.files[0].durability_confirmed
-          ? "Approved patch applied to the selected local workspace. The file was reloaded from disk."
-          : "The patch was applied and reloaded, but directory-metadata durability could not be confirmed. Verify the file and keep a backup.");
-      } catch (refreshError) {
-        setPatchError("The patch was applied, but the workspace refresh failed. Reconnect or reload the selected folder before retrying: " + errorMessage(refreshError));
-      }
     } catch (cause) {
       setPatchError(errorMessage(cause));
     } finally {
@@ -706,11 +839,16 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
               taskAbortRef.current?.abort();
               setTaskPlan(null);
               setTaskError("");
+              executionGenerationRef.current += 1;
               setOrganizationId(event.target.value);
               setProjects([]);
               setProjectId("");
               setTaskPlan(null);
               setTaskError("");
+              setExecutionRun(null);
+              setExecutionArtifacts(null);
+              setExecutionError("");
+              setSnapshotSummary("");
               setMessages([]);
               setConversationBusy(true);
               setConsent(false);
@@ -740,9 +878,14 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 taskAbortRef.current?.abort();
                 setTaskPlan(null);
                 setTaskError("");
+                executionGenerationRef.current += 1;
                 setProjectId(event.target.value);
                 setTaskPlan(null);
                 setTaskError("");
+                setExecutionRun(null);
+                setExecutionArtifacts(null);
+                setExecutionError("");
+                setSnapshotSummary("");
                 setMessages([]);
                 setConversationBusy(true);
                 setConsent(false);
@@ -806,7 +949,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
           <div className="nexus-empty-state">
             <div className="nexus-mark">N</div>
             <h2>Your coding agent</h2>
-            <p>{selectedProject ? "Ask a question about your project. NEXUS can inspect attached excerpts and propose changes; local writes require owner approval and a trusted companion." : notice}</p>
+            <p>{selectedProject ? "Ask a question about your project. NEXUS is currently read-only." : notice}</p>
           </div>
         )}
         {messages.map((message) => (
@@ -841,23 +984,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
             {selectedPatch.status === "pending" && !selectedPatch.can_decide && (
               <p className="nexus-task-safety">Awaiting a project-owner decision.</p>
             )}
-            {selectedPatch.status === "approved" && selectedPatch.can_decide &&
-              companionToken && companionWorkspaceId && companionCanApply &&
-              selectedPatch.files.length === 1 && (
-                <button type="button" className="nexus-secondary-button"
-                  disabled={patchBusy} onClick={() => void applyApprovedPatch()}>
-                  {patchBusy ? "Applying…" : "Apply approved patch to selected folder"}
-                </button>
-              )}
-            {selectedPatch.status === "approved" && selectedPatch.files.length > 1 && (
-              <p className="nexus-task-safety">This proposal contains multiple files. The current local apply path is deliberately limited to one atomic file operation; split it into one-file proposals before applying.</p>
-            )}
-            {selectedPatch.status === "approved" && (!companionToken || !companionWorkspaceId || !companionCanApply) && (
-              <p className="nexus-task-safety">Approval is recorded. To apply, connect a local companion configured with the matching trusted patch-approval public key and select its workspace.</p>
-            )}
-            {selectedPatch.status !== "approved" && (
-              <p className="nexus-task-safety">Approval is required before a signed, short-lived local apply capability can be issued.</p>
-            )}
+            <p className="nexus-task-safety">Approval records review intent only. It does not write, apply or delete local files. Application remains disabled.</p>
             <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
           </section>
         )}
@@ -889,12 +1016,83 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
                 {taskBusy ? "Saving…" : "Approve plan"}
               </button>
             )}
-            {["awaiting_approval", "approved"].includes(taskPlan.status) && (
-              <button type="button" className="nexus-link-button" onClick={() => void cancelTaskPlan()} disabled={taskBusy}>
+            {["awaiting_approval", "approved", "executing", "validating"].includes(taskPlan.status) && (
+              <button type="button" className="nexus-link-button" onClick={() => void cancelTaskPlan()} disabled={taskBusy || executionBusy}>
                 Cancel task
               </button>
             )}
-            <p className="nexus-task-safety">Approval records intent only. Task execution, file writes and command execution are not enabled.</p>
+            {taskPlan.status === "approved" && !executionRun && (
+              <div className="nexus-execution-controls">
+                <strong>ISOLATED EXECUTION</strong>
+                {!workspaceContext ? (
+                  <p className="nexus-muted">Connect the local companion and select a workspace before creating an execution snapshot.</p>
+                ) : (
+                  <>
+                    <p>{workspaceContext.files.length} local files are visible to the companion. A filtered snapshot is created only after both consent checks and your confirmation.</p>
+                    {workspaceContext.files.length === 0 && <p className="nexus-muted">No readable files are currently listed for this workspace.</p>}
+                    <label className="nexus-execution-label" htmlFor="nexus-execution-profile">Server-approved execution profile</label>
+                    <select id="nexus-execution-profile" value={executionProfileId}
+                      onChange={(event) => setExecutionProfileId(event.target.value)}
+                      disabled={executionBusy || executionProfiles.length === 0}>
+                      <option value="">Select an approved profile…</option>
+                      {executionProfiles.map((profile) => (
+                        <option key={profile.profile_id} value={profile.profile_id}>{profile.profile_id}</option>
+                      ))}
+                    </select>
+                    <label className="nexus-consent nexus-execution-consent">
+                      <input type="checkbox" checked={workspaceUploadConsent}
+                        onChange={(event) => setWorkspaceUploadConsent(event.target.checked)}
+                        disabled={executionBusy} />
+                      I explicitly authorize uploading a filtered snapshot of this selected workspace to ODEI for this task.
+                    </label>
+                    <label className="nexus-consent nexus-execution-consent">
+                      <input type="checkbox" checked={codeExecutionConsent}
+                        onChange={(event) => setCodeExecutionConsent(event.target.checked)}
+                        disabled={executionBusy} />
+                      I explicitly authorize running the selected server-approved command profile against that snapshot in an isolated sandbox.
+                    </label>
+                    <p className="nexus-task-safety">The snapshot excludes known credential paths, dependency/build folders and files larger than 2 MiB. Unreadable files are skipped. No local files are modified.</p>
+                    <button type="button" className="nexus-secondary-button"
+                      onClick={() => void startExecution()}
+                      disabled={executionBusy || workspaceContext.files.length === 0 || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent}>
+                      {executionBusy ? "Preparing snapshot and queueing…" : "Create isolated execution"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {executionError && <p className="nexus-error" role="alert">{executionError}</p>}
+            {snapshotSummary && <p className="nexus-selected-project">Snapshot: {snapshotSummary}</p>}
+            {executionRun && executionRun.task_id === taskPlan.task_id && (
+              <div className="nexus-execution-result" aria-live="polite">
+                <div className="nexus-task-heading">
+                  <strong>EXECUTION RUN</strong>
+                  <span>{executionRun.status.toUpperCase()}</span>
+                </div>
+                <small>Run: {executionRun.run_id}</small>
+                <small>Profile: {executionRun.profile_id} · Attempt {executionRun.attempts}/{executionRun.max_attempts}</small>
+                <small>Snapshot SHA-256: {executionRun.snapshot_sha256}</small>
+                {["queued", "leased", "running", "collecting"].includes(executionRun.status)
+                  && !executionRun.cancel_requested && (
+                  <button type="button" className="nexus-link-button" onClick={() => void cancelExecution()} disabled={executionBusy}>
+                    {executionBusy ? "Requesting…" : "Cancel execution"}
+                  </button>
+                )}
+                {executionRun.cancel_requested && <p className="nexus-muted">Cancellation requested; waiting for sandbox cleanup.</p>}
+                {executionArtifacts && (
+                  <div className="nexus-execution-artifacts">
+                    <p>Exit code: {executionArtifacts.exit_code} · Duration: {executionArtifacts.duration_ms} ms{executionArtifacts.timed_out ? " · Timed out" : ""}</p>
+                    <strong>Standard output</strong>
+                    <pre>{executionArtifacts.stdout || "(empty)"}</pre>
+                    <strong>Standard error</strong>
+                    <pre>{executionArtifacts.stderr || "(empty)"}</pre>
+                    {(executionArtifacts.stdout_truncated || executionArtifacts.stderr_truncated)
+                      && <p className="nexus-muted">Output was truncated by the server safety limit.</p>}
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="nexus-task-safety">Execution is limited to the server-approved profile and immutable snapshot. Results require validation and review; successful sandbox exit does not automatically complete the task.</p>
             <small>Task ID: {taskPlan.task_id} · Version {taskPlan.version}</small>
           </section>
         )}
