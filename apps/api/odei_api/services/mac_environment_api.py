@@ -16,7 +16,6 @@ from odei_api.services.mac_environments import (
     MacEnvironmentConflict,
     MacEnvironmentError,
     MacEnvironmentNotFound,
-    MongoMacEnvironmentStore,
 )
 
 logger = logging.getLogger(__name__)
