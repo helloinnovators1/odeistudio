@@ -148,6 +148,47 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         assert finalized_task["status"] == "validating"
         assert finalized_task["version"] == 6
 
+        task2_id, run2_id = uuid4().hex, uuid4().hex
+        await database["tasks"].insert_one({
+            "_id": task2_id, "organization_id": "org-integration",
+            "project_id": "project-integration", "owner_id": "owner",
+            "goal": "cancel queued run", "status": "executing",
+            "plan": "already approved", "version": 5,
+            "created_at": now, "updated_at": now,
+        })
+        snapshot2 = await snapshots.put(
+            organization_id="org-integration", project_id="project-integration",
+            task_id=task2_id, owner_issuer="https://identity.example.test/",
+            owner_subject="owner", archive=archive, sha256=digest,
+            file_count=1, total_bytes=len(b"approved workspace"),
+        )
+        run2 = ExecutionRun(
+            id=run2_id, organization_id="org-integration",
+            project_id="project-integration", task_id=task2_id,
+            requester_issuer="https://identity.example.test/",
+            requester_subject="owner", profile_id="python-tests",
+            snapshot_sha256=digest, snapshot_id=snapshot2["snapshot_id"],
+            arguments=(),
+        )
+        await runs.create(run2)
+        cancelled = await runs.request_cancel(
+            organization_id="org-integration", run_id=run2_id,
+            actor_id="authenticated-user",
+            audit_event=audit_event | {
+                "action": "nexus.execution.cancel", "target_id": run2_id,
+                "request_id": f"req-{uuid4().hex}",
+            },
+            tasks=database["tasks"], task_events=database["task_events"],
+            task_audit_event=audit_event | {
+                "action": "nexus.task.cancel", "target_type": "nexus_task",
+                "target_id": task2_id, "request_id": f"req-{uuid4().hex}",
+            },
+        )
+        assert cancelled.status is ExecutionRunStatus.CANCELLED
+        cancelled_task = await database["tasks"].find_one({"_id": task2_id})
+        assert cancelled_task["status"] == "cancelled"
+        assert cancelled_task["version"] == 6
+
         await database["workspace_snapshots"].update_one(
             {"_id": snapshot["snapshot_id"]},
             {"$set": {"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
