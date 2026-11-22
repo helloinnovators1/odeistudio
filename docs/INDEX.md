@@ -51,3 +51,5 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [NEXUS Isolated Execution Engine](EXECUTION_ENGINE.md) — OCI sandbox boundaries, worker lifecycle, execution policy and acceptance gates.
 
 - [Patch approval capabilities](PATCH_APPROVAL_CAPABILITIES.md) — signed, short-lived authorization and verification contract for the merged one-file local companion apply path, plus rollback and production release limits.
+
+- [NEXUS Durable Execution Runs](EXECUTION_RUNS.md) — durable run lifecycle, transactional events, worker leases and cancellation intent.
