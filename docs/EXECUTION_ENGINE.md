@@ -64,3 +64,8 @@ This remains an execution-backend foundation plus a durable run/lease persistenc
 ## Workspace snapshot ingestion
 
 A bounded ZIP ingestion module is implemented on the stacked workspace-snapshot branch. It validates archive metadata and actual expanded bytes, rejects unsafe path/link entries and writes a deterministic content snapshot into a fresh worker directory. It is not yet exposed as an authenticated API or backed by durable object storage; do not use it as a direct browser-to-worker upload path until those controls are integrated.
+
+
+## Authenticated API and snapshot storage
+
+The API now provides authenticated project/task-scoped execution profile listing, execution creation with separate upload and execution consent, run reads, cursor-paginated events and cancellation requests. GridFS stores archive bytes; metadata and run records are tenant scoped. Creation atomically consumes the approved task and creates the run/event/audit records. See EXECUTION_API.md. This is still not a live worker deployment.
