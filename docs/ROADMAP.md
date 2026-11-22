@@ -221,3 +221,12 @@ No phase is complete because its screens exist. Each capability needs working be
 - Connected the NEXUS panel to load project execution history after authenticated organization/project selection. The panel shows status, profile, task, creation time, run ID and attempt count, with bounded “load older” pagination.
 - History state is cleared on project/session changes; in-flight requests are aborted and generation-checked to prevent stale results from a previous project appearing in the current panel.
 - Added browser transport tests for authenticated cursor pagination and rejection of invalid limits/incomplete cursors. Exact-head CI is required before merge.
+
+
+## NEXUS approved local patch application — single-file vertical slice (2026-11-22)
+
+- Connected the Studio panel's approved-proposal action to the local companion's fresh, session-bound apply challenge, the API's short-lived owner-signed capability, and the companion's independent Ed25519 verification before a single local file operation.
+- The Studio requires a project-owner-approved proposal, the same approved version, a paired selected workspace, one-file proposal, and an explicit browser confirmation. Capability and challenge are short-lived and bound to proposal/version/workspace/session.
+- Corrected the capability response expiry contract to return Unix seconds, matching the browser transport's strict expiry validation.
+- The API now refuses to issue a companion capability for multi-file proposals because the current companion endpoint intentionally accepts exactly one file. No partial multi-file writes are attempted.
+- The panel reports the companion's durability confirmation separately and does not claim automatic rollback. Atomic multi-file transactions, durable rollback/recovery, and full apply audit/receipt remain outstanding. Production ODID/signing-key configuration and Windows-device acceptance are still external gates.
