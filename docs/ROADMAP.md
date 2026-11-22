@@ -230,3 +230,16 @@ No phase is complete because its screens exist. Each capability needs working be
 - Corrected the capability response expiry contract to return Unix seconds, matching the browser transport's strict expiry validation.
 - The API now refuses to issue a companion capability for multi-file proposals because the current companion endpoint intentionally accepts exactly one file. No partial multi-file writes are attempted.
 - The panel reports the companion's durability confirmation separately and does not claim automatic rollback. Atomic multi-file transactions, durable rollback/recovery, and full apply audit/receipt remain outstanding. Production ODID/signing-key configuration and Windows-device acceptance are still external gates.
+
+
+## MAC transactional audit increment — 2026-11-22
+
+- [x] Execute successful MAC draft/edit/submit/approve/promote/rollback mutations and their success audit inserts in the same MongoDB transaction/session; audit insert failure rolls back the mutation.
+- [x] Keep failure/denial audit events outside the aborted state-change transaction.
+- [x] Add route-level coverage that the state store and audit writer receive the same session, and update store test doubles for optional sessions.
+- [x] Reject traversal-like and ambiguous secret-reference path segments; expand sensitive-key detection and regression coverage.
+- [ ] Complete exact-head CI/security verification for `40a7386fee9e22bd16df8c15d3fab1544e77a2ae` and subsequent documentation commits.
+- [ ] Replace embedded environment revision arrays with separately indexed immutable revision records and retention/archival.
+- [ ] Integrate a real server-side secret manager and provider deployment adapter with durable attempts, idempotency, verification and provider rollback.
+
+This increment remains in open PR #50 and is not merged or deployed. It requires MongoDB replica-set/sharded transaction support; the API readiness endpoint already rejects standalone MongoDB.
