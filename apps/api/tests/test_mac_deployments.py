@@ -49,8 +49,8 @@ async def test_deployment_attempt_is_idempotent_and_only_approved_revisions_are_
     attempts = Attempts()
     store = MongoMacDeploymentStore(attempts, Environments())
     await store.initialize()
-    args = dict(environment="staging", version=7, provider="aws",
-                idempotency_key="request-12345678", actor="oidc-operator")
+    args = {"environment": "staging", "version": 7, "provider": "aws",
+            "idempotency_key": "request-12345678", "actor": "oidc-operator"}
     first = await store.create_attempt(**args)
     second = await store.create_attempt(**args)
     assert first["_id"] == second["_id"]
