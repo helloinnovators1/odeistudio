@@ -300,8 +300,8 @@ export default function NexusChatPanel({
   useEffect(() => {
     const accessToken = access?.accessToken;
     const apiBaseUrl = config.apiBaseUrl ?? "";
-    const runId = executionRun?.run_id;
-    const taskId = executionRun?.task_id;
+    const runId = executionRun?.run_id ?? "";
+    const taskId = executionRun?.task_id ?? "";
     if (!accessToken || !apiBaseUrl || !runId || !taskId || !organizationId || !projectId) return;
     let active = true;
     let timer: number | undefined;
