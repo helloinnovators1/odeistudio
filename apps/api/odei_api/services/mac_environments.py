@@ -182,10 +182,11 @@ class MongoMacEnvironmentStore:
              "versions": {"$elemMatch": {"version": version, "status": "draft", "created_by": actor}}},
             {"$set": {"versions.$.status": "pending_approval",
                       "versions.$.submitted_at": now, "updated_at": now}},
+            session=session,
         )
         if result.modified_count != 1:
             raise MacEnvironmentConflict("Only the draft author may submit the current draft")
-        return await self.get(environment)
+        return await self.get(environment, session=session)
 
     async def approve(
         self, *, environment: str, version: int, expected_latest_version: int,
@@ -208,10 +209,11 @@ class MongoMacEnvironmentStore:
             {"$set": {"versions.$.status": "approved",
                       "versions.$.approved_by": actor,
                       "versions.$.approved_at": now, "updated_at": now}},
+            session=session,
         )
         if result.modified_count != 1:
             raise MacEnvironmentConflict("Revision changed or approval precondition failed")
-        return await self.get(environment)
+        return await self.get(environment, session=session)
 
     async def promote(
         self, *, environment: str, version: int, expected_active_version: int,
@@ -228,10 +230,11 @@ class MongoMacEnvironmentStore:
                       "versions.$.promoted_by": actor,
                       "versions.$.promoted_at": now,
                       "updated_at": now}},
+            session=session,
         )
         if result.modified_count != 1:
             raise MacEnvironmentConflict("Promotion requires an approved revision and current active version")
-        return await self.get(environment)
+        return await self.get(environment, session=session)
 
     async def create_rollback_draft(
         self, *, environment: str, target_version: int,
