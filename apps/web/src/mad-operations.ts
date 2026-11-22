@@ -97,7 +97,7 @@ function validateMetrics(value: MadMetrics): MadMetrics {
     || !["queued", "active"].every((key) => nonNegativeInteger(value.queue[key as keyof MadMetrics["queue"]]))
     || !(value.queue.oldest_queued_at === null || validTimestamp(value.queue.oldest_queued_at))
     || !value.executions_24h || !["completed", "failed", "cancelled"].every((key) => nonNegativeInteger(value.executions_24h[key as keyof MadMetrics["executions_24h"]]))
-    || !Array.isArray(value.alerts) || value.alerts.length > 100) {
+    || !Array.isArray(value.alerts) || value.alerts.length > 100\n    || value.alerts.some((alert) => !alert || typeof alert.id !== "string"\n      || typeof alert.deduplication_key !== "string"\n      || !["info", "warning", "critical"].includes(alert.severity)\n      || alert.status !== "firing" || typeof alert.summary !== "string"\n      || !validTimestamp(alert.observed_at) || typeof alert.runbook !== "string")) {
     throw new Error("MAD API returned an unexpected metrics contract.");
   }
   return value;
