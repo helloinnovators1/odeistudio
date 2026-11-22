@@ -126,3 +126,14 @@ def test_mac_environment_permission_is_resolved_from_server_registry(monkeypatch
     assert response.status_code == 403
     assert audit.events[0]["action"] == "mac.environment.authorization"
     assert audit.events[0]["outcome"] == "denied"
+
+
+def test_mac_revision_api_rejects_boolean_version_values(monkeypatch):
+    principal = Principal(subject="operator-1", issuer=ISSUER)
+    client, store, _audit = _client(monkeypatch, principal)
+    response = client.post(
+        "/api/v1/mac/environments/staging/submit",
+        json={"version": True, "expected_latest_version": 1},
+    )
+    assert response.status_code == 422
+    assert store.calls == []
