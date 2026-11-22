@@ -29,6 +29,15 @@ class MacSecretResolver(Protocol):
 
 
 class MacProviderAdapter(Protocol):
+    """Trusted provider adapter.
+
+    Implementations MUST pass the supplied stable idempotency_key to the
+    provider's native idempotency mechanism. A worker can lose its lease after
+    the provider succeeds but before the deployment receipt is persisted; a
+    reclaimed attempt therefore invokes deploy again with the same key.
+    Adapters that cannot guarantee idempotent retries must not be registered.
+    """
+
     async def deploy(
         self, config: Mapping[str, Any], *, environment: str,
         idempotency_key: str,
