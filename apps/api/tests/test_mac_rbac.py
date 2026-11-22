@@ -35,6 +35,7 @@ def test_mac_registry_resolves_only_exact_verified_issuer_and_subject():
     "[]",
     '[{"issuer":"http://identity.example.test","subject":"x","roles":["platform_owner"]}]',
     '[{"issuer":"https://identity.example.test/","subject":"x","roles":["unknown"]}]',
+    '[{"issuer":"https://identity.example.test/","subject":"bad subject","roles":["platform_owner"]}]',
     '[{"issuer":"https://identity.example.test/","subject":"x","roles":["platform_owner"],"extra":true}]',
     json.dumps([
         {"issuer": "https://identity.example.test/", "subject": "x", "roles": ["platform_owner"]},
