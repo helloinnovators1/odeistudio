@@ -27,7 +27,7 @@ describe("MAC environment transport", () => {
       .mockResolvedValueOnce(response({ revision: { version: 1, status: "draft" } }, 201))
       .mockResolvedValueOnce(response({ revision: { version: 2, status: "draft" } }, 201));
     await createMacEnvironmentDraft("https://api.example.test", "staging", "token",
-      { replicas: 2 }, "Initial");
+      { replicas: 2 }, "Initial", undefined, fetcher);
     await createMacEnvironmentDraft("https://api.example.test", "staging", "token",
       { replicas: 3 }, "Scale", 1, fetcher);
     expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual({
