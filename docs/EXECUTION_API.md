@@ -29,7 +29,7 @@ The snapshot digest is a manifest digest over normalized relative paths, file si
 
 Set EXECUTION_PROFILES_JSON to a JSON array of server-controlled profiles. Each profile requires name, image (an OCI reference pinned with @sha256:), and command (an argument array). Optional fields are timeout_seconds, memory_mb, cpus, pids_limit, tmpfs_mb, and max_output_bytes. Unknown fields, invalid profile values and unpinned images fail startup. Leave the setting empty until reviewed production image digests and commands exist; in that state execution endpoints fail closed with EXECUTION_PROFILES_UNAVAILABLE.
 
-MongoDB must be a replica set or sharded cluster because run/task/event/audit creation is transactional. GridFS stores archive objects separately from metadata. Configure request-body limits at the ingress/proxy as well as the application; the JSON base64 payload is bounded to a 50 MiB decoded archive.
+PyMongo 4.13 or later is required for AsyncGridFSBucket. MongoDB must be a replica set or sharded cluster because run/task/event/audit creation is transactional. GridFS blob uploads and metadata writes are separate operations (GridFS does not participate in MongoDB multi-document transactions); upload failures use compensating blob cleanup. Configure request-body limits at the ingress/proxy as well as the application; the JSON base64 payload is bounded to a 50 MiB decoded archive.
 
 ## Current limitations
 
