@@ -893,7 +893,7 @@ export default function NexusChatPanel({
     setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
     setChatError(""); setProjectError(""); setOrganizationError("");
     setMadOpen(false); setMadMetrics(null); setMadIncidents([]); setMadError(""); setMadAssignee("");
-    setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText("{\\n  \\"replicas\\": 2\\n}"); setMacChangeSummary("");
+    setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
     setPatchProposals([]); setSelectedPatch(null); setPatchError("");
     setNotice("Signed out. In-memory access/refresh tokens and conversation were cleared.");
   }
