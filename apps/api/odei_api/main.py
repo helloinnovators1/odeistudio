@@ -30,7 +30,7 @@ from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
 from odei_api.services.mac_deployments import MongoMacDeploymentStore
 from odei_api.services.mac_environment_api import router as mac_environment_router
-from odei_api.services.mac_environments import MongoMacEnvironmentStore
+from odei_api.services.mac_revision_environment_store import MongoMacRevisionEnvironmentStore
 from odei_api.services.mad_incidents import (
     MadIncidentConflict,
     MadIncidentNotFound,
@@ -85,8 +85,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             audit_store = MongoAuditEventStore(application.state.mongo_database["audit_events"])
             await audit_store.initialize()
             application.state.audit_event_store = audit_store
-            mac_environment_store = MongoMacEnvironmentStore(
-                application.state.mongo_database["mac_environments"]
+            mac_environment_store = MongoMacRevisionEnvironmentStore(
+                application.state.mongo_database["mac_environments"],
+                application.state.mongo_database["mac_environment_revisions"],
             )
             await mac_environment_store.initialize()
             application.state.mac_environment_store = mac_environment_store
