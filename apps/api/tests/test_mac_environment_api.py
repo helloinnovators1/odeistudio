@@ -13,6 +13,21 @@ class AuditStore:
         self.events.append(event)
 
 
+class DeploymentStore:
+    def __init__(self):
+        self.attempts = {}
+
+    async def create_attempt(self, **kwargs):
+        self.attempts["attempt-12345678901234567890123456789012"] = {
+            "environment": kwargs["environment"], "state": "queued",
+            "revision": kwargs["version"], "provider": kwargs["provider"],
+        }
+        return {"_id": "attempt-12345678901234567890123456789012", **self.attempts["attempt-12345678901234567890123456789012"]}
+
+    async def get(self, attempt_id):
+        return {"_id": attempt_id, **self.attempts[attempt_id]}
+
+
 class EnvironmentStore:
     def __init__(self):
         self.calls = []
@@ -76,6 +91,7 @@ def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
     audit = AuditStore()
     app.state.mongo_database = object()
     app.state.mac_environment_store = store
+    app.state.mac_deployment_store = DeploymentStore()
     app.state.audit_event_store = audit
     app.dependency_overrides[get_current_principal] = lambda: principal
     return TestClient(app), store, audit
@@ -229,3 +245,31 @@ def test_mac_success_audit_uses_same_mongo_transaction_session():
     assert result["version"] == 1
     assert store.session is audit.session
     assert store.session is not None
+
+
+
+def test_mac_deployment_request_is_authenticated_idempotent_boundary_and_audited(monkeypatch):
+    from odei_api.security.auth import Principal
+
+    principal = Principal(subject="operator-1", issuer=ISSUER)
+    client, _store, audit = _client(monkeypatch, principal)
+    response = client.post(
+        "/api/v1/mac/environments/staging/deployments",
+        json={"version": 2, "provider": "aws", "idempotency_key": "request-12345678"},
+    )
+    assert response.status_code == 202
+    assert response.json()["deployment"]["state"] == "queued"
+    assert audit.events[0]["action"] == "mac.deployment.request"
+    assert audit.events[0]["outcome"] == "success"
+
+
+def test_mac_deployment_request_rejects_boolean_revision(monkeypatch):
+    from odei_api.security.auth import Principal
+
+    principal = Principal(subject="operator-1", issuer=ISSUER)
+    client, _store, _audit = _client(monkeypatch, principal)
+    response = client.post(
+        "/api/v1/mac/environments/staging/deployments",
+        json={"version": True, "provider": "aws", "idempotency_key": "request-12345678"},
+    )
+    assert response.status_code == 422
