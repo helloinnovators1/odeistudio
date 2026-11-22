@@ -549,23 +549,22 @@ Still outstanding: a short-lived single-use approval capability independently ve
 
 
 
-## NEXUS capability hardening and integration status — 2026-11-22
+## NEXUS capability hardening and MAC/MAD integration status — 2026-11-22
 
-- PR [#52](https://github.com/helloinnovators1/odeistudio/pull/52) carries strict integer validation for companion `proposal_version`, rejecting JSON booleans. Exact-head API CI passed 6/6 jobs and Security Scanning passed 4/4 jobs on `240b432cbf029a32e48ecd57ba2320f0757706dd`.
-- PR [#53](https://github.com/helloinnovators1/odeistudio/pull/53) hardens signed capability digests against parent/descendant path collisions, including case-insensitive aliases. Exact-head API CI passed 6/6 jobs and Security Scanning passed 4/4 jobs on `20d7a48db207d3ae7bc243178bef74058db78994`.
+- PR [#52](https://github.com/helloinnovators1/odeistudio/pull/52) carries strict integer validation for companion `proposal_version`, rejecting JSON booleans. The latest reconciled head `e36dd3c015c50ab9212fead9c56e4bd26a52ce79` passed API CI 6/6 [45047437417](https://github.com/helloinnovators1/odeistudio/actions/runs/45047437417) and Security Scanning 4/4 [45047437421](https://github.com/helloinnovators1/odeistudio/actions/runs/45047437421).
+- PR [#53](https://github.com/helloinnovators1/odeistudio/pull/53) hardens signed capability digests against parent/descendant path collisions, including case-insensitive aliases. The latest reconciled head `f445b3a117c605805b2f9741dc6d1b4112530082` passed API CI 6/6 [45047448908](https://github.com/helloinnovators1/odeistudio/actions/runs/45047448908) and Security Scanning 4/4 [45047448958](https://github.com/helloinnovators1/odeistudio/actions/runs/45047448958).
 - PR [#54](https://github.com/helloinnovators1/odeistudio/pull/54) is closed as a duplicate. Its strict-version change was consolidated into PR #52; no functionality is lost and #54 is not counted as a merged feature.
-- PRs #50 and #51 are closed as superseded by the consolidated [MAC/MAD integration PR #55](https://github.com/helloinnovators1/odeistudio/pull/55). PR #55 preserves the MAC environment-governance and MAD transactional-audit changes on current `main`.
-- PR #55 exact-head API CI [45045760888](https://github.com/helloinnovators1/odeistudio/actions/runs/45045760888) and Security Scanning [45045761063](https://github.com/helloinnovators1/odeistudio/actions/runs/45045761063) both passed on `d408f68efc6085309f48c77bfd635705d47c4173`.
-- These PRs remain open and unmerged pending independent review. Their passing CI/security runs do not imply production deployment.
+- PRs #50 and #51 are closed as superseded by [PR #55](https://github.com/helloinnovators1/odeistudio/pull/55), the consolidated MAC environment-governance and MAD transactional-audit integration.
+- PR #55 latest reconciled head `be5c57b6c4a981ddaabe3e4d188b7fc91afa5582` passed API CI 6/6 [45047969904](https://github.com/helloinnovators1/odeistudio/actions/runs/45047969904) and Security Scanning 4/4 [45047969879](https://github.com/helloinnovators1/odeistudio/actions/runs/45047969879).
+- PRs #52, #53 and #55 remain open and unmerged pending independent review. Their passing CI/security runs do not imply production deployment.
 
 The NEXUS local companion remains intentionally single-file per apply request. Durable multi-file transactions, journal recovery, rollback and cross-platform acceptance remain outstanding.
-
 
 ## NEXUS local patch snapshot consistency — in review (2026-11-22)
 
 - PR [#56](https://github.com/helloinnovators1/odeistudio/pull/56) hardens the existing single-file apply path on both POSIX and Windows. It compares device, inode, mode, size, modification time and change time before and after reading, and rejects a snapshot if metadata or byte count changed.
 - Added deterministic regression tests for concurrent same-length overwrites. The Windows test explicitly advances mtime to avoid filesystem timestamp-resolution flakiness.
-- Exact-head API CI [45047023019](https://github.com/helloinnovators1/odeistudio/actions/runs/45047023019) passed 6/6 jobs, including Windows Python 3.10/3.12, Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration.
-- Exact-head Security Scanning [45047023065](https://github.com/helloinnovators1/odeistudio/actions/runs/45047023065) passed 4/4 jobs, including CodeQL, dependency audits and secret scanning.
-- An earlier Windows test run failed because the simulated same-size write did not deterministically change the observed timestamp. The regression was corrected and the exact-head matrix passed.
+- Exact reconciled-head API CI [45047325117](https://github.com/helloinnovators1/odeistudio/actions/runs/45047325117) passed 6/6 jobs, including Windows Python 3.10/3.12, Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration.
+- Exact reconciled-head Security Scanning [45047325153](https://github.com/helloinnovators1/odeistudio/actions/runs/45047325153) passed 4/4 jobs, including CodeQL, dependency audits and secret scanning.
+- An earlier Windows test run failed because the simulated same-size write did not deterministically change the observed timestamp. The regression was corrected and the exact reconciled-head matrix passed.
 - This is snapshot consistency hardening only. It does not enable multi-file writes, transaction journaling, crash recovery or rollback. PR #56 remains open and unmerged pending independent review.
