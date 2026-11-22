@@ -917,6 +917,7 @@ export default function NexusChatPanel({
     setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
     setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
     setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+    setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
     setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
     setChatError(""); setProjectError(""); setOrganizationError("");
     setMadOpen(false); setMadMetrics(null); setMadIncidents([]); setMadError(""); setMadAssignee("");
