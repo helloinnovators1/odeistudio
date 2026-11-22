@@ -39,9 +39,14 @@ promotion, and rollback-draft operations. Every successful and failed lifecycle
 operation is written to the append-only platform audit store. Permissions are resolved
 from the deployment-owned issuer/subject registry, never from browser-supplied roles.
 
-This increment still does **not** provide a NEXUS/MAC operator screen, an external
-secret-manager connector, provider-specific deployment execution, staging identity
-provisioning, or production infrastructure changes. Promotion changes the approved
+The NEXUS panel now includes a MAC environment governance view and browser transport
+for loading revisions, saving drafts, submitting, approving, promoting the active
+configuration pointer, and creating rollback drafts. Browser controls are convenience
+only: the API remains authoritative for every permission and lifecycle transition.
+
+This increment still does **not** provide an external secret-manager connector,
+provider-specific deployment execution, staging identity provisioning, or production
+infrastructure changes. Promotion changes the approved
 active configuration pointer only; it is not evidence that a cloud deployment ran.
 The current revision history is embedded in one environment document, so a separate
 revision collection and retention/archival policy are required before unbounded
