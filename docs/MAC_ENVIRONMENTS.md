@@ -138,7 +138,11 @@ before persistence.
 
 The adapter receives the stable deployment idempotency key. Once the provider
 returns a deployment identifier, the worker persists that identifier in the
-attempt ledger before health verification. If the worker crashes after that point,
+attempt ledger before health verification. Replaying an idempotency key from
+the same authenticated actor returns the existing attempt; reusing it for a
+different actor or request is rejected. The lookup-before-insert path works
+inside the same MongoDB transaction as the request audit; a concurrent unique-key
+race is rejected for safe client retry rather than reading inside an aborted transaction. If the worker crashes after that point,
 a reclaimed worker resumes verification against the existing provider deployment
 instead of issuing another apply. Long-running secret resolution, deployment and
 verification calls renew the worker lease; lease loss fences the worker from
