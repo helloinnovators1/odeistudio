@@ -100,15 +100,25 @@ class MacDeploymentWorker:
         attempt_id: str,
     ) -> dict[str, Any]:
         resolved: dict[str, Any] = {}
+        # A single deadline bounds the entire secret-resolution phase, not
+        # merely each individual adapter call. Heartbeats keep the lease alive
+        # only while the bounded operation remains within that deadline.
+        deadline = asyncio.get_running_loop().time() + self.operation_timeout_seconds
         for key, value in config.items():
             if _SECRET_KEY.search(key):
                 if not isinstance(value, str) or not value.startswith("secret://"):
                     raise ValueError("Sensitive configuration must use a secret reference")
-                secret = await self._with_heartbeat(
-                    self.secret_resolver.resolve(
-                        value, environment=environment, provider=provider,
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise TimeoutError("Secret resolution exceeded the operation deadline")
+                secret = await asyncio.wait_for(
+                    self._with_heartbeat(
+                        self.secret_resolver.resolve(
+                            value, environment=environment, provider=provider,
+                        ),
+                        attempt_id=attempt_id,
                     ),
-                    attempt_id=attempt_id,
+                    timeout=remaining,
                 )
                 if not isinstance(secret, str) or not secret or len(secret) > 16_384:
                     raise ValueError("Secret manager returned an invalid value")
