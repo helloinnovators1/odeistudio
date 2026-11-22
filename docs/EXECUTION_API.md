@@ -11,6 +11,7 @@ The execution API is authenticated by the same verified OIDC access-token princi
 - GET .../tasks/{task_id}/executions/{run_id} — returns a lease-token-free run projection.
 - GET .../tasks/{task_id}/executions/{run_id}/events — returns version-cursor-paginated run events.
 - POST .../tasks/{task_id}/executions/{run_id}/cancel — records durable cancellation intent.
+- GET .../tasks/{task_id}/executions/{run_id}/artifacts — returns bounded, redacted stdout/stderr to an authorized task owner or project owner.
 
 ## Approval and transaction boundary
 
@@ -32,6 +33,6 @@ MongoDB must be a replica set or sharded cluster because run/task/event/audit cr
 
 ## Current limitations
 
-This increment provides the authenticated API, GridFS archive storage, and atomic approved-task-to-queued-run transition. It does not itself deploy or start a worker. The following still gate operational execution: worker supervisor and lease renewal; sandbox cancellation propagation; exhausted-retry finalization; durable stdout/stderr and artifact storage/retrieval; secret redaction and output policy; worker host/OCI runtime hardening; malware/content scanning; snapshot retention scheduling; metrics, alerting and incident response; real ODID issuer and staging verification; and end-to-end tests on the actual deployment infrastructure.
+The standalone worker entrypoint is now implemented as `odei-execution-worker` / `python -m odei_api.execution_worker`. It claims and renews leases, re-ingests and verifies snapshots, invokes the sandbox, polls cancellation, persists redacted bounded output, finalizes task/run states, expires exhausted attempts and cleans expired snapshot/artifact blobs. See EXECUTION_WORKER.md. It has not been deployed or run on a configured worker host.
 
 Do not expose this API as production-ready until those gates pass and the configured OCI profile digests have been verified by the deployment owner.
