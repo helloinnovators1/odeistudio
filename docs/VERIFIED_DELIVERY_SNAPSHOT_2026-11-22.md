@@ -4,7 +4,7 @@ This snapshot supersedes earlier content in this file. It records repository evi
 
 ## Mainline and open work
 
-- Current `main`: `b5e76e6a5f43f617216b3383f6e8b4b3f35d7316`.
+- Current `main`: `e7603ae0b49537ca2d085b63011c210e264ff715` (documentation synchronization commit; PR #68 browser-test implementation is included).
 - PR [#68](https://github.com/helloinnovators1/odeistudio/pull/68), expanded NEXUS browser shell regression coverage, is merged.
 - PR [#66](https://github.com/helloinnovators1/odeistudio/pull/66), MAC/MAD transactional governance and NEXUS project-load race protection, remains open and has no independent review submissions.
 - Issues [#62](https://github.com/helloinnovators1/odeistudio/issues/62) (npm lockfile/`npm ci`), [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (branch protection/reviews) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated E2E/accessibility/visual regression) remain open.

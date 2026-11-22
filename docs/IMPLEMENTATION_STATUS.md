@@ -4,7 +4,7 @@
 
 This snapshot supersedes earlier status tables retained below the historical separator. It describes the repository state observed after merging PR #68. Code present, automated checks, independent review, merge, deployment and external acceptance are distinct states.
 
-**Main:** `b5e76e6a5f43f617216b3383f6e8b4b3f35d7316` (PR #68 squash merge).  
+**Main:** `e7603ae0b49537ca2d085b63011c210e264ff715` (PR #69 documentation synchronization; includes PR #68 browser-test merge).  
 **Latest merged browser-test increment:** [PR #68](https://github.com/helloinnovators1/odeistudio/pull/68), merged after all reported checks passed.  
 **Open PRs:** [#66](https://github.com/helloinnovators1/odeistudio/pull/66) (MAC/MAD transactional governance and NEXUS project-load race protection).  
 **Open engineering issues:** [#62](https://github.com/helloinnovators1/odeistudio/issues/62), [#63](https://github.com/helloinnovators1/odeistudio/issues/63), [#64](https://github.com/helloinnovators1/odeistudio/issues/64).
