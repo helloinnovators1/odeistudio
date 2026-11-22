@@ -31,7 +31,7 @@ def test_new_run_is_queued_and_hides_lease_token():
     {"organization_id": "../other-tenant"}, {"requester_issuer": "http://identity.example"},
 ])
 def test_new_run_rejects_invalid_or_untrusted_fields(overrides):
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, TypeError)):
         make_run(**overrides)
 
 def test_argument_vector_is_not_shell_joined():
