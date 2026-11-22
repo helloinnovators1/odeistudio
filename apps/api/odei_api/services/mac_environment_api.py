@@ -122,6 +122,26 @@ async def _audit(audit, principal: Principal, action: str, environment: str,
         }) from exc
 
 
+async def _mutate_with_audit(request: Request, store: Any, audit: Any,
+                             principal: Principal, action: str, environment: str,
+                             method: str, **arguments: Any) -> Any:
+    """Commit a MAC lifecycle mutation and its success audit event atomically."""
+    database = getattr(request.app.state, "mongo_database", None)
+    client = getattr(database, "client", None)
+    operation = getattr(store, method)
+    if client is None or not callable(getattr(client, "start_session", None)):
+        result = await operation(**arguments)
+        await _audit(audit, principal, action, environment, "success", {})
+        return result
+    async with await client.start_session() as session:
+        async def transaction(active_session):
+            result = await operation(**arguments, session=active_session)
+            metadata = {"version": result.get("version")} if isinstance(result, dict) and "version" in result else {}
+            await _audit(audit, principal, action, environment, "success", metadata, session=active_session)
+            return result
+        return await session.with_transaction(transaction)
+
+
 def _translate(exc: Exception) -> HTTPException:
     if isinstance(exc, MacEnvironmentNotFound):
         return HTTPException(status_code=404, detail={"code": "MAC_ENVIRONMENT_NOT_FOUND", "message": str(exc)})
