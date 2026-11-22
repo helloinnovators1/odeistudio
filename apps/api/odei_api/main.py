@@ -228,6 +228,65 @@ async def mad_execution_metrics(
         ) from exc
 
 
+@app.get(f"{settings.api_prefix}/mad/execution-metrics", tags=["mad"])
+async def mad_operator_execution_metrics(
+    request: Request,
+    principal: Principal = auth_principal_dependency,
+) -> dict[str, object]:
+    """Read aggregate MAD metrics using a verified, explicitly granted operator scope."""
+    audit_store = getattr(request.app.state, "audit_event_store", None)
+    if audit_store is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Operator audit storage is unavailable."},
+        )
+
+    async def append_access_audit(outcome: str) -> None:
+        try:
+            await audit_store.append(
+                organization_id="platform",
+                actor_issuer=principal.issuer,
+                actor_subject=principal.subject,
+                action="mad.metrics.read",
+                target_type="platform_metrics",
+                target_id="execution",
+                outcome=outcome,
+                request_id=uuid4().hex,
+                metadata={"authorization_scope": "mad:read"},
+            )
+        except Exception as exc:
+            logger.error("MAD operator access audit failed (%s)", type(exc).__name__)
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Operator audit could not be recorded."},
+            ) from exc
+
+    if "mad:read" not in principal.scopes:
+        await append_access_audit("denied")
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "MAD_SCOPE_REQUIRED", "message": "The verified identity lacks the mad:read scope."},
+        )
+
+    database = getattr(request.app.state, "mongo_database", None)
+    if database is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAD_METRICS_UNAVAILABLE", "message": "Operational metrics storage is unavailable."},
+        )
+    try:
+        metrics = await collect_mad_execution_metrics(database)
+    except PyMongoError as exc:
+        logger.warning("MAD operator metrics collection failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "MAD_METRICS_UNAVAILABLE", "message": "Operational metrics are temporarily unavailable."},
+        ) from exc
+    metrics["alerts"] = evaluate_mad_alerts(metrics)
+    await append_access_audit("success")
+    return metrics
+
+
 @app.get(f"{settings.api_prefix}/auth/me", tags=["auth"])
 async def current_identity(principal: Principal = auth_principal_dependency) -> dict[str, str]:
     """Return only the verified caller identity; no client-supplied roles or tenant claims."""

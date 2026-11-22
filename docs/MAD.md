@@ -67,3 +67,14 @@ The internal aggregate-metrics response now includes a derived `alerts` array:
 Each alert includes a stable ID and deduplication key, severity, firing state, observation timestamp, summary and runbook path. Evaluation uses only aggregate telemetry and excludes tenant IDs, worker IDs, prompts, artifact contents and command output. Malformed timestamps do not trigger backlog alerts.
 
 **Operational boundary:** these are stateless firing observations, not persisted incidents. Acknowledgement, assignment, resolution/reopen history, notification delivery, alert ownership and MAC-controlled threshold configuration remain unimplemented. The baseline thresholds must be tuned against real staging workload before production paging is enabled.
+
+
+## ODID-scoped operator read API
+
+A second read path is available at `GET /api/v1/mad/execution-metrics`. It uses the normal RS256/JWKS-verified API bearer identity and requires the explicit `mad:read` access-token scope. The route does not accept a browser-supplied role, organization ID or static MAD operations token. The identity provider must explicitly grant `mad:read` to approved operator clients/identities.
+
+Every permitted or denied request is written to the append-only audit store under the platform scope before a response is returned. If the audit store is unavailable or the audit write fails, the route fails closed. The response contains the same aggregate-only metrics and stateless alerts as the internal endpoint. It does not expose tenant drill-down or incident mutation actions.
+
+The existing `/api/v1/internal/mad/execution-metrics` endpoint remains a separate server-to-server path protected by `MAD_METRICS_TOKEN` and private network policy. Never expose that token to browser JavaScript.
+
+**Remaining:** this is an authenticated read API, not the MAD dashboard or complete operator authorization system. The real ODID issuer must configure and issue `mad:read`; staging authorization/audit tests, a dashboard UI, persisted incident workflows and alert delivery remain acceptance gates.
