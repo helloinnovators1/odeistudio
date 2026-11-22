@@ -871,3 +871,23 @@ def test_windows_patch_directory_access_does_not_require_delete_child(monkeypatc
         | windows.FILE_LIST_DIRECTORY | windows.FILE_TRAVERSE | windows.FILE_ADD_FILE
     )
     assert not child_capture["access"] & windows.FILE_DELETE_CHILD
+
+
+def test_companion_environment_diagnostics_report_prerequisites_without_opening_workspace():
+    from odei_api.companion import diagnose_companion_environment
+
+    report = diagnose_companion_environment(port=0, allowed_origins=[ORIGIN])
+    assert report["ready"] is False
+    assert report["checks"]["python"]["ok"] is True
+    assert report["checks"]["port"]["ok"] is False
+    assert report["checks"]["browser_origins"] == {"ok": True, "configured_count": 1}
+    assert "workspace" not in repr(report).lower() or "workspace is opened" not in repr(report).lower()
+    assert "studio.example.test" not in repr(report)
+    assert any("No workspace is opened" in item for item in report["limitations"])
+
+
+def test_companion_environment_diagnostics_reject_invalid_public_http_origin():
+    from odei_api.companion import diagnose_companion_environment
+
+    report = diagnose_companion_environment(port=8765, allowed_origins=["http://studio.example.test"])
+    assert report["checks"]["browser_origins"]["ok"] is False
