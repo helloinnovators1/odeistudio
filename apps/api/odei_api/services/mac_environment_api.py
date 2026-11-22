@@ -1,6 +1,7 @@
 """Authenticated, audited API for MAC environment governance."""
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any
 from uuid import uuid4
@@ -25,7 +26,8 @@ principal_dependency = Depends(get_current_principal)
 
 def _actor_id(principal: Principal) -> str:
     """Bind lifecycle authorship to the complete verified issuer/subject pair."""
-    return f"{principal.issuer}::{principal.subject}"
+    identity = f"{principal.issuer}\0{principal.subject}".encode("utf-8")
+    return "oidc-" + hashlib.sha256(identity).hexdigest()
 
 
 class EnvironmentDraftRequest(BaseModel):
