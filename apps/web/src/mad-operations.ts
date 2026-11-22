@@ -58,14 +58,14 @@ function validateToken(token: string): void {
     throw new TypeError("A valid in-memory ODID access token is required.");
   }
 }
-async function request<T>(base: string, path: string, token: string, fetcher: Fetcher, method: "GET" | "POST" = "GET", body?: unknown): Promise<T> {
+async function request<T>(base: string, path: string, token: string, fetcher: Fetcher, method: "GET" | "POST" = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   const url = normalizeBase(base) + path;
   validateToken(token);
   const headers = new Headers({ Accept: "application/json", Authorization: "Bearer " + token });
   if (body !== undefined) headers.set("Content-Type", "application/json");
   const response = await fetcher(url, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-    credentials: "omit", cache: "no-store", redirect: "error",
+    credentials: "omit", cache: "no-store", redirect: "error", signal,
   });
   const raw = await response.text();
   if (new TextEncoder().encode(raw).byteLength > MAX_RESPONSE_BYTES) throw new Error("MAD API returned an oversized response.");
