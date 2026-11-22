@@ -22,6 +22,15 @@ export interface NexusExecutionEvent {
   event_id: string; type: string; version: number; occurred_at: string;
   from_status?: string; to_status?: string;
 }
+export interface NexusExecutionHistoryCursor {
+  before_created_at: string;
+  before_run_id: string;
+}
+export interface NexusExecutionHistoryPage {
+  runs: NexusExecutionRun[];
+  has_more: boolean;
+  next_cursor: NexusExecutionHistoryCursor | null;
+}
 export interface NexusExecutionEventsPage {
   events: NexusExecutionEvent[]; has_more: boolean; next_after_version: number;
 }
@@ -80,6 +89,42 @@ async function request<T>(
   }
   if (!payload || typeof payload !== "object") throw new Error("Execution API returned an invalid response.");
   return payload as T;
+}
+
+export async function listNexusProjectExecutions(
+  baseUrl: string, organizationId: string, projectId: string, accessToken: string,
+  options: {
+    limit?: number; cursor?: NexusExecutionHistoryCursor | null;
+    fetcher?: Fetcher; signal?: AbortSignal;
+  } = {},
+): Promise<NexusExecutionHistoryPage> {
+  const limit = options.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError("Execution history page size must be between 1 and 100.");
+  }
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (options.cursor) {
+    if (!options.cursor.before_created_at || !options.cursor.before_run_id) {
+      throw new TypeError("Execution history cursor is incomplete.");
+    }
+    query.set("before_created_at", options.cursor.before_created_at);
+    query.set("before_run_id", options.cursor.before_run_id);
+  }
+  const response = await request<NexusExecutionHistoryPage>(
+    route(baseUrl, organizationId, projectId) + "/executions?" + query.toString(),
+    accessToken, { fetcher: options.fetcher, signal: options.signal },
+  );
+  if (!Array.isArray(response.runs) || typeof response.has_more !== "boolean"
+    || !(response.next_cursor === null || (
+      typeof response.next_cursor === "object"
+      && typeof response.next_cursor.before_created_at === "string"
+      && typeof response.next_cursor.before_run_id === "string"
+    ))
+    || response.runs.some((run) => !run || typeof run.run_id !== "string"
+      || typeof run.task_id !== "string" || typeof run.status !== "string")) {
+    throw new Error("Execution API returned an invalid project history response.");
+  }
+  return response;
 }
 
 export async function listNexusExecutionProfiles(
