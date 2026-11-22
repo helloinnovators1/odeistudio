@@ -6,7 +6,7 @@ from odei_api.mac_worker import _load_factory, run_worker
 def test_mac_worker_factory_requires_explicit_module_callable():
     with pytest.raises(RuntimeError, match="trusted module:callable"):
         _load_factory("os;import:system", setting_name="TEST_FACTORY")
-    with pytest.raises(RuntimeError, match="callable"):
+    with pytest.raises(TypeError, match="callable"):
         _load_factory("os:path", setting_name="TEST_FACTORY")
     assert callable(_load_factory("odei_api.mac_worker:main", setting_name="TEST_FACTORY"))
 
