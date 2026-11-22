@@ -141,3 +141,26 @@ async def test_missing_environment_and_stale_revision_are_explicit():
             actor="author-1", config={"region": "us-east-1"},
             change_summary="Stale update",
         )
+
+
+@pytest.mark.asyncio
+async def test_new_revision_is_append_only_and_uses_latest_version_compare_and_set():
+    store = MongoMacEnvironmentStore(Collection())
+    await store.create_draft(
+        environment="staging", actor="author-1",
+        config={"replicas": 2}, change_summary="Initial",
+    )
+    revision = await store.create_revision(
+        environment="staging", expected_latest_version=1, actor="author-2",
+        config={"replicas": 4}, change_summary="Scale staging",
+    )
+    assert revision["version"] == 2
+    assert revision["status"] == "draft"
+    record = await store.get("staging")
+    assert record["latest_version"] == 2
+    assert record["versions"][0]["config"] == {"replicas": 2}
+    with pytest.raises(MacEnvironmentConflict):
+        await store.create_revision(
+            environment="staging", expected_latest_version=1, actor="author-3",
+            config={"replicas": 5}, change_summary="Stale scale",
+        )
