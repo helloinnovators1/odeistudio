@@ -88,7 +88,19 @@ jobs:
           echo "MongoDB replica set did not become primary" >&2
           exit 1
       - name: Verify real transaction rollback and commit
-        run: python -m pytest tests/test_task_store_mongodb_integration.py tests/test_execution_stores_mongodb_integration.py
+        run: |
+          tests=(
+            tests/test_task_store_mongodb_integration.py
+            tests/test_execution_stores_mongodb_integration.py
+          )
+          for optional_test in \
+            tests/test_mac_store_mongodb_integration.py \
+            tests/test_mad_incident_mongodb_integration.py; do
+            if [[ -f "$optional_test" ]]; then
+              tests+=("$optional_test")
+            fi
+          done
+          python -m pytest "${tests[@]}"
 
   web:
     runs-on: ubuntu-latest
