@@ -308,7 +308,8 @@ class MongoExecutionRunStore:
 
     async def finish(self, *, organization_id: str, run_id: str, worker_id: str,
                      lease_token: str, outcome: ExecutionRunStatus,
-                     audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+                     audit_event: Mapping[str, Any] | None = None,
+                     tasks: Any | None = None, task_events: Any | None = None) -> ExecutionRun:
         if outcome not in {ExecutionRunStatus.COMPLETED, ExecutionRunStatus.FAILED, ExecutionRunStatus.CANCELLED}:
             raise ValueError("execution outcome must be completed, failed or cancelled")
         run = await self.get(organization_id=organization_id, run_id=run_id)
@@ -317,11 +318,14 @@ class MongoExecutionRunStore:
         if outcome is ExecutionRunStatus.CANCELLED and not run.cancel_requested:
             raise ExecutionRunConflict("worker cannot cancel without a cancellation request")
         return await self._worker_transition(organization_id=organization_id, run_id=run_id,
-            worker_id=worker_id, lease_token=lease_token, next_status=outcome, audit_event=audit_event)
+            worker_id=worker_id, lease_token=lease_token, next_status=outcome,
+            audit_event=audit_event, task_collection=tasks, task_events=task_events)
 
     async def _worker_transition(self, *, organization_id: str, run_id: str, worker_id: str,
                                  lease_token: str, next_status: ExecutionRunStatus,
-                                 audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
+                                 audit_event: Mapping[str, Any] | None = None,
+                                 task_collection: Any | None = None,
+                                 task_events: Any | None = None) -> ExecutionRun:
         now = datetime.now(timezone.utc)
         async with self._client.start_session() as session, await session.start_transaction():
             current = await self._runs.find_one(
@@ -352,6 +356,33 @@ class MongoExecutionRunStore:
                 event_type=f"execution.{next_status.value}", version=updated["version"],
                 actor_id=worker_id, from_status=current_status.value, to_status=next_status.value),
                 session=session)
+            if next_status in _TERMINAL and task_collection is not None and task_events is not None:
+                target_task_status = {
+                    ExecutionRunStatus.COMPLETED: "validating",
+                    ExecutionRunStatus.FAILED: "failed",
+                    ExecutionRunStatus.CANCELLED: "cancelled",
+                }[next_status]
+                task = await task_collection.find_one({
+                    "_id": updated["task_id"], "organization_id": organization_id,
+                    "project_id": updated["project_id"], "status": "executing",
+                }, session=session)
+                if task is not None:
+                    task_updated = await task_collection.find_one_and_update(
+                        {"_id": task["_id"], "organization_id": organization_id,
+                         "version": task["version"], "status": "executing"},
+                        {"$set": {"status": target_task_status, "updated_at": now},
+                         "$inc": {"version": 1}},
+                        return_document=ReturnDocument.AFTER, session=session,
+                    )
+                    if task_updated is None:
+                        raise ExecutionRunConflict("task changed while execution was being finalized")
+                    await task_events.insert_one({
+                        "event_id": str(uuid4()), "organization_id": organization_id,
+                        "project_id": updated["project_id"], "task_id": updated["task_id"],
+                        "actor_id": worker_id, "type": "task.status_changed",
+                        "from_status": "executing", "to_status": target_task_status,
+                        "version": task_updated["version"], "occurred_at": now,
+                    }, session=session)
             await self._audit_in_transaction(audit_event, session)
         return self._from_document(updated)
 
