@@ -185,6 +185,7 @@ class ExecutionWorker:
             await self.runs.expire_exhausted(actor_id=self.worker_id, limit=50)
             if time.monotonic() - last_cleanup >= 60:
                 await self.snapshots.delete_expired(limit=50)
+                await self.artifacts.delete_expired(limit=50)
                 last_cleanup = time.monotonic()
             worked = await self.run_once()
             if not worked:
