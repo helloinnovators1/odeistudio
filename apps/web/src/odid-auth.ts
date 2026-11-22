@@ -17,6 +17,8 @@ export interface ODidAccessToken {
   accessToken: string;
   expiresAt: number;
   scope?: string;
+  /** Optional rotating refresh token; held in application memory only. */
+  refreshToken?: string;
 }
 
 interface LoginTransaction {
@@ -37,6 +39,7 @@ const TRANSACTION_TTL_MS = 10 * 60 * 1_000;
 const MAX_DISCOVERY_BYTES = 32_000;
 const MAX_TOKEN_RESPONSE_BYTES = 16_000;
 const MAX_ACCESS_TOKEN_CHARS = 8_192;
+const MAX_REFRESH_TOKEN_CHARS = 8_192;
 const MAX_TOKEN_LIFETIME_SECONDS = 86_400;
 
 export class ODidOAuthError extends Error {
@@ -109,6 +112,11 @@ function endpoint(value: unknown, label: string): string {
   return parseHttpsUrl(value, `ODID ${label}`).toString();
 }
 
+function validRefreshToken(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_REFRESH_TOKEN_CHARS
+    && /^[\x21-\x7E]+$/.test(value);
+}
+
 async function readJson(response: Response, maximum: number, label: string): Promise<Record<string, unknown>> {
   const declaredLength = Number(response.headers.get("Content-Length"));
   if (Number.isFinite(declaredLength) && declaredLength > maximum) {
@@ -165,7 +173,7 @@ async function readJson(response: Response, maximum: number, label: string): Pro
 async function discover(
   config: ODidOAuthConfig,
   fetcher: Fetcher,
-): Promise<{ authorizationEndpoint: string; tokenEndpoint: string }> {
+): Promise<{ authorizationEndpoint: string; tokenEndpoint: string; revocationEndpoint?: string }> {
   let response: Response;
   try {
     response = await fetcher(discoveryUrl(config.issuer), {
@@ -190,6 +198,9 @@ async function discover(
   return {
     authorizationEndpoint: endpoint(metadata.authorization_endpoint, "authorization endpoint"),
     tokenEndpoint: endpoint(metadata.token_endpoint, "token endpoint"),
+    ...(metadata.revocation_endpoint === undefined
+      ? {}
+      : { revocationEndpoint: endpoint(metadata.revocation_endpoint, "revocation endpoint") }),
   };
 }
 
@@ -266,6 +277,38 @@ export async function beginODIDLogin(
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("resource", config.resource);
   return url.toString();
+}
+
+function parseTokenResponse(
+  payload: Record<string, unknown>,
+  now: number,
+  previousRefreshToken?: string,
+): ODidAccessToken {
+  const accessToken = payload.access_token;
+  const tokenType = payload.token_type;
+  const expiresIn = payload.expires_in;
+  const returnedRefreshToken = payload.refresh_token;
+  if (
+    typeof accessToken !== "string" || !/^[A-Za-z0-9\-._~+/]+=*$/.test(accessToken)
+    || accessToken.length > MAX_ACCESS_TOKEN_CHARS
+    || typeof tokenType !== "string" || tokenType.toLowerCase() !== "bearer"
+    || !Number.isInteger(expiresIn) || (expiresIn as number) < 1
+    || (expiresIn as number) > MAX_TOKEN_LIFETIME_SECONDS
+  ) {
+    throw new ODidOAuthError("ODID returned an invalid access-token response.");
+  }
+  if (returnedRefreshToken !== undefined && !validRefreshToken(returnedRefreshToken)) {
+    throw new ODidOAuthError("ODID returned an invalid refresh-token response.");
+  }
+  const refreshToken = typeof returnedRefreshToken === "string"
+    ? returnedRefreshToken
+    : previousRefreshToken;
+  return {
+    accessToken,
+    expiresAt: now + (expiresIn as number) * 1_000,
+    ...(typeof payload.scope === "string" ? { scope: payload.scope } : {}),
+    ...(refreshToken ? { refreshToken } : {}),
+  };
 }
 
 export async function completeODIDLogin(
@@ -355,23 +398,95 @@ export async function completeODIDLogin(
   }
   const payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "token");
   if (!response.ok) throw new ODidOAuthError("ODID rejected the authorization-code exchange.");
-  const accessToken = payload.access_token;
-  const tokenType = payload.token_type;
-  const expiresIn = payload.expires_in;
-  if (
-    typeof accessToken !== "string" || !/^[A-Za-z0-9\-._~+/]+=*$/.test(accessToken)
-    || accessToken.length > MAX_ACCESS_TOKEN_CHARS
-    || typeof tokenType !== "string" || tokenType.toLowerCase() !== "bearer"
-    || !Number.isInteger(expiresIn) || (expiresIn as number) < 1
-    || (expiresIn as number) > MAX_TOKEN_LIFETIME_SECONDS
-  ) {
-    throw new ODidOAuthError("ODID returned an invalid access-token response.");
+  return parseTokenResponse(payload, now);
+}
+
+
+export async function refreshODIDAccessToken(
+  rawConfig: ODidOAuthConfig,
+  currentRefreshToken: string,
+  options: { fetcher?: Fetcher; now?: number; signal?: AbortSignal } = {},
+): Promise<ODidAccessToken> {
+  const config = validateConfig(rawConfig);
+  if (!validRefreshToken(currentRefreshToken)) {
+    throw new ODidOAuthError("The in-memory ODID refresh token is invalid.");
   }
-  return {
-    accessToken,
-    expiresAt: now + (expiresIn as number) * 1_000,
-    ...(typeof payload.scope === "string" ? { scope: payload.scope } : {}),
-  };
+  const fetcher = options.fetcher ?? fetch;
+  const metadata = await discover(config, fetcher);
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: currentRefreshToken,
+    client_id: config.clientId,
+    resource: config.resource,
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const forwardAbort = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener("abort", forwardAbort, { once: true });
+  let response: Response;
+  let payload: Record<string, unknown>;
+  try {
+    response = await fetcher(metadata.tokenEndpoint, {
+      method: "POST",
+      credentials: "omit",
+      cache: "no-store",
+      redirect: "error",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+    payload = await readJson(response, MAX_TOKEN_RESPONSE_BYTES, "refresh-token");
+  } catch (error) {
+    if (error instanceof ODidOAuthError) throw error;
+    throw new ODidOAuthError("ODID session refresh could not be completed securely.");
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", forwardAbort);
+  }
+  if (!response.ok) throw new ODidOAuthError("ODID rejected the session refresh. Sign in again.");
+  return parseTokenResponse(payload, options.now ?? Date.now(), currentRefreshToken);
+}
+
+export async function revokeODIDToken(
+  rawConfig: ODidOAuthConfig,
+  token: string,
+  tokenTypeHint: "refresh_token" | "access_token" = "refresh_token",
+  options: { fetcher?: Fetcher } = {},
+): Promise<boolean> {
+  const config = validateConfig(rawConfig);
+  if (!validRefreshToken(token)) {
+    throw new ODidOAuthError("The in-memory ODID token is invalid.");
+  }
+  const fetcher = options.fetcher ?? fetch;
+  const metadata = await discover(config, fetcher);
+  if (!metadata.revocationEndpoint) return false;
+  const body = new URLSearchParams({
+    token,
+    token_type_hint: tokenTypeHint,
+    client_id: config.clientId,
+  });
+  let response: Response;
+  try {
+    response = await fetcher(metadata.revocationEndpoint, {
+      method: "POST",
+      credentials: "omit",
+      cache: "no-store",
+      redirect: "error",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+  } catch {
+    throw new ODidOAuthError("ODID token revocation could not be completed securely.");
+  }
+  if (!response.ok) throw new ODidOAuthError("ODID token revocation was rejected.");
+  return true;
 }
 
 export function clearODIDLoginTransaction(

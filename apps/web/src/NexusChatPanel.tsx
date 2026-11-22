@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   beginODIDLogin,
   completeODIDLogin,
+  clearODIDLoginTransaction,
+  refreshODIDAccessToken,
+  revokeODIDToken,
   type ODidAccessToken,
   type ODidOAuthConfig,
 } from "./odid-auth";
@@ -103,6 +106,9 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const abortRef = useRef<AbortController | null>(null);
   const taskAbortRef = useRef<AbortController | null>(null);
   const callbackHandled = useRef(false);
+  const authGenerationRef = useRef(0);
+  const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshPromiseRef = useRef<Promise<ODidAccessToken> | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -125,6 +131,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setAuthError("");
     void completeODIDLogin(window.location.href, config.auth)
       .then((token) => {
+        authGenerationRef.current += 1;
         setAccess(token);
         setNotice("Signed in. Loading your active organization memberships.");
       })
@@ -196,32 +203,86 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
   useEffect(() => {
     if (!access) return;
-    const remaining = access.expiresAt - Date.now();
-    if (remaining <= 0) {
+    const expireSession = (message: string, error = "") => {
+      authGenerationRef.current += 1;
+      if (config.auth && access.refreshToken) {
+        void revokeODIDToken(config.auth, access.refreshToken, "refresh_token").catch(() => {
+          // Session state is cleared even if provider revocation is unavailable.
+        });
+      }
       setAccess(null);
+      setAuthBusy(false);
+      setAuthError(error);
       setOrganizations([]);
       setOrganizationId("");
+      setOrganizationError("");
       setProjects([]);
       setProjectId("");
+      setProjectError("");
       setMessages([]);
       setConversations([]);
       setConversationId("");
+      setDraft("");
+      setConsent(false);
+      setAttachActiveFile(false);
+      setUseAttachedTools(false);
+      setChatError("");
       setTaskPlan(null);
       setTaskError("");
-      setNotice("Your sign-in expired. Sign in again.");
+      setPatchProposals([]);
+      setSelectedPatch(null);
+      setPatchError("");
+      setNotice(message);
+    };
+    const remaining = access.expiresAt - Date.now();
+    if (remaining <= 0) {
+      expireSession("Your sign-in expired. Sign in again.");
       return;
     }
+    const refreshToken = access.refreshToken;
+    const refreshDelay = refreshToken
+      ? Math.max(0, remaining - Math.min(60_000, Math.floor(remaining / 2)))
+      : remaining;
+    const generation = authGenerationRef.current;
     const timer = window.setTimeout(() => {
-      setAccess(null);
-      setOrganizations([]);
-      setOrganizationId("");
-      setProjects([]);
-      setProjectId("");
-      setMessages([]);
-      setNotice("Your sign-in expired. Sign in again.");
-    }, remaining);
-    return () => window.clearTimeout(timer);
-  }, [access]);
+      if (!refreshToken || !config.auth) {
+        expireSession("Your sign-in expired. Sign in again.");
+        return;
+      }
+      setAuthBusy(true);
+      const controller = new AbortController();
+      refreshAbortRef.current = controller;
+      const refreshPromise = refreshODIDAccessToken(config.auth, refreshToken, { signal: controller.signal });
+      refreshPromiseRef.current = refreshPromise;
+      void refreshPromise
+        .then((nextToken) => {
+          if (authGenerationRef.current !== generation) return;
+          setAccess(nextToken);
+          setAuthError("");
+          setNotice("Your ODID session was refreshed securely.");
+        })
+        .catch(() => {
+          if (authGenerationRef.current !== generation) return;
+          expireSession(
+            "Your ODID session could not be refreshed. Sign in again.",
+            "Session refresh failed. Please authenticate again.",
+          );
+        })
+        .finally(() => {
+          if (refreshPromiseRef.current === refreshPromise) refreshPromiseRef.current = null;
+          if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
+          if (authGenerationRef.current === generation) setAuthBusy(false);
+        });
+    }, refreshDelay);
+    return () => {
+      window.clearTimeout(timer);
+      if (refreshAbortRef.current) {
+        authGenerationRef.current += 1;
+        refreshAbortRef.current.abort();
+        refreshAbortRef.current = null;
+      }
+    };
+  }, [access, config.auth]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -352,11 +413,44 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   }
 
   function signOut() {
+    const currentAccess = access;
+    const pendingRefresh = refreshPromiseRef.current;
+    authGenerationRef.current += 1;
+    if (pendingRefresh) {
+      // Let a rotating refresh finish so sign-out can revoke the replacement token.
+      refreshAbortRef.current = null;
+    } else {
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
+    }
     abortRef.current?.abort();
     abortRef.current = null;
     taskAbortRef.current?.abort();
     taskAbortRef.current = null;
     setAccess(null);
+    setAuthBusy(false);
+    setAuthError("");
+    try { clearODIDLoginTransaction(); } catch { /* no pending transaction to clear */ }
+    if (config.auth && currentAccess) {
+      void (async () => {
+        let token = currentAccess.refreshToken ?? currentAccess.accessToken;
+        let hint: "refresh_token" | "access_token" = currentAccess.refreshToken
+          ? "refresh_token"
+          : "access_token";
+        if (pendingRefresh) {
+          try {
+            const refreshed = await pendingRefresh;
+            token = refreshed.refreshToken ?? refreshed.accessToken;
+            hint = refreshed.refreshToken ? "refresh_token" : "access_token";
+          } catch {
+            // Fall back to revoking the token held before the refresh attempt.
+          }
+        }
+        await revokeODIDToken(config.auth!, token, hint).catch(() => {
+          // Local sign-out must complete even when provider revocation is unavailable.
+        });
+      })();
+    }
     setOrganizations([]);
     setOrganizationId("");
     setProjects([]);
@@ -372,7 +466,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
     setUseAttachedTools(false);
     setChatError("");
     setProjectError("");
-    setNotice("Signed out. The in-memory access token and conversation were cleared.");
+    setNotice("Signed out. In-memory access/refresh tokens and conversation were cleared.");
   }
 
   async function loadPatchProposal(proposalId: string) {
@@ -588,7 +682,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
         <section className="nexus-connection">
           <div className="nexus-mark">N</div>
           <h2>Connect NEXUS</h2>
-          <p>Authenticate with your organization identity provider. The access token stays in memory and is never saved in browser storage.</p>
+          <p>Authenticate with your organization identity provider. Access and optional refresh tokens stay in memory; neither is saved in browser storage.</p>
           {config.missing.length > 0 && (
             <div className="nexus-config-warning" role="status">
               Authentication is safely disabled until these deployment settings are configured:
@@ -604,7 +698,7 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
 
       {access && (
         <section className="nexus-project-context">
-          <div className="nexus-auth-status"><span className="nexus-online-dot" /> Signed in · token held in memory</div>
+          <div className="nexus-auth-status"><span className="nexus-online-dot" /> Signed in · access and optional refresh tokens held in memory</div>
           <div className="nexus-org-form">
             <label htmlFor="nexus-org-id">ORGANIZATION</label>
             <select id="nexus-org-id" value={organizationId} onChange={(event) => {
