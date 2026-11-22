@@ -127,3 +127,33 @@ def test_mac_access_endpoint_denies_unassigned_identity_and_audits_denial(monkey
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "MAC_OPERATOR_REQUIRED"
     assert audit.events[0]["outcome"] == "denied"
+
+
+def test_mac_access_endpoint_fails_closed_when_audit_storage_is_unavailable(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from odei_api.main import app, settings
+    from odei_api.security.auth import get_current_principal
+
+    class FailingAuditStore:
+        async def append(self, **_event):
+            raise RuntimeError("audit unavailable")
+
+    previous_audit = getattr(app.state, "audit_event_store", None)
+    previous_registry = settings.mac_platform_operators_json
+    registry = json.dumps([{
+        "issuer": ISSUER, "subject": SUBJECT, "roles": ["platform_owner"],
+    }])
+    app.state.audit_event_store = FailingAuditStore()
+    monkeypatch.setattr(settings, "mac_platform_operators_json", registry)
+    app.dependency_overrides[get_current_principal] = lambda: Principal(
+        subject=SUBJECT, issuer=ISSUER,
+    )
+    try:
+        response = TestClient(app).get("/api/v1/mac/access")
+    finally:
+        app.dependency_overrides.pop(get_current_principal, None)
+        app.state.audit_event_store = previous_audit
+        monkeypatch.setattr(settings, "mac_platform_operators_json", previous_registry)
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "AUDIT_STORE_UNAVAILABLE"
