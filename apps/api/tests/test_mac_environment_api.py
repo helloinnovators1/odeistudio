@@ -249,11 +249,11 @@ def test_mac_success_audit_uses_same_mongo_transaction_session():
         mongo_database=SimpleNamespace(client=session_client)
     )))
     principal = Principal(subject="operator-1", issuer=ISSUER)
-    result = asyncio.run(_mutate_with_audit(
+    result = await _mutate_with_audit(
         request, store, audit, principal, "mac.environment.draft.create",
         "staging", "create_draft", environment="staging", actor="oidc-actor",
         config={"replicas": 2}, change_summary="Initial",
-    ))
+    )
     assert result["version"] == 1
     assert store.session is audit.session
     assert store.session is not None
