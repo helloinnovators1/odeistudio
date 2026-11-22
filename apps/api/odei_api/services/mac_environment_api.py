@@ -201,8 +201,9 @@ async def update_environment_draft(environment: str, version: int,
     if payload.expected_latest_version is None:
         raise HTTPException(status_code=422, detail={"code": "EXPECTED_VERSION_REQUIRED", "message": "expected_latest_version is required."})
     try:
-        result = await store.update_draft(
-            environment=environment, version=version,
+        result = await _mutate_with_audit(
+            request, store, audit, principal, "mac.environment.draft.update",
+            environment, "update_draft", environment=environment, version=version,
             expected_latest_version=payload.expected_latest_version,
             actor=_actor_id(principal), config=payload.config,
             change_summary=payload.change_summary,
@@ -210,7 +211,6 @@ async def update_environment_draft(environment: str, version: int,
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.draft.update", environment, "failure")
         raise _translate(exc) from exc
-    await _audit(audit, principal, "mac.environment.draft.update", environment, "success", {"version": version})
     return {"environment": result}
 
 
@@ -219,14 +219,15 @@ async def submit_environment(environment: str, payload: RevisionRequest,
                              request: Request, principal: Principal = principal_dependency):
     store, audit = await _context(request, principal, "mac:environment:manage", environment)
     try:
-        result = await store.submit_for_approval(
-            environment=environment, version=payload.version,
-            expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
+        result = await _mutate_with_audit(
+            request, store, audit, principal, "mac.environment.submit",
+            environment, "submit_for_approval", environment=environment,
+            version=payload.version, expected_latest_version=payload.expected_latest_version,
+            actor=_actor_id(principal),
         )
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.submit", environment, "failure")
         raise _translate(exc) from exc
-    await _audit(audit, principal, "mac.environment.submit", environment, "success", {"version": payload.version})
     return {"environment": result}
 
 
@@ -235,14 +236,15 @@ async def approve_environment(environment: str, payload: RevisionRequest,
                               request: Request, principal: Principal = principal_dependency):
     store, audit = await _context(request, principal, "mac:deployments:approve", environment)
     try:
-        result = await store.approve(
-            environment=environment, version=payload.version,
-            expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
+        result = await _mutate_with_audit(
+            request, store, audit, principal, "mac.environment.approve",
+            environment, "approve", environment=environment, version=payload.version,
+            expected_latest_version=payload.expected_latest_version,
+            actor=_actor_id(principal),
         )
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.approve", environment, "failure")
         raise _translate(exc) from exc
-    await _audit(audit, principal, "mac.environment.approve", environment, "success", {"version": payload.version})
     return {"environment": result}
 
 
@@ -251,15 +253,16 @@ async def promote_environment(environment: str, payload: PromotionRequest,
                               request: Request, principal: Principal = principal_dependency):
     store, audit = await _context(request, principal, "mac:deployments:approve", environment)
     try:
-        result = await store.promote(
-            environment=environment, version=payload.version,
+        result = await _mutate_with_audit(
+            request, store, audit, principal, "mac.environment.promote",
+            environment, "promote", environment=environment, version=payload.version,
             expected_active_version=payload.expected_active_version,
-            expected_latest_version=payload.expected_latest_version, actor=_actor_id(principal),
+            expected_latest_version=payload.expected_latest_version,
+            actor=_actor_id(principal),
         )
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.promote", environment, "failure")
         raise _translate(exc) from exc
-    await _audit(audit, principal, "mac.environment.promote", environment, "success", {"version": payload.version})
     return {"environment": result}
 
 
@@ -268,14 +271,14 @@ async def rollback_environment(environment: str, payload: RollbackRequest,
                                request: Request, principal: Principal = principal_dependency):
     store, audit = await _context(request, principal, "mac:environment:manage", environment)
     try:
-        result = await store.create_rollback_draft(
-            environment=environment, target_version=payload.target_version,
+        result = await _mutate_with_audit(
+            request, store, audit, principal, "mac.environment.rollback_draft",
+            environment, "create_rollback_draft", environment=environment,
+            target_version=payload.target_version,
             expected_latest_version=payload.expected_latest_version,
             actor=_actor_id(principal), change_summary=payload.change_summary,
         )
     except Exception as exc:
         await _audit(audit, principal, "mac.environment.rollback_draft", environment, "failure")
         raise _translate(exc) from exc
-    await _audit(audit, principal, "mac.environment.rollback_draft", environment, "success",
-                 {"version": result["version"], "rollback_of": payload.target_version})
     return {"revision": result}
