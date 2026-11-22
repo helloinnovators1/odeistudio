@@ -73,6 +73,28 @@ class MacDeploymentWorker:
             return None
         return await self.execute_claimed(attempt)
 
+    async def _with_heartbeat(self, operation: Any, *, attempt_id: str) -> Any:
+        task = asyncio.create_task(operation)
+        interval = max(5, self.lease_seconds // 3)
+        try:
+            while True:
+                done, _pending = await asyncio.wait({task}, timeout=interval)
+                if done:
+                    return await task
+                try:
+                    await self.store.heartbeat(
+                        attempt_id=attempt_id, worker_id=self.worker_id,
+                        lease_seconds=self.lease_seconds,
+                    )
+                except MacDeploymentConflict:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    raise
+        except asyncio.CancelledError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            raise
+
     async def _resolve_config(
         self, config: Mapping[str, Any], *, environment: str, provider: str,
     ) -> dict[str, Any]:
@@ -81,8 +103,11 @@ class MacDeploymentWorker:
             if _SECRET_KEY.search(key):
                 if not isinstance(value, str) or not value.startswith("secret://"):
                     raise ValueError("Sensitive configuration must use a secret reference")
-                secret = await self.secret_resolver.resolve(
-                    value, environment=environment, provider=provider,
+                secret = await self._with_heartbeat(
+                    self.secret_resolver.resolve(
+                        value, environment=environment, provider=provider,
+                    ),
+                    attempt_id=self._current_attempt_id,
                 )
                 if not isinstance(secret, str) or not secret or len(secret) > 16_384:
                     raise ValueError("Secret manager returned an invalid value")
@@ -93,6 +118,7 @@ class MacDeploymentWorker:
 
     async def execute_claimed(self, attempt: Mapping[str, Any]) -> dict[str, Any]:
         attempt_id = str(attempt.get("_id", ""))
+        self._current_attempt_id = attempt_id
         environment = str(attempt.get("environment", ""))
         provider_name = str(attempt.get("provider", ""))
         revision_number = attempt.get("revision")
@@ -113,16 +139,22 @@ class MacDeploymentWorker:
                 provider=provider_name,
             )
             deployment_id = await asyncio.wait_for(
-                adapter.deploy(
-                    config, environment=environment,
-                    idempotency_key=str(attempt.get("idempotency_key", "")),
+                self._with_heartbeat(
+                    adapter.deploy(
+                        config, environment=environment,
+                        idempotency_key=str(attempt.get("idempotency_key", "")),
+                    ),
+                    attempt_id=attempt_id,
                 ),
                 timeout=self.operation_timeout_seconds,
             )
             if not isinstance(deployment_id, str) or not 1 <= len(deployment_id) <= 200:
                 raise ValueError("Provider adapter returned an invalid deployment identifier")
             verified = await asyncio.wait_for(
-                adapter.verify(deployment_id, environment=environment),
+                self._with_heartbeat(
+                    adapter.verify(deployment_id, environment=environment),
+                    attempt_id=attempt_id,
+                ),
                 timeout=self.operation_timeout_seconds,
             )
             if not isinstance(verified, bool):
