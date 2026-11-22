@@ -33,9 +33,16 @@ credentials should permit application writes while operational audit collections
 remain insert-only. MongoDB backups and point-in-time recovery are required before
 production use.
 
-This increment supplies the persistence service and unit tests. It does **not**
-wire HTTP routes, NEXUS/MAC screens, provider-specific deployers, secret-manager
-connectors, staging identity provisioning, or production infrastructure changes.
-Those are explicit subsequent integration and acceptance gates; do not expose this
-service as an operational API until the route-level authorization and audit tests
-are in place.
+The authenticated API is mounted under `/api/v1/mac/environments`. It exposes
+read, draft create/edit, author submission, distinct-identity approval, compare-and-set
+promotion, and rollback-draft operations. Every successful and failed lifecycle
+operation is written to the append-only platform audit store. Permissions are resolved
+from the deployment-owned issuer/subject registry, never from browser-supplied roles.
+
+This increment still does **not** provide a NEXUS/MAC operator screen, an external
+secret-manager connector, provider-specific deployment execution, staging identity
+provisioning, or production infrastructure changes. Promotion changes the approved
+active configuration pointer only; it is not evidence that a cloud deployment ran.
+The current revision history is embedded in one environment document, so a separate
+revision collection and retention/archival policy are required before unbounded
+production history can be supported safely.
