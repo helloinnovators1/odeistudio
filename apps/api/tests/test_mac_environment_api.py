@@ -179,6 +179,6 @@ def test_mac_lifecycle_routes_forward_verified_actor_and_compare_and_set_version
         json={"target_version": 1, "expected_latest_version": 1,
               "change_summary": "Restore"},
     )
-    assert [item.status_code for item in (update, submit, approve, promote, rollback)] == [200] * 5
+    assert [item.status_code for item in (update, submit, approve, promote, rollback)] == [200, 200, 200, 200, 201]
     assert all(call[1]["actor"] == _actor_id(principal) for call in store.calls)
     assert [event["outcome"] for event in audit.events] == ["success"] * 5
