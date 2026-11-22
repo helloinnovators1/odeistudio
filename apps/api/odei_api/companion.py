@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from odei_api.services.patch_approval import (
@@ -115,7 +115,7 @@ class ApplyPatchRequest(BaseModel):
     organization_id: StrictStr = Field(min_length=1, max_length=128)
     project_id: StrictStr = Field(min_length=1, max_length=128)
     proposal_id: StrictStr = Field(min_length=1, max_length=128)
-    proposal_version: int = Field(ge=0)
+    proposal_version: StrictInt = Field(ge=0)
     companion_challenge: StrictStr = Field(min_length=32, max_length=128)
     capability: StrictStr = Field(min_length=1, max_length=8192)
     files: list[ApplyPatchFile] = Field(min_length=1, max_length=1)
