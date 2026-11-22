@@ -409,8 +409,12 @@ class MongoExecutionRunStore:
             if current is None:
                 raise ExecutionRunNotFound("execution run was not found")
             status = ExecutionRunStatus(current["status"])
+            if status is ExecutionRunStatus.CANCELLED and current.get("cancel_requested"):
+                return self._from_document(current)
             if status in _TERMINAL:
                 raise ExecutionRunConflict("terminal execution runs cannot be cancelled")
+            if current.get("cancel_requested"):
+                return self._from_document(current)
             target = ExecutionRunStatus.CANCELLED if status is ExecutionRunStatus.QUEUED else status
             updated = await self._runs.find_one_and_update(
                 {"_id": run_id, "organization_id": organization_id, "version": current["version"]},
