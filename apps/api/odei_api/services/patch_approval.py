@@ -93,8 +93,13 @@ def canonical_patch_digest(*, workspace_id: str, proposal_id: str, proposal_vers
         except PatchProposalError as exc:
             raise PatchApprovalError("Patch path is not permitted") from exc
         folded = path.casefold()
-        if folded in seen:
-            raise PatchApprovalError("Duplicate patch paths are not allowed")
+        components = folded.split("/")
+        if (
+            folded in seen
+            or any("/".join(components[:index]) in seen for index in range(1, len(components)))
+            or any(existing.startswith(folded + "/") for existing in seen)
+        ):
+            raise PatchApprovalError("Duplicate or file-directory-conflicting patch paths are not allowed")
         seen.add(folded)
         operation, base_hash, result_hash, content = (
             item["operation"], item["base_sha256"], item["result_sha256"], item["content"]
