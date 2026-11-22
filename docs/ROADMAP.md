@@ -11,9 +11,9 @@ This status supersedes older roadmap statements below. Older phase checklists re
 - **NEXUS execution:** PRs #26–#33 and #35 are merged. The stack contains the OCI sandbox runner, durable run/event/lease persistence, bounded snapshot ingestion and GridFS storage, authenticated project/task execution routes, standalone worker, panel execution integration and a durable event timeline. This is repository integration, not a deployed worker service.
 - **Execution security:** before untrusted multi-tenant code is enabled, provision a dedicated Linux worker, pre-verified immutable image digests, hardened isolation (gVisor/Kata/microVM or equivalent), no host credentials, restricted egress, quotas, content/DLP/malware policy, backup/restore and crash/cancellation/recovery acceptance.
 - **MAD:** private aggregate execution telemetry, stateless alerts and runbook (PR #36), plus an ODID-scoped `mad:read` operator API with append-only audited access (PR #38), are merged. The real issuer must grant the scope. The dashboard, broad infrastructure telemetry, alert delivery and persisted incident lifecycle remain incomplete.
-- **MAC:** requirements and architecture exist; operational secret/environment lifecycle, provider adapters, privileged RBAC/ABAC, approvals, vault/KMS integration, audit, rotation and rollback remain incomplete.
+- **MAC:** PR #41 adds the first server-enforced platform RBAC foundation: exact verified issuer/subject assignments from deployment-owned `MAC_PLATFORM_OPERATORS_JSON`, fixed roles/permissions, an audited access endpoint and a fail-closed permission guard. Real identity/operator configuration and all privileged feature modules remain open; this is not a complete MAC console.
 - **Agents Window / CLI / cloud/background agents:** not implemented as complete end-to-end workflows.
-- **CI:** PRs #35, #36, #38 and #39 exact-head checks completed successfully. The suites include Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, Python/web dependency audits and secret scanning. This does not validate Windows 10 version 1903 on the user's physical device.
+- **CI:** PRs #35, #36, #38, #39 and #41 exact-head checks completed successfully. The suites include Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, Python/web dependency audits and secret scanning. This does not validate Windows 10 version 1903 on the user's physical device.
 - **Production:** no deployment is claimed. Real ODID, MongoDB, model/provider, worker, secret-manager and hosting configuration; staging E2E; target Windows device acceptance; backup/restore and production rollback remain mandatory gates.
 
 ## Phase 0 — Repository and security baseline
@@ -70,7 +70,8 @@ This status supersedes older roadmap statements below. Older phase checklists re
 
 ## Phase 3 — MAC and MAD
 
-- [ ] Implement Studio MAC identity, organizations, roles and tenant administration.
+- [x] Implement the first MAC platform authorization foundation: deployment-owned exact issuer/subject role registry, permission matrix, audited access endpoint and fail-closed permission guard (PR #41).
+- [ ] Implement Studio MAC identity, organizations, role assignment lifecycle and tenant administration.
 - [ ] Add secret references and vault integration.
 - [ ] Add environment configuration lifecycle.
 - [ ] Add provider connection registry and capability discovery.
