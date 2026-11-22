@@ -347,6 +347,45 @@ async def mad_list_incidents(
     return {"incidents": incidents}
 
 
+async def _transition_mad_incident_with_audit(
+    *,
+    mongo_client,
+    incident_store: MongoMadIncidentStore,
+    audit_store: MongoAuditEventStore,
+    incident_id: str,
+    action: str,
+    assignee: str | None,
+    expected_version: int,
+    principal: Principal,
+) -> dict[str, object]:
+    """Commit the incident CAS and its success audit in one Mongo transaction."""
+    async with mongo_client.start_session() as session:
+        async def transaction(active_session):
+            incident = await incident_store.transition(
+                incident_id=incident_id,
+                action=action,
+                actor=principal.subject,
+                expected_version=expected_version,
+                assignee=assignee,
+                session=active_session,
+            )
+            await audit_store.append(
+                organization_id="platform",
+                actor_issuer=principal.issuer,
+                actor_subject=principal.subject,
+                action="mad.incident." + action,
+                target_type="platform_incident",
+                target_id=incident_id,
+                outcome="success",
+                request_id=uuid4().hex,
+                metadata={"version": incident["version"], "status": incident["status"]},
+                session=active_session,
+            )
+            return incident
+
+        return await session.with_transaction(transaction)
+
+
 @app.post(settings.api_prefix + "/mad/incidents/{incident_id}/transitions", tags=["mad"])
 async def mad_transition_incident(
     incident_id: str,
@@ -356,8 +395,9 @@ async def mad_transition_incident(
 ) -> dict[str, object]:
     audit_store = getattr(request.app.state, "audit_event_store", None)
     incident_store = getattr(request.app.state, "mad_incident_store", None)
-    if audit_store is None or incident_store is None:
-        raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Incident and audit storage is unavailable."})
+    mongo_client = getattr(request.app.state, "mongo_client", None)
+    if audit_store is None or incident_store is None or mongo_client is None:
+        raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENTS_UNAVAILABLE", "message": "Transactional incident and audit storage is unavailable."})
     allowed = "mad:incident:manage" in principal.scopes
     if not allowed:
         try:
@@ -372,9 +412,15 @@ async def mad_transition_incident(
             raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Incident denial audit could not be recorded."}) from exc
         raise HTTPException(status_code=403, detail={"code": "MAD_INCIDENT_SCOPE_REQUIRED", "message": "The verified identity lacks mad:incident:manage."})
     try:
-        incident = await incident_store.transition(
-            incident_id=incident_id, action=payload.action, actor=principal.subject,
-            expected_version=payload.expected_version, assignee=payload.assignee,
+        incident = await _transition_mad_incident_with_audit(
+            mongo_client=mongo_client,
+            incident_store=incident_store,
+            audit_store=audit_store,
+            incident_id=incident_id,
+            action=payload.action,
+            assignee=payload.assignee,
+            expected_version=payload.expected_version,
+            principal=principal,
         )
     except MadIncidentNotFound as exc:
         raise HTTPException(status_code=404, detail={"code": "MAD_INCIDENT_NOT_FOUND", "message": "Incident does not exist."}) from exc
@@ -382,17 +428,9 @@ async def mad_transition_incident(
         raise HTTPException(status_code=409, detail={"code": "MAD_INCIDENT_CONFLICT", "message": str(exc)}) from exc
     except MadIncidentValidationError as exc:
         raise HTTPException(status_code=422, detail={"code": "MAD_INCIDENT_TRANSITION_INVALID", "message": str(exc)}) from exc
-    try:
-        await audit_store.append(
-            organization_id="platform", actor_issuer=principal.issuer,
-            actor_subject=principal.subject, action="mad.incident." + payload.action,
-            target_type="platform_incident", target_id=incident_id,
-            outcome="success", request_id=uuid4().hex,
-            metadata={"version": incident["version"], "status": incident["status"]},
-        )
     except Exception as exc:
-        logger.error("MAD incident transition audit failed after state change (%s)", type(exc).__name__)
-        raise HTTPException(status_code=503, detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Incident changed but its audit record could not be confirmed; inspect incident history before retrying."}) from exc
+        logger.error("MAD incident transaction failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail={"code": "MAD_INCIDENT_TRANSACTION_FAILED", "message": "The incident transition and audit could not be committed. Refresh the incident before retrying."}) from exc
     incident["id"] = incident.pop("_id", incident.get("incident_id"))
     return {"incident": incident}
 
