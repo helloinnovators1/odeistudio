@@ -20,6 +20,17 @@ This section is the source of truth for the current repository state. Older impl
 | Agents | Not complete as an end-to-end product workflow. | Agents Window, CLI, policy-controlled lifecycle, background orchestration and observability. |
 | Production release | No production deployment is claimed. | Provider configuration, approved staging evidence, backups/restore, release approval, monitored rollout and rollback. |
 
+
+### Repository-wide audit findings — 2026-11-22
+
+- A full recursive main-branch tree inspection covered 232 tracked files (78 API source/config files, 31 web source files and 110 documentation files), the current CI/security workflows, the NEXUS panel/workspace entry points, project configuration and the four active implementation PRs. This is a source-level audit, not a claim of exhaustive runtime/device testing.
+- Main's branch metadata reports `protected: false`. Issue [#63](https://github.com/helloinnovators1/odeistudio/issues/63) tracks required review/status-check protection, stale-approval dismissal, force-push restrictions and direct-push controls. The active security-sensitive PRs currently have no independent review submissions.
+- The web project has no tracked npm lockfile; CI and security scanning use `npm install`, so the transitive dependency graph is not reproducible from a committed lock. Issue [#62](https://github.com/helloinnovators1/odeistudio/issues/62) tracks generating/reviewing `apps/web/package-lock.json` and switching both workflows to `npm ci`.
+- Weekly Dependabot npm updates for `/apps/web` are now enabled in `.github/dependabot.yml`; the initial npm, pip and GitHub Actions dependency-update checks completed successfully. This does not replace a committed lockfile.
+- The MAC worker and migration CLI entry points are present in the open PR #55 change set, not yet in main. Main's current Python package scripts expose only the companion and execution worker.
+- UI source review found the main workspace/NEXUS components, responsive breakpoints, explicit labels/roles, focus-visible rules for the file tree and bounded error states. A full browser/device accessibility audit, screen-reader test, narrow-viewport visual regression suite and end-to-end browser workflow suite are not present in the current CI evidence.
+- Code scanning and Dependabot alert endpoints were not available through the connected repository inspection interface during this audit; no assertion is made that there are zero open alerts. CI's CodeQL/dependency-audit jobs remain the verified evidence.
+
 ### Verification and release rules
 
 - PR #49 is merged. PRs #50 and #51 are closed as superseded by #55. PR #54 is closed as a duplicate consolidated into #52. PRs #52, #53, #55 and #56 are open and have successful exact-head API CI and security workflows.
