@@ -1,5 +1,4 @@
 """Route-level tests for authenticated MAC environment governance."""
-import importlib
 import json
 from types import SimpleNamespace
 
@@ -60,6 +59,8 @@ class EnvironmentStore:
 
 
 def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
+    import importlib
+
     mac_environment_api = importlib.import_module("odei_api.services.mac_environment_api")
     registry = json.dumps([{
         "issuer": principal.issuer,
