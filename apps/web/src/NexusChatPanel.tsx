@@ -807,6 +807,10 @@ export default function NexusChatPanel({
               setProjectId("");
               setTaskPlan(null);
               setTaskError("");
+              setExecutionRun(null);
+              setExecutionArtifacts(null);
+              setExecutionError("");
+              setSnapshotSummary("");
               setMessages([]);
               setConversationBusy(true);
               setConsent(false);
@@ -840,6 +844,10 @@ export default function NexusChatPanel({
                 setProjectId(event.target.value);
                 setTaskPlan(null);
                 setTaskError("");
+                setExecutionRun(null);
+                setExecutionArtifacts(null);
+                setExecutionError("");
+                setSnapshotSummary("");
                 setMessages([]);
                 setConversationBusy(true);
                 setConsent(false);
