@@ -244,7 +244,7 @@ async def test_worker_heartbeat_persists_lifecycle_and_ttl_index():
     if not uri:
         pytest.skip("MONGODB_TEST_URI is not configured")
     client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
-    database_name = f"odei_worker_heartbeat_integration_{uuid4().hex}"
+    database_name = f"odei_worker_hb_{uuid4().hex}"
     collection = client[database_name]["execution_worker_heartbeats"]
     store = MongoWorkerHeartbeatStore(collection)
     worker_id = "worker-" + uuid4().hex
@@ -262,7 +262,7 @@ async def test_worker_heartbeat_persists_lifecycle_and_ttl_index():
         running = await collection.find_one({"_id": worker_id})
         assert running["status"] == "busy"
         assert running["last_seen_at"].replace(tzinfo=timezone.utc) == busy
-        assert running["started_at"] == started
+        assert running["started_at"].replace(tzinfo=timezone.utc) == started
 
         stopped = await store.mark_stopped(worker_id=worker_id)
         offline = await collection.find_one({"_id": worker_id})
