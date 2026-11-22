@@ -113,6 +113,7 @@ export default function NexusChatPanel({
   const [executionArtifacts, setExecutionArtifacts] = useState<NexusExecutionArtifacts | null>(null);
   const [snapshotSummary, setSnapshotSummary] = useState("");
   const executionAbortRef = useRef<AbortController | null>(null);
+  const executionGenerationRef = useRef(0);
   const [patchProposals, setPatchProposals] = useState<NexusPatchProposalSummary[]>([]);
   const [selectedPatch, setSelectedPatch] = useState<NexusPatchProposal | null>(null);
   const [patchBusy, setPatchBusy] = useState(false);
@@ -330,6 +331,7 @@ export default function NexusChatPanel({
   }, [access?.accessToken, config.apiBaseUrl, organizationId, projectId, executionRun?.run_id]);
 
   useEffect(() => {
+    executionGenerationRef.current += 1;
     setWorkspaceUploadConsent(false);
     setCodeExecutionConsent(false);
     setExecutionError("");
@@ -353,6 +355,7 @@ export default function NexusChatPanel({
 
   async function loadProjects() {
     if (!access || !config.apiBaseUrl) return;
+    executionGenerationRef.current += 1;
     abortRef.current?.abort();
     taskAbortRef.current?.abort();
     setTaskPlan(null);
@@ -405,6 +408,9 @@ export default function NexusChatPanel({
         goal, projectContext, controller.signal,
       );
       setTaskPlan(task);
+      setExecutionRun(null);
+      setExecutionArtifacts(null);
+      setSnapshotSummary("");
       setDraft("");
       setConsent(false);
       setNotice("NEXUS created an approval-ready plan. No files or commands have been changed.");
@@ -444,6 +450,7 @@ export default function NexusChatPanel({
       || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent
       || executionBusy || !config.apiBaseUrl
     ) return;
+    const generation = executionGenerationRef.current;
     const controller = new AbortController();
     executionAbortRef.current = controller;
     setExecutionBusy(true);
@@ -456,7 +463,7 @@ export default function NexusChatPanel({
           workspaceContext.accessToken, workspaceContext.workspaceId, path,
         ),
       );
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== executionGenerationRef.current) return;
       if (snapshot.skippedCount > 0) {
         const examples = snapshot.skippedPaths.slice(0, 8).join("\n");
         const message = snapshot.skippedCount + " file(s) will be excluded from this snapshot."
@@ -475,6 +482,17 @@ export default function NexusChatPanel({
         fetch, controller.signal,
       );
       if (controller.signal.aborted) return;
+      if (generation !== executionGenerationRef.current) {
+        try {
+          await cancelNexusExecution(
+            config.apiBaseUrl, organizationId, projectId, taskPlan.task_id,
+            created.run_id, access.accessToken,
+          );
+        } catch {
+          // The run remains tenant-scoped and the backend lease/retention controls still apply.
+        }
+        return;
+      }
       const now = new Date().toISOString();
       setExecutionRun({
         run_id: created.run_id, organization_id: organizationId,
@@ -556,7 +574,7 @@ export default function NexusChatPanel({
     abortRef.current = null;
     taskAbortRef.current?.abort();
     taskAbortRef.current = null;
-    executionAbortRef.current?.abort();
+    executionGenerationRef.current += 1;
     executionAbortRef.current = null;
     setAccess(null);
     setOrganizations([]);
@@ -776,6 +794,7 @@ export default function NexusChatPanel({
               taskAbortRef.current?.abort();
               setTaskPlan(null);
               setTaskError("");
+              executionGenerationRef.current += 1;
               setOrganizationId(event.target.value);
               setProjects([]);
               setProjectId("");
@@ -810,6 +829,7 @@ export default function NexusChatPanel({
                 taskAbortRef.current?.abort();
                 setTaskPlan(null);
                 setTaskError("");
+                executionGenerationRef.current += 1;
                 setProjectId(event.target.value);
                 setTaskPlan(null);
                 setTaskError("");
