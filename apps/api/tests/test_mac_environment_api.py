@@ -109,6 +109,7 @@ def test_mac_environment_read_is_authenticated_and_audited(monkeypatch):
 
 def test_mac_environment_draft_uses_issuer_scoped_actor_and_audits(monkeypatch):
     from odei_api.security.auth import Principal
+    from odei_api.services.mac_environment_api import _actor_id
 
     principal = Principal(subject="operator-1", issuer=ISSUER)
     client, store, audit = _client(monkeypatch, principal)
