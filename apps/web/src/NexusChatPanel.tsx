@@ -786,6 +786,105 @@ export default function NexusChatPanel({
     }
   }
 
+  async function refreshMacEnvironment() {
+    if (!access || !config.apiBaseUrl || macBusy) return;
+    const generation = macRequestGenerationRef.current.begin();
+    setMacBusy(true);
+    setMacError("");
+    try {
+      const result = await getMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken);
+      if (!macRequestGenerationRef.current.isCurrent(generation)) return;
+      setMacRecord(result.environment);
+      const current = result.environment.versions.find((item) => item.version === result.environment.latest_version);
+      if (current) {
+        setMacConfigText(JSON.stringify(current.config, null, 2));
+        setMacChangeSummary(current.change_summary);
+      }
+    } catch (cause) {
+      if (macRequestGenerationRef.current.isCurrent(generation)) {
+        setMacRecord(null);
+        setMacError(errorMessage(cause));
+      }
+    } finally {
+      if (macRequestGenerationRef.current.isCurrent(generation)) setMacBusy(false);
+    }
+  }
+
+  async function saveMacDraft() {
+    if (!access || !config.apiBaseUrl || macBusy) return;
+    const generation = macRequestGenerationRef.current.begin();
+    setMacBusy(true);
+    setMacError("");
+    try {
+      const parsed: unknown = JSON.parse(macConfigText);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new TypeError("Environment configuration must be a JSON object.");
+      }
+      const configValues = parsed as Record<string, unknown>;
+      if (!macChangeSummary.trim()) throw new TypeError("Enter a change summary before saving.");
+      const latest = macRecord?.latest_version ?? 0;
+      const current = macRecord?.versions.find((item) => item.version === latest);
+      const result = current?.status === "draft"
+        ? await updateMacEnvironmentDraft(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+            current.version, latest, configValues, macChangeSummary)
+        : await createMacEnvironmentDraft(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+            configValues, macChangeSummary, macRecord ? latest : undefined);
+      if (!macRequestGenerationRef.current.isCurrent(generation)) return;
+      if ("environment" in result) setMacRecord(result.environment);
+      else {
+        const refreshed = await getMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken);
+        if (!macRequestGenerationRef.current.isCurrent(generation)) return;
+        setMacRecord(refreshed.environment);
+      }
+      setNotice("MAC draft saved. It has not been approved or deployed.");
+    } catch (cause) {
+      if (macRequestGenerationRef.current.isCurrent(generation)) setMacError(errorMessage(cause));
+    } finally {
+      if (macRequestGenerationRef.current.isCurrent(generation)) setMacBusy(false);
+    }
+  }
+
+  async function runMacTransition(action: "submit" | "approve" | "promote" | "rollback") {
+    if (!access || !config.apiBaseUrl || !macRecord || macBusy) return;
+    const latest = macRecord.latest_version;
+    const revision = macRecord.versions.find((item) => item.version === latest);
+    if (!revision) { setMacError("Load a current revision before performing this action."); return; }
+    const generation = macRequestGenerationRef.current.begin();
+    setMacBusy(true);
+    setMacError("");
+    try {
+      if (action === "submit") {
+        await submitMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken, latest, latest);
+      } else if (action === "approve") {
+        await approveMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken, latest, latest);
+      } else if (action === "promote") {
+        await promoteMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+          latest, latest, macRecord.active_version);
+      } else {
+        if (macRecord.active_version < 1) throw new Error("There is no active revision to roll back to.");
+        await rollbackMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken,
+          macRecord.active_version, latest, macChangeSummary || "Operator-requested rollback");
+      }
+      const refreshed = await getMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken);
+      if (!macRequestGenerationRef.current.isCurrent(generation)) return;
+      setMacRecord(refreshed.environment);
+      const current = refreshed.environment.versions.find((item) => item.version === refreshed.environment.latest_version);
+      if (current) {
+        setMacConfigText(JSON.stringify(current.config, null, 2));
+        setMacChangeSummary(current.change_summary);
+      }
+      setNotice(action === "promote"
+        ? "MAC active configuration pointer updated. No provider deployment has been executed."
+        : action === "rollback"
+          ? "Rollback draft created for review; no active configuration was changed."
+          : "MAC revision lifecycle action completed.");
+    } catch (cause) {
+      if (macRequestGenerationRef.current.isCurrent(generation)) setMacError(errorMessage(cause));
+    } finally {
+      if (macRequestGenerationRef.current.isCurrent(generation)) setMacBusy(false);
+    }
+  }
+
   function signOut() {
     macRequestGenerationRef.current.invalidate();
     setMacBusy(false);
