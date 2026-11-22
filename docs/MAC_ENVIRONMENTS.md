@@ -193,7 +193,8 @@ apply:
 odei-mac-revision-migration --apply
 ```
 
-The command creates the target indexes and runs the backfill in a MongoDB
+The dry run performs no database writes or index DDL. With `--apply`, the
+command creates the target indexes and runs the backfill in a MongoDB
 transaction. It exits non-zero on malformed history, gaps, duplicate sequence
 numbers, target conflicts, or database/transaction errors. It does not remove
 legacy embedded history, alter active-version pointers, change API reads/writes,
