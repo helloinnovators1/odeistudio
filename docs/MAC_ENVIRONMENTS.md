@@ -61,3 +61,8 @@ production history can be supported safely.
 - Environment revisions remain embedded in one document. Move them to a separately indexed revision collection with retention/archival before the history can grow without bound.
 - `secret://` validation is not secret resolution. A production secret-manager adapter must authorize each reference against the environment/provider, resolve values only inside the server-side deployment worker, prevent values from entering API responses/logs/audit/events, and support rotation/revocation.
 - Provider deployment adapters, durable deployment attempts, idempotency, health verification, and provider-side rollback are not yet implemented. No cloud deployment is performed by this lifecycle API.
+
+
+### Atomicity verification
+
+`apps/api/tests/test_mac_store_mongodb_integration.py` exercises the MAC route mutation helper against a real MongoDB replica set. It verifies that a simulated audit insert failure leaves no environment revision behind, and that a successful mutation commits exactly one environment revision and one corresponding audit event. The API CI MongoDB integration job runs this test alongside the task/execution transaction integration tests.
