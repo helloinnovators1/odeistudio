@@ -1,142 +1,77 @@
 # ODEI NEXUS — AI Software Engineering Agent
 
-**Priority:** First major product implementation.  
-**Status:** Initial planning service, bounded read-only Responses API tool loop, secure workspace indexing primitives and an authenticated planning-only API are committed. No authenticated execution-agent API, mutating tools or sandbox is implemented yet.
+**Status:** Implemented vertical slices spanning authenticated chat, bounded inspection, durable tasks, reviewed patch proposals, isolated execution and a paired local companion. NEXUS is not yet a fully autonomous, production-accepted software engineering agent. Capabilities below distinguish implemented repository behavior from gated or unavailable workflows.
 
-## Mission
-NEXUS is the repository-aware coding agent at the heart of ODEI Studio. It turns a developer's goal into a reviewable, tested set of code changes while respecting workspace permissions and execution policy.
+## Mission and trust boundaries
 
-## Core capabilities
-1. Project onboarding and repository inventory.
-2. File, symbol and semantic search.
-3. Context selection with token/cost budgets.
-4. Task clarification, planning and dependency ordering.
-5. Multi-file read, patch and edit operations.
-6. Command execution in an isolated workspace.
-7. Test/build/lint execution and diagnostics parsing.
-8. Failure analysis and bounded repair loops.
-9. Diff presentation, review summaries and risk analysis.
-10. Git branch/commit/PR workflows after explicit authorization.
-11. Durable task history, cancellation and resumability.
-12. Specialist agents for research, implementation, testing, security and review.
+NEXUS is ODEI Studio's project-scoped engineering control plane. It receives developer intent, binds it to an authenticated organization/project, gathers only authorized context, plans work, requests approval where required, and exposes controlled proposal, execution and review workflows.
 
-## Agent lifecycle
-`created → context_gathering → planning → awaiting_approval → executing → validating → repairing → review_ready → completed`
+The browser is not an authorization boundary. Every API operation must verify the access token, active organization membership, project access, task/proposal ownership and capability policy on the server. Model output, repository files, tool results and user-provided instructions are untrusted data. A UI label, client-supplied role or model statement never grants permission.
 
-Additional terminal states: `failed`, `cancelled`, `expired`. Every transition is persisted and authorized server-side.
+## Implemented capability map
 
-## Current implementation
-- `services/planning.py` calls the OpenAI Responses API through an injected client, with bounded task/context inputs and no tools enabled. Its output is an untrusted proposal only.
-- `model_client.py` creates a server-side OpenAI client from `OPENAI_API_KEY` and requires a configured `ODEI_MODEL`.
-- `services/tasks.py` defines task states, legal transitions, terminal states, plan-before-approval and optimistic version checks.
-- `services/task_store.py` persists tasks in MongoDB with organization-scoped reads/writes, optimistic version matching and atomic status-change event append. Project-scoped task creation and approve/cancel transitions also insert the corresponding audit event in the same MongoDB transaction; audit failure rolls back task state and lifecycle events. The caller must enforce organization membership and task permissions.
-- `mongo_client.py` constructs a lazy PyMongo Async client from a private `MONGODB_URI`; live database connectivity has not yet been configured or tested.
-- `services/project_files.py` lists, reads and searches bounded text files with common secret exclusions, GitIgnoreSpec rules and scan budgets. It is not exposed to cloud HTTP callers.
-- `services/tool_registry.py` exposes only strict-schema list/read/literal-search tools against one workspace ID injected by the trusted caller; the model cannot choose a workspace. This is a read-only allowlist, not yet a complete per-task capability/approval policy engine.
-- The organization-membership API now writes successful, denied and malformed-record authorization outcomes through `MongoAuditEventStore`; audit persistence failure blocks the response. Project-scoped task create/approve/cancel actions now append audit events atomically with task state and lifecycle events. Task and task-event reads append success events before returning; task-not-found/owner denials and project-owner approval denials are recorded. Authentication outcomes, companion-session actions and tool executions remain unaudited, and a full route-by-route audit coverage review is still required.
-- `services/agent_runtime.py` runs a bounded Responses API tool loop (six rounds/twelve calls) with no write, shell, install, network or deployment tools. It uses stateless Responses requests (`store=False`) and replays output items locally.
-- `services/secret_redaction.py` redacts common API tokens, private keys, bearer tokens, JWTs, database URI passwords and quoted secret assignments before task/context/tool text is sent to or returned from the model. This is defense-in-depth, not a full DLP guarantee.
-- Both planner and agent runtime fail closed unless the trusted caller confirms explicit user consent to send task/workspace context to a cloud model. Responses application-state storage is disabled; API abuse-monitoring retention remains subject to the OpenAI account's data controls.
+| Capability | Current behavior | Hard boundary |
+|---|---|---|
+| Identity | ODID Authorization Code + PKCE browser client foundation, callback/state validation and in-memory access/refresh token lifecycle. API validates signed access tokens against configured issuer/audience/JWKS. | Real ODID issuer/client/callback/scopes/audience and production API trust configuration must be supplied and staging-verified. |
+| Organization/project | Authenticated membership and authorized project discovery/selection. | Authorization is rechecked server-side. Project-load race protection is in open PR #66 until reviewed and merged. |
+| Chat | Consent-gated Responses API requests, bounded history/context, SSE text streaming and browser cancellation. | Browser abort stops delivery; provider-side cancellation is best-effort. |
+| Conversation history | Owner- and tenant-scoped MongoDB persistence with bounded messages and optimistic versions. | Conversation mutation and separate audit writes still need transaction/idempotency review. Production MongoDB, retention, encryption and backup controls are deployment gates. |
+| Inspection | Bounded model tool loop with list/read/literal search and secret redaction over explicitly attached excerpts. | Not unrestricted whole-repository semantic indexing. The panel currently attaches the active file excerpt rather than a complete multi-file context manager. |
+| Task planning | Durable task records, approval-ready plans, owner-only approval, cancellation and lifecycle events. | Approval records intent; it does not by itself mean work is complete. |
+| Patch proposals | Persisted proposal records, per-file operation/hash/diff metadata and owner approve/reject decisions. | Approval does not write files. |
+| Local apply | One-file apply only, requiring owner approval, explicit local confirmation, fresh one-use companion challenge, short-lived signed capability and live base-hash verification. | No multi-file transaction, journal, automatic rollback or crash recovery. Never imply otherwise. |
+| Execution | Approved task/profile flow, explicit workspace-upload and code-execution consent, bounded filtered snapshot, durable run/events/leases, sandbox worker, cancellation and artifacts. | Production hostile-code isolation and worker operations require hardened infrastructure and staging/recovery drills. |
+| MAD | Aggregate worker/execution telemetry and incident lifecycle UI/API with scoped server-side authorization. | External telemetry and alert delivery, operational calibration and real operator provisioning remain deployment gates. |
+| MAC | Role/permission foundation exists in main; broader environment governance and deployment-worker changes are in open PR #66. | Do not treat PR #66 as merged or operational. Requires independent review, real provider/secret adapters, migration and enforcement acceptance. |
 
-## Initial tool contract
-- `project.list_files`: list permitted paths, honoring ignore rules and symlink policy.
-- `project.read_file`: read bounded text files; enforce size and binary limits.
-- `project.search`: search file names and content with result limits.
-- `project.apply_patch`: apply a validated patch; record before/after hashes.
-- `runtime.run_command`: execute an allowlisted or user-approved command in a sandbox.
-- `runtime.get_process`: inspect status and bounded output.
-- `tests.run`: run configured test commands and return structured results.
-- `git.diff`: produce reviewable changes.
-- `git.status`: report repository state.
-- `git.commit` / `git.push`: require explicit user authorization and scoped credentials.
+## NEXUS request lifecycle
 
-Only the initial list/read/search tools are implemented. All patch, runtime, test and Git tools remain planned and must not be exposed until authorization, approval records, sandbox isolation and audit are implemented. Tool schemas must define arguments, output, permission, timeout, resource limits, idempotency and audit behavior. Tool output and repository contents are untrusted data, never system instructions.
+1. **Authenticate:** obtain a short-lived access token through the approved ODID PKCE flow. Keep tokens out of local storage, URLs, logs and analytics.
+2. **Bind tenant and project:** load only memberships/projects returned by authenticated APIs. The server independently revalidates every operation.
+3. **Obtain consent:** disclose when prompts and selected excerpts are sent to the configured cloud model. Consent is affirmative and scoped; companion pairing is not model consent.
+4. **Select context:** attach only bounded, authorized excerpts. Redact likely credentials before model submission and output. Do not silently upload the complete workspace.
+5. **Chat or inspect:** default chat uses no repository tools. Inspection tools are explicitly enabled and constrained to the attached excerpt set.
+6. **Plan:** create a durable task with bounded goal/context and an approval-ready plan.
+7. **Approve:** only the authorized project owner may approve the plan or a patch proposal. Approval is a recorded decision, not an implicit file write or deployment.
+8. **Propose:** generate a persisted, reviewable diff with base/result hashes and validated paths.
+9. **Apply one file:** require the paired companion, explicit local confirmation, fresh one-use challenge, signed short-lived capability and unchanged base snapshot.
+10. **Execute:** require a server-approved execution profile plus separate affirmative workspace-upload and code-execution consent. Execute only the immutable filtered snapshot in the configured sandbox.
+11. **Validate and review:** inspect run status, bounded output and artifacts. Sandbox exit success is not equivalent to task completion, production deployment or user acceptance.
+12. **Report evidence:** identify changed artifacts, checks actually run, failures, remaining risks and external acceptance gates. Never claim an action occurred without its result.
 
-## Planner and execution loop
-1. Parse goal and identify missing requirements.
-2. Inspect project metadata and relevant files.
-3. Produce a plan with file scope, commands, risks and acceptance checks.
-4. Request approval for broad, destructive, networked or production-impacting work.
-5. Execute one bounded step at a time.
-6. Re-read changed files and inspect diffs.
-7. Run tests and static checks.
-8. Repair only within configured attempt/time budgets.
-9. Summarize changed files, test evidence, known gaps and next steps.
+## Execution and local-write safety
 
-Never claim a test passed when it was not run. Preserve user edits; detect concurrent modifications using content hashes and fail safely rather than overwrite.
+- Workspace snapshots are filtered and bounded; skipped files must be disclosed before upload.
+- Execution uses a server-approved profile and a durable run/task lifecycle. Network, credentials, process limits, resource limits and runtime isolation must be enforced by the worker deployment, not trusted to model instructions.
+- The local companion is loopback-bound and paired to an explicitly selected workspace. API-signed capabilities are independently verified by the companion.
+- The current patch apply endpoint is intentionally single-file. Multi-file changes must remain disabled until a durable journal, preflight, recoverable commit protocol, idempotent restart recovery and rollback have been implemented and tested on Windows and POSIX.
+- Do not run arbitrary host shell commands, install packages, deploy infrastructure or push/merge Git changes unless a separately authorized workflow explicitly permits the action.
 
-## Runtime security
-- Disposable workspace/container per task or isolated task session.
-- Non-root execution, CPU/memory/disk/process/time limits.
-- Network disabled by default; allowlisted egress only when approved.
-- No host home-directory or secret-store mount by default.
-- Credentials short-lived, scoped and injected only into the specific approved operation.
-- Secret redaction in tool output, logs, traces and model context.
-- Explicit approval for destructive commands, dependency scripts with elevated privileges, production deployment and external publishing.
-- Kill switch, cancellation and cleanup on completion/expiry.
+## Audit, persistence and failure semantics
 
-## Context strategy
-Use layered context: project metadata and instructions → relevant file/symbol retrieval → task-specific snippets → recent tool results. Exclude secrets, generated files, dependencies and ignored paths. Track source paths and hashes for provenance. Summarize long task history without losing decisions or unresolved issues.
+- Persisted tasks and their lifecycle events have transaction-coupled audit guarantees in the MongoDB transaction paths.
+- Conversation and patch-proposal mutation/audit consistency still require further hardening. A mutation followed by a separate audit failure can produce an ambiguous outcome; add transactional coupling or idempotent reconciliation before claiming end-to-end exactly-once semantics.
+- Treat retries as potentially duplicative unless the endpoint has an explicit idempotency key or version guard.
+- Fail closed when identity, authorization, required audit persistence, base-hash verification, capability verification or durable state is unavailable.
+- Avoid logging prompts, file contents, credentials, bearer tokens, capability secrets or provider responses containing sensitive material.
 
-## API/service boundaries
-The agent orchestrator owns durable task state and policy. Tool executors run in isolated workers. The model provider is accessed through a provider-neutral model gateway. Streaming events are delivered to clients through an authenticated event channel. Persist events for reconnect/resume.
+## Browser testing status
 
-## Initial vertical-slice acceptance
-- User can create/open a project in a controlled workspace.
-- NEXUS lists and reads permitted text files.
-- NEXUS can search for a symbol/string.
-- NEXUS proposes a plan before modifying files.
-- User approves a bounded patch.
-- Patch is applied with conflict detection and diff.
-- A configured test command runs in isolation.
-- Results and task history survive page refresh.
-- Cancellation works and no secrets appear in output.
-- Automated tests cover path traversal, oversized/binary files, concurrent edits, command timeout and authorization failure.
+Playwright/Chromium CI is present. The merged browser suite currently covers opening the NEXUS panel, the keyboard shortcut, narrow shell overflow, accessible panel identity, safe unauthenticated/configuration state, and panel-open overflow at 320, 360, 390, 768, 1024 and 1440 CSS-pixel widths.
 
-## Deferred capabilities
-Parallel agents, remote cloud workspaces, browser automation, advanced semantic indexing, autonomous PR review and long-running background tasks are later milestones, not assumed features of the first slice.
+Still required: mocked authenticated ODID callback success/failure; org/project switching and stale responses; conversation create/load/send/stream/cancel/delete; session expiry/sign-out; task approval; execution consent/run/cancel/artifact flows; proposal review and companion apply; companion pairing/workspace errors; MAC/MAD authorization and incident workflows; keyboard/focus/dialog behavior; axe checks and deterministic visual baselines.
 
+## Production acceptance gates
 
-## First authenticated planning API
+- Register and test real ODID browser/API trust settings and tenant isolation.
+- Provision MongoDB with replica-set transaction support, backups, restore tests, encryption and retention/deletion controls.
+- Configure model credentials and an approved secret manager without placing secrets in source or chat.
+- Deploy a hardened worker fleet with immutable images, no host credentials, restricted egress, quotas, monitoring and tested crash/cancel/retry recovery. Ordinary OCI flags alone are not sufficient for hostile multi-tenant workloads.
+- Install and test the companion on the target Windows 10 build 18362.1256 device; verify signed installer/update and key rotation.
+- Implement multi-file journal/rollback before enabling multi-file writes.
+- Enable independent code review and required CI/security checks on `main`.
+- Complete staging acceptance, backup/restore, incident drills, monitored rollout and rollback approval.
 
-The API now exposes `POST /api/v1/organizations/{organization_id}/nexus/plan` as the first authenticated NEXUS workflow slice. It requires a verified bearer principal, an active server-side organization membership and an explicit `cloud_model_consent: true` value. Task text and caller-supplied project context are bounded, secret-redacted by the planning service and sent through the server-side OpenAI Responses client with `store=false`. The route writes a tenant/actor-scoped audit outcome without storing task text, repository context or plan content. Audit failure blocks the response.
+## Product capabilities not yet complete
 
-This endpoint produces a plan only. It does not connect to the local companion, inspect local files, create durable tasks, apply patches, run commands or authorize implementation. The supplied project context is untrusted caller input, not verified repository evidence. Production use still requires configured ODID issuer/audience/JWKS/client allowlist, membership provisioning, MongoDB and OpenAI credentials, plus the remaining authorization and runtime controls.
-
-
-## Project-scoped task API
-
-NEXUS now has an authenticated project-scoped task API for create, read, durable event-history retrieval, approve and cancel. Creation checks active organization membership and active project owner/member access, requires explicit cloud-model consent, and persists an approval-ready task with its lifecycle events. Approval is a distinct `approved` state and is deliberately not an execution trigger. Task retrieval and event-history reads are limited to the task owner or project owner. Task ownership uses the canonical verified issuer + subject pair. Mutations use optimistic version checks and append audit records in the same transaction as task state and lifecycle events.
-
-This increment adds ordered event-history retrieval with a bounded page size and reconnectable version cursor, but not a live event-stream transport. It does not add file mutation, shell execution, test execution, repair, CLI, desktop editor or cloud agents. The local companion remains read-only.
-
-
-## Atomic task audit guarantee
-
-The project-scoped task API passes a validated audit event into `MongoTaskStore`. The task document, ordered `task_events`, and audit document are inserted/updated under one MongoDB session transaction. If the audit writer is missing or its insert fails, the transaction aborts and task state remains unchanged. This guarantee depends on MongoDB replica-set or sharded-cluster transaction support; unit/fake-transaction tests are available, and a real MongoDB 7.0 replica-set transaction test passed in API CI run 44794850821. Production replica-set deployment and verification remain release gates.
-
-
-## Task access audit coverage
-
-The project-scoped task API records successful task reads and task-event reads before returning their data. It also records task-not-found/owner denials and project-owner approval denials. Task create/approve/cancel state changes remain atomically audited with their task lifecycle events. Authentication outcomes, companion pairing/revocation and tool execution are still not instrumented.
-
-
-Task lifecycle transitions emit semantic event types for approval and terminal outcomes (`task.approved`, `task.cancelled`, `task.completed`, `task.failed`, `task.expired`) instead of collapsing these into a generic status-changed event. Intermediate transitions continue to use `task.status_changed` with from/to status fields.
-
-
-## Project lifecycle API
-
-The API now provides tenant-scoped project creation and listing, plus project-owner membership administration. Any active organization member may create a project and becomes its owner. Project listing is limited to active projects owned by or actively shared with the caller. Only the project owner can add/remove project members, and a target must already be an active member of the same organization. The owner is implicit (not duplicated in the membership collection); removals are soft deactivations.
-
-Project and membership mutations append their audit record in the same MongoDB transaction as the data change. Unique compound indexes enforce organization/project and organization/project/identity uniqueness. This is an initial project lifecycle contract, not a complete organization/role system: provisioning, invitations, ownership transfer, custom roles and admin workflows remain open. The routes do not grant file-write or command-execution capabilities.
-
-
-## IDE workspace shell and chat-panel preference
-
-The web client now has an initial Monaco-based IDE shell with a read-only explorer/editor, multiple tabs and bottom status surfaces. `Command+I` on macOS and `Ctrl+I` on Windows/Linux toggle the NEXUS chat panel. Workspace Settings lets the user choose the panel side (Left or Right); Right is the default and the choice is persisted locally in the browser. See [IDE workspace implementation](IDE_WORKSPACE.md).
-
-The browser panel remains a non-operational shell because ODID token acquisition and frontend API integration are not connected. The backend now exposes the authenticated, project-scoped, read-only chat endpoint described in [NEXUS chat API](NEXUS_CHAT_API.md); it has no tools, streaming or persistent conversation history. Monaco is read-only; the terminal is disabled and is not a browser shell. The current React/Vite workspace is not the full upstream Next.js/Code-OSS desktop editor.
-
-## Authenticated read-only project chat
-
-The API now exposes a first project-authorized chat endpoint documented in [NEXUS chat API](NEXUS_CHAT_API.md). It verifies the existing ODEI Identity access-token dependency, active organization/project membership, explicit cloud consent, bounded conversation/file excerpts, secret redaction and audit events. It uses stateless Responses API calls (`store=false`) with no tools. It does not write files, execute commands, persist conversations or stream. The web NEXUS composer remains disabled until browser ODID token acquisition and API integration are implemented.
+The full Agents Window/CLI, policy-controlled multi-agent orchestration, durable background agents, broad semantic project indexing, unrestricted multi-file authoring, automatic repair loops, production deployment automation and full ecosystem-wide operational acceptance are not complete. Do not describe NEXUS as fully autonomous or production-ready until their explicit acceptance gates pass.
