@@ -167,7 +167,7 @@ class MongoExecutionRunStore:
                 {"$or": [
                     {"status": ExecutionRunStatus.QUEUED.value, "available_at": {"$lte": now},
                      "$expr": {"$lt": ["$attempts", "$max_attempts"]}},
-                    {"status": {"$in": [ExecutionRunStatus.LEASED.value, ExecutionRunStatus.RUNNING.value]},
+                    {"status": {"$in": [ExecutionRunStatus.LEASED.value, ExecutionRunStatus.RUNNING.value, ExecutionRunStatus.COLLECTING.value]},
                      "lease_expires_at": {"$lte": now},
                      "$expr": {"$lt": ["$attempts", "$max_attempts"]}},
                 ]},
