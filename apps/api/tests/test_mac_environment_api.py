@@ -269,7 +269,7 @@ def test_mac_deployment_request_is_authenticated_idempotent_boundary_and_audited
     from odei_api.security.auth import Principal
 
     principal = Principal(subject="operator-1", issuer=ISSUER)
-    client, _store, audit = _client(monkeypatch, principal)
+    client, _store, audit = _client(monkeypatch, principal, ("infrastructure_admin",))
     response = client.post(
         "/api/v1/mac/environments/staging/deployments",
         json={"version": 2, "provider": "aws", "idempotency_key": "request-12345678"},
@@ -320,3 +320,17 @@ def test_mac_mutation_fails_closed_without_transaction_support():
     assert store.called is False
     assert audit.called is False
 
+
+
+def test_infrastructure_admin_cannot_approve_environment_revision(monkeypatch):
+    from odei_api.security.auth import Principal
+
+    principal = Principal(subject="requester-only", issuer=ISSUER)
+    client, _store, audit = _client(monkeypatch, principal, ("infrastructure_admin",))
+    response = client.post(
+        "/api/v1/mac/environments/staging/approve",
+        json={"version": 1, "expected_latest_version": 1},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "MAC_PERMISSION_DENIED"
+    assert audit.events[0]["outcome"] == "denied"
