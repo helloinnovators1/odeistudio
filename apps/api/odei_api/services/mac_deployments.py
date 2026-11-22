@@ -14,7 +14,6 @@ from uuid import uuid4
 
 from pymongo import ASCENDING, DESCENDING
 
-
 _KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 _ACTOR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
 _PROVIDER = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
