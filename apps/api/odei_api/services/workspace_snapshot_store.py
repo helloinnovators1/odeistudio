@@ -106,7 +106,10 @@ class MongoWorkspaceSnapshotStore:
         })
         if document is None:
             return False
-        await self._bucket.delete(document["blob_id"])
+        try:
+            await self._bucket.delete(document["blob_id"])
+        except NoFile:
+            pass
         await self._metadata.delete_one({"_id": snapshot_id, "organization_id": organization_id})
         return True
 
@@ -124,7 +127,10 @@ class MongoWorkspaceSnapshotStore:
             })
             if active_run is not None:
                 continue
-            await self._bucket.delete(row["blob_id"])
+            try:
+                await self._bucket.delete(row["blob_id"])
+            except NoFile:
+                pass
             await self._metadata.delete_one({"_id": row["_id"], "expires_at": {"$lte": now}})
             deleted += 1
         return deleted
