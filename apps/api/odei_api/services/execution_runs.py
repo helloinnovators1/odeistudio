@@ -75,6 +75,7 @@ class ExecutionRun:
     profile_id: str
     snapshot_sha256: str
     arguments: tuple[str, ...]
+    snapshot_id: str | None = None
     status: ExecutionRunStatus = ExecutionRunStatus.QUEUED
     version: int = 0
     attempts: int = 0
@@ -137,7 +138,7 @@ class MongoExecutionRunStore:
                 "project_id": run.project_id, "task_id": run.task_id,
                 "requester_issuer": run.requester_issuer, "requester_subject": run.requester_subject,
                 "profile_id": run.profile_id, "snapshot_sha256": run.snapshot_sha256,
-                "arguments": list(run.arguments), "status": run.status.value,
+                "snapshot_id": run.snapshot_id, "arguments": list(run.arguments), "status": run.status.value,
                 "version": run.version, "attempts": run.attempts, "max_attempts": run.max_attempts,
                 "worker_id": None, "lease_token": None, "lease_expires_at": None,
                 "cancel_requested": False, "active_task_id": run.task_id,
@@ -162,6 +163,8 @@ class MongoExecutionRunStore:
         """Atomically consume a project-owner-approved task and enqueue exactly one run."""
         if run.status is not ExecutionRunStatus.QUEUED or run.version != 0 or run.attempts != 0:
             raise ValueError("new execution runs must begin queued at version and attempt zero")
+        if not run.snapshot_id:
+            raise ValueError("approved execution runs must reference a durable workspace snapshot")
         now = datetime.now(timezone.utc)
         document = self._document(run, now)
         async with self._client.start_session() as session, await session.start_transaction():
