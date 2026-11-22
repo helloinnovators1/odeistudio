@@ -54,8 +54,8 @@ describe("MAC environment transport", () => {
     await updateMacEnvironmentDraft("https://api.example.test", "staging", "token",
       2, 2, { replicas: 3 }, "Update", fetcher);
     expect(fetcher.mock.calls[0]?.[1]?.method).toBe("PUT");
-    await expect(submitMacEnvironment("https://api.example.test", "staging", "token", 0, 1, fetcher))
-      .rejects.toThrow("valid revision");
+    expect(() => submitMacEnvironment("https://api.example.test", "staging", "token", 0, 1, fetcher))
+      .toThrow("valid revision");
   });
 
   it("blocks insecure non-loopback origins and invalid environments before sending tokens", async () => {
