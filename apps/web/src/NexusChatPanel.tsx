@@ -1016,6 +1016,7 @@ export default function NexusChatPanel({
                 ) : (
                   <>
                     <p>{workspaceContext.files.length} local files are visible to the companion. A filtered snapshot is created only after both consent checks and your confirmation.</p>
+                    {workspaceContext.files.length === 0 && <p className="nexus-muted">No readable files are currently listed for this workspace.</p>}
                     <label className="nexus-execution-label" htmlFor="nexus-execution-profile">Server-approved execution profile</label>
                     <select id="nexus-execution-profile" value={executionProfileId}
                       onChange={(event) => setExecutionProfileId(event.target.value)}
@@ -1040,7 +1041,7 @@ export default function NexusChatPanel({
                     <p className="nexus-task-safety">The snapshot excludes known credential paths, dependency/build folders and files larger than 2 MiB. Unreadable files are skipped. No local files are modified.</p>
                     <button type="button" className="nexus-secondary-button"
                       onClick={() => void startExecution()}
-                      disabled={executionBusy || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent}>
+                      disabled={executionBusy || workspaceContext.files.length === 0 || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent}>
                       {executionBusy ? "Preparing snapshot and queueing…" : "Create isolated execution"}
                     </button>
                   </>
