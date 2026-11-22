@@ -51,3 +51,13 @@ active configuration pointer only; it is not evidence that a cloud deployment ra
 The current revision history is embedded in one environment document, so a separate
 revision collection and retention/archival policy are required before unbounded
 production history can be supported safely.
+
+
+## Additional hardening and explicit production boundaries
+
+- Sensitive-key detection covers secret, password/passwd, token, API/access/private/signing/encryption keys and credential names. Every matching value must be a `secret://` reference regardless of its JSON type; plaintext strings, numbers, booleans, null and objects are rejected.
+- Rollback expected-version values use strict integer validation; JSON booleans are rejected.
+- The audit store is append-only at the application API, but the current MAC route performs the configuration mutation and audit append as separate operations. If audit persistence fails after a successful mutation, the caller can receive a 503 even though the mutation committed. This is not an atomic mutation-plus-audit transaction and must be corrected before production governance relies on audit completeness.
+- Environment revisions remain embedded in one document. Move them to a separately indexed revision collection with retention/archival before the history can grow without bound.
+- `secret://` validation is not secret resolution. A production secret-manager adapter must authorize each reference against the environment/provider, resolve values only inside the server-side deployment worker, prevent values from entering API responses/logs/audit/events, and support rotation/revocation.
+- Provider deployment adapters, durable deployment attempts, idempotency, health verification, and provider-side rollback are not yet implemented. No cloud deployment is performed by this lifecycle API.
