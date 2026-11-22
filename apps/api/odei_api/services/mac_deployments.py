@@ -85,7 +85,8 @@ class MongoMacDeploymentStore:
             raise MacDeploymentError("Only approved revisions can be deployed")
 
         fingerprint = hashlib.sha256(json.dumps(
-            {"environment": environment, "version": version, "provider": provider},
+            {"environment": environment, "version": version, "provider": provider,
+             "actor": actor},
             sort_keys=True, separators=(",", ":"),
         ).encode()).hexdigest()
         now = datetime.now(timezone.utc)
@@ -109,15 +110,30 @@ class MongoMacDeploymentStore:
             "verified": None,
             "result_summary": None,
         }
+        existing = await self.attempts.find_one(
+            {"environment": environment, "idempotency_key": idempotency_key},
+            session=session,
+        )
+        if existing is not None:
+            if existing.get("request_fingerprint") != fingerprint:
+                raise MacDeploymentConflict(
+                    "Idempotency key was already used for a different deployment request"
+                )
+            return existing
         try:
             await self.attempts.insert_one(attempt, session=session)
             return attempt
         except Exception as exc:
             if type(exc).__name__ != "DuplicateKeyError":
                 raise
+            # A duplicate-key error aborts a MongoDB transaction. Do not issue a
+            # follow-up read in that failed transaction; callers may safely retry.
+            if session is not None:
+                raise MacDeploymentConflict(
+                    "A concurrent request claimed this idempotency key; retry the request"
+                ) from exc
             existing = await self.attempts.find_one(
-                {"environment": environment, "idempotency_key": idempotency_key},
-                session=session,
+                {"environment": environment, "idempotency_key": idempotency_key}
             )
             if existing is None or existing.get("request_fingerprint") != fingerprint:
                 raise MacDeploymentConflict(
