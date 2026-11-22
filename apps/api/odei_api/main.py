@@ -204,7 +204,7 @@ async def mad_execution_metrics(
             detail={"code": "MAD_METRICS_NOT_CONFIGURED", "message": "MAD metrics are not configured."},
         )
     if supplied_token is None or not compare_digest(
-        supplied_token, configured_token.get_secret_value()
+        supplied_token.encode("utf-8"), configured_token.get_secret_value().encode("utf-8")
     ):
         raise HTTPException(
             status_code=401,
