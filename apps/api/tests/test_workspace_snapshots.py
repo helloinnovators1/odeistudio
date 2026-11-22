@@ -140,7 +140,7 @@ def test_secret_scanner_detects_patterns_split_across_stream_chunks(tmp_path):
     root.mkdir()
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_STORED) as zipped:
-        zipped.writestr("src/config.txt", b"A" * 65_533 + b"api_key=" + b"x" * 40)
+        zipped.writestr("src/config.txt", b" " * 65_533 + b"api_key=" + b"x" * 40)
     archive = stream.getvalue()
     with pytest.raises(SnapshotError, match="likely credential"):
         WorkspaceSnapshotIngestor(root).ingest(archive)
