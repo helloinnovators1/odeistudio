@@ -721,7 +721,7 @@ def test_nexus_inspection_rejects_unattached_or_unsafe_paths_before_model_call(r
     assert conversations.documents[item["conversation_id"]]["messages"] == []
 
 def test_task_cancellation_propagates_to_active_execution_run(route_state):
-    _, audit, tasks, _ = route_state
+    _, _audit, tasks, _ = route_state
     task = TaskRecord(
         id="task-active-run", organization_id="org-1", project_id="project-1",
         owner_id=identity_owner_key("https://identity.example/", "user-1"),
