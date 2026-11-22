@@ -161,6 +161,7 @@ def test_mad_metrics_endpoint_rejects_invalid_token_and_returns_safe_metrics(mon
     assert denied.status_code == 401
     assert allowed.status_code == 200
     assert allowed.json()["workers"]["state"] == "unknown"
+    assert allowed.json()["alerts"] == []
     assert "tenant" not in allowed.text.lower()
 
 
