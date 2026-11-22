@@ -57,10 +57,15 @@ def parse_mac_operator_registry(raw: str) -> dict[tuple[str, str], tuple[str, ..
             or not issuer.startswith("https://")
         ):
             raise ValueError("MAC operator issuer must be an HTTPS issuer")
-        parsed = urlsplit(issuer)
+        try:
+            parsed = urlsplit(issuer)
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("MAC operator issuer is invalid") from exc
         if (
-            not parsed.netloc or parsed.username or parsed.password
-            or parsed.query or parsed.fragment
+            parsed.scheme != "https" or not parsed.netloc or not parsed.hostname
+            or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or issuer != issuer.strip()
         ):
             raise ValueError("MAC operator issuer is invalid")
         if (
