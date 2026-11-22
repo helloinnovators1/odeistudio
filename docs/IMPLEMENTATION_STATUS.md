@@ -2,31 +2,31 @@
 
 ## Current verified repository snapshot — 2026-11-22
 
-This is the authoritative current status. Sections after the historical separator record prior implementation increments and must not override this snapshot.
+This section is authoritative for the current PR branch. Merged mainline, open pull requests, CI verification and external deployment acceptance are reported separately.
 
-| Capability | Repository state | External acceptance still required |
+| Capability | Repository state | Remaining acceptance / boundary |
 |---|---|---|
-| NEXUS chat and project workflows | Integrated: ODID PKCE foundation, authorized organization/project selection, consent, composer, streaming/cancellation, durable owner-scoped conversations, attached-excerpt inspection, task planning/approval and proposal review | Real ODID issuer/client/redirect/resource/scopes, production API issuer/JWKS/CORS, staging identity and tenant tests |
-| Local companion and approved apply | Integrated: explicit folder selection, bounded read-only scanning, pairing, signed challenge-bound single-file apply and local prerequisite diagnostics (`odei-companion --diagnose`, PR #39) | Run diagnostics and actual folder-picker/pairing/apply tests on Windows 10 build 18362.1256; signed installer/update and key rotation |
-| Multi-file apply and durable recovery | Not implemented | Transaction journal, rollback, crash recovery and acceptance tests |
-| NEXUS execution stack | PRs #26–#33 merged; PR #35 adds durable execution-event history to the chat panel. The stack includes OCI sandbox foundation, durable runs/leases/events, bounded snapshots, authenticated execution API, standalone worker, artifact retrieval, durable event timeline and project-wide execution history (PRs #35 and #43–#44) | Dedicated Linux worker, reviewed immutable profiles, hardened isolation, production storage/secrets, staging E2E and incident/recovery drills; richer artifact/review workflows remain open |
-| MAD | Worker heartbeat, protected aggregate metrics and deterministic alerts; ODID-scoped audited metrics API; PR #47 adds persisted deduplicated incidents, versioned acknowledge/assign/resolve/reopen transitions, bounded incident listing and `mad:incident:manage` enforcement | Actual ODID scope registration/staging tests, dashboard UI, broad infrastructure telemetry, alert delivery and staging-calibrated thresholds |
-| MAC | PR #41 adds deployment-owned exact issuer/subject platform roles, a fixed permission matrix, `GET /api/v1/mac/access`, append-only access audit and a fail-closed permission guard | Configure real operator assignments through approved deployment change; privileged feature modules, KMS/vault, provider adapters, dual-control approvals, access review, rotation and rollback |
+| NEXUS chat and project workflows | Integrated: ODID PKCE, authorized organization/project selection, consent, streaming/cancellation, durable conversations, attached-excerpt inspection, task planning/approval and patch proposal review | Real ODID issuer/client/redirect/resource/scopes, production API issuer/JWKS/CORS, staging identity and tenant tests |
+| NEXUS MAC panel | PR #50 adds an authenticated MAC environment panel in NEXUS with environment selection, versioned draft save, submit, approve, promotion-pointer update and rollback-draft controls | Current PR #50 CI must pass; API authorization remains authoritative; no cloud deployment is executed by promotion |
+| Local companion and approved apply | Integrated: bounded read-only scanning, pairing, signed challenge-bound single-file apply and prerequisite diagnostics (odei-companion --diagnose, PR #39) | Actual Windows 10 build 18362.1256 device acceptance; signed installer/update and key rotation |
+| Multi-file apply and durable recovery | Not implemented | Transaction journal, atomic multi-file apply, rollback, crash recovery and acceptance tests |
+| NEXUS execution stack | PRs #26–#33, #35, #43–#44 merged; includes OCI sandbox foundation, durable runs/leases/events, bounded snapshots, authenticated API, worker, artifacts, event timeline and project-wide execution history | Dedicated hardened Linux worker, reviewed immutable profiles, production storage/secrets, staging E2E, cancellation/recovery drills and richer artifact/review closure |
+| MAD | PR #49 merged: authenticated MAD dashboard in NEXUS, aggregate metrics, active alerts, persisted incidents and audited incident lifecycle actions | Real ODID scope/operator provisioning, production telemetry coverage, alert delivery, staging thresholds and production operations |
+| MAC environment governance | PR #50 open: Mongo-backed versioned environments, authenticated/audited API, issuer+subject-scoped author identity, author-only draft edits, distinct-identity approval, compare-and-set promotion and rollback drafts | CI pending on current head; external secret manager, provider deployer, deployment verification, bounded/archived revision history, staging identity provisioning and production acceptance |
 | Agents Window / CLI / cloud or background agents | Not implemented as complete product workflows | Agent lifecycle, policy enforcement, tools, orchestration, observability and acceptance |
 | Production deployment | Not completed or claimed | Real provider configuration, staging acceptance, backups/restore, release provenance, approval, monitored rollout and rollback |
 
-### Mainline and CI evidence
+### Mainline, pull requests and CI evidence
 
-- PR #47 adds the persisted MAD incident lifecycle and authenticated/audited operator routes. Its CI is the verification gate; merge and post-merge status must be recorded only after successful checks.
+- PR #49, MAD dashboard, is merged. Squash commit: 0d1bc4cb71d97d340f7a2fe6422730aac2deb3db. Its exact-head Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, dependency audit, secret scanning and CodeQL checks passed before merge.
+- PR #50, MAC environment governance and NEXUS panel, remains open at https://github.com/helloinnovators1/odeistudio/pull/50. It is not merged or deployed.
+- The latest PR #50 commits correct earlier lint/test failures and add route/browser tests. The exact latest head still requires a complete green API/Windows/web/security workflow before merge.
+- Earlier PRs #26–#47 are merged, including execution, companion, ODID foundation and MAD incident lifecycle work. PR #49 adds the MAD operator dashboard.
+- GitHub-hosted CI proves only the exact tested commit. It does not prove ODID staging connectivity, a deployed worker, provider deployment, Windows device acceptance or production readiness.
 
-- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26) through [#47](https://github.com/helloinnovators1/odeistudio/pull/47) are merged, including #43–#44 project-wide NEXUS execution history, #45 approved single-file local apply, #46 verified delivery snapshot, and #47 persisted MAD incident lifecycle.
-- Current mainline after PR #47: `da60bb6af29e9aff468828a109b608b2cab19247`.
-- PR #35 exact head `a37382578933e43aacc1feba8476a6eeace4c6b4` passed web, MongoDB integration, Windows/Ubuntu Python 3.10/3.12, CodeQL, dependency audits and secret scanning before merge.
-- PR #36 exact head `df40221e885f538f90725f2c3c4f4761cc8f619c` passed the complete 11-check suite: Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning before merge.
-- PR #38 exact head `eb469750d8f781b281f00196397a018e15576240` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
-- PR #39 exact head `776be4e7d9dbfff7d4fb024d7c93c2810845f408` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
-- PR #41 exact head `c4a559b495e3e8bec99416c70fb9aeda41d08c5a` passed Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, CodeQL, dependency audits and secret scanning.
-- These are GitHub-hosted checks. The new companion diagnostic is a prerequisite report, not proof that the user's historical Windows 10 build 18362.1256 device works.
+### NEXUS interaction and local write constraints
+
+The browser editor remains read-only outside the explicit approved single-file local companion path. The companion apply path requires project-owner approval, explicit local opt-in, a short-lived signed capability, a fresh one-use challenge and a live base-hash match. Multi-file transactions, durable rollback and crash recovery are not implemented. MAD dashboard actions are API-authorized and audited. MAC promotion changes the active configuration pointer only; it is not proof that infrastructure changed. Execution success moves work into validation; it is not equivalent to task completion or user acceptance.
 
 ### Security and release boundaries
 
