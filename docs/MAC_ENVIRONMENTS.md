@@ -239,3 +239,10 @@ installed and configured by the deployment owner; credentials, network policy,
 resource limits, process supervision, health monitoring and staging acceptance
 remain external deployment gates. No cloud provider adapter or real deployment
 is supplied by the generic worker entry point.
+
+
+## Deployment separation and provider adapter contract
+
+Deployment request and approval are distinct permissions. `infrastructure_admin` may request a deployment but cannot approve one; `deployment_approver` may approve but cannot request. `platform_owner` and `super_admin` retain both permissions. Assign these roles only in the server-owned issuer/subject registry, never from client claims. Provider adapters are trusted startup dependencies and must use the stable deployment idempotency key with the provider's native idempotency mechanism. If a provider does not support idempotent retry, do not register that adapter. The worker may be reclaimed after provider success but before its durable receipt is recorded; retries must not duplicate external side effects.
+
+Secret resolution and provider operations are bounded by `operation_timeout_seconds`. MAC state mutations fail closed unless MongoDB transaction support is available so the state change and success audit event commit together. Revision-store startup rejects incomplete or divergent histories; perform and verify the transactional legacy backfill before starting API instances on the new revision store.
