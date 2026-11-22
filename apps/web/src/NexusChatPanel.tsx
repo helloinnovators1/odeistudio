@@ -366,6 +366,12 @@ export default function NexusChatPanel({
     setConversationId("");
     setTaskPlan(null);
     setTaskError("");
+    setExecutionRun(null);
+    setExecutionArtifacts(null);
+    setExecutionError("");
+    setSnapshotSummary("");
+    setWorkspaceUploadConsent(false);
+    setCodeExecutionConsent(false);
     setConsent(false);
     try {
       const result = await listNexusProjects(config.apiBaseUrl, organizationId, access.accessToken);
@@ -423,7 +429,7 @@ export default function NexusChatPanel({
       );
       if (controller.signal.aborted) return;
       setTaskPlan(updated);
-      setNotice("Project owner approval recorded. Execution is not enabled; no files or commands were changed.");
+      setNotice("Project owner approval recorded. You may now select a local workspace snapshot and explicitly authorize isolated execution.");
     } catch (cause) {
       if (!controller.signal.aborted) setTaskError(errorMessage(cause));
     } finally {
@@ -550,6 +556,8 @@ export default function NexusChatPanel({
     abortRef.current = null;
     taskAbortRef.current?.abort();
     taskAbortRef.current = null;
+    executionAbortRef.current?.abort();
+    executionAbortRef.current = null;
     setAccess(null);
     setOrganizations([]);
     setOrganizationId("");
@@ -560,6 +568,14 @@ export default function NexusChatPanel({
     setConversationId("");
     setTaskPlan(null);
     setTaskError("");
+    setExecutionProfiles([]);
+    setExecutionProfileId("");
+    setExecutionRun(null);
+    setExecutionArtifacts(null);
+    setExecutionError("");
+    setSnapshotSummary("");
+    setWorkspaceUploadConsent(false);
+    setCodeExecutionConsent(false);
     setDraft("");
     setConsent(false);
     setAttachActiveFile(false);
