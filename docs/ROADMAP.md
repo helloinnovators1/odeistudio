@@ -236,7 +236,7 @@ No phase is complete because its screens exist. Each capability needs working be
 
 - [x] Execute successful MAC draft/edit/submit/approve/promote/rollback mutations and their success audit inserts in the same MongoDB transaction/session; audit insert failure rolls back the mutation.
 - [x] Keep failure/denial audit events outside the aborted state-change transaction.
-- [x] Add route-level coverage that the state store and audit writer receive the same session, and update store test doubles for optional sessions.
+- [x] Add route-level coverage that the state store and audit writer receive the same session, plus real MongoDB replica-set integration coverage proving audit failure rolls back the MAC mutation and success commits both records; update store test doubles for optional sessions.
 - [x] Reject traversal-like and ambiguous secret-reference path segments; expand sensitive-key detection and regression coverage.
 - [ ] Complete exact-head CI/security verification for `40a7386fee9e22bd16df8c15d3fab1544e77a2ae` and subsequent documentation commits.
 - [ ] Replace embedded environment revision arrays with separately indexed immutable revision records and retention/archival.
