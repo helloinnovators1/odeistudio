@@ -12,7 +12,7 @@ This section is authoritative for the current PR branch. Merged mainline, open p
 | Multi-file apply and durable recovery | Not implemented | Transaction journal, atomic multi-file apply, rollback, crash recovery and acceptance tests |
 | NEXUS execution stack | PRs #26–#33, #35, #43–#44 merged; includes OCI sandbox foundation, durable runs/leases/events, bounded snapshots, authenticated API, worker, artifacts, event timeline and project-wide execution history | Dedicated hardened Linux worker, reviewed immutable profiles, production storage/secrets, staging E2E, cancellation/recovery drills and richer artifact/review closure |
 | MAD | PR #49 merged: authenticated MAD dashboard in NEXUS, aggregate metrics, active alerts, persisted incidents and audited incident lifecycle actions | Real ODID scope/operator provisioning, production telemetry coverage, alert delivery, staging thresholds and production operations |
-| MAC environment governance | PR #50 open: Mongo-backed versioned environments, authenticated API, issuer+subject-scoped author identity, author-only draft edits, distinct-identity approval, compare-and-set promotion, rollback drafts, and atomic success mutation/audit transactions | Exact code-head API/security CI passed; external secret manager, provider deployer, deployment verification, bounded/archived revision history, staging identity provisioning and production acceptance remain |
+| MAC environment governance | PR #50 open: versioned environments, authenticated two-person approval and atomic mutation/audit; added durable idempotent deployment-attempt ledger, authenticated request/read endpoints, worker ownership and verification-gated terminal states | Provider worker/adapters, secret-manager resolution, retry/rollback, immutable separate revision collection/archival, staging identity and production acceptance remain |
 | Agents Window / CLI / cloud or background agents | Not implemented as complete product workflows | Agent lifecycle, policy enforcement, tools, orchestration, observability and acceptance |
 | Production deployment | Not completed or claimed | Real provider configuration, staging acceptance, backups/restore, release provenance, approval, monitored rollout and rollback |
 
@@ -20,7 +20,7 @@ This section is authoritative for the current PR branch. Merged mainline, open p
 
 - PR #49, MAD dashboard, is merged. Squash commit: 0d1bc4cb71d97d340f7a2fe6422730aac2deb3db. Its exact-head Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web, dependency audit, secret scanning and CodeQL checks passed before merge.
 - PR #50, MAC environment governance and NEXUS panel, remains open at https://github.com/helloinnovators1/odeistudio/pull/50. It is not merged or deployed.
-- PR #50 code head `909caf02edd077146e8a78f2f700fb02c83ec305` passed API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807), including Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB MAC audit-rollback integration, dependency audits, secret scanning and CodeQL. PR #50 remains open/unmerged pending review and repository integration gates.
+- PR #50 code head `909caf02edd077146e8a78f2f700fb02c83ec305` passed API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807), including Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB MAC audit-rollback integration, dependency audits, secret scanning and CodeQL. The newer deployment-ledger code is committed on the PR branch and its CI/security runs are pending; do not treat the prior pass as validation of the new code. PR #50 remains open/unmerged pending review and repository integration gates.
 - Earlier PRs #26–#47 are merged, including execution, companion, ODID foundation and MAD incident lifecycle work. PR #49 adds the MAD operator dashboard.
 - GitHub-hosted CI proves only the exact tested commit. It does not prove ODID staging connectivity, a deployed worker, provider deployment, Windows device acceptance or production readiness.
 
@@ -524,3 +524,21 @@ Still outstanding: a short-lived single-use approval capability independently ve
 - Secret-reference validation rejects dot-segments, empty path segments and traversal-like values; sensitive key detection covers API/access/private/signing/encryption keys, tokens, passwords and credential names.
 - Current PR #50 head: `909caf02edd077146e8a78f2f700fb02c83ec305`. Exact-head API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807) passed, including Ubuntu/Windows Python 3.10/3.12, web tests/build, real MongoDB replica-set MAC transaction rollback/commit, dependency audits, secret scanning and CodeQL. The preceding hardening head `dd62f25cb6e05474a25658739f03205f0df7d940` passed API CI and security scans, including Windows/Ubuntu Python 3.10/3.12, MongoDB replica-set integration, web tests/build, dependency audits, secret scanning and CodeQL.
 - PR #50 remains open and unmerged; no cloud deployment is performed. Provider secret resolution/deployment, separate revision archival, ODID staging and production acceptance remain external/incomplete.
+
+
+### MAC deployment ledger increment — 2026-11-22
+
+PR #50 now contains `MongoMacDeploymentStore`, a separate indexed MongoDB
+attempt ledger, and authenticated API routes to request an attempt and read its
+status. Attempts are idempotent per environment/key, can be claimed by only one
+worker, and can be completed only by that worker. A deployment is marked
+`succeeded` only when the worker reports successful verification;
+unsuccessful verification becomes `verification_failed`. The API request
+requires the server-resolved `mac:deployments:approve` permission and is audited
+in the same MongoDB transaction as attempt creation.
+
+Unit tests cover eligibility, idempotency, worker claim ownership, verification
+gating and route authorization/input validation. The new commit's GitHub CI and
+security scans must pass before this increment is considered verified. No
+provider worker or cloud adapter has been configured, so requests currently
+create queued records only; no infrastructure deployment is executed.
