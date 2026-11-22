@@ -5,6 +5,7 @@ import {
   getNexusExecution,
   getNexusExecutionArtifacts,
   listNexusExecutionEvents,
+  listNexusProjectExecutions,
   listNexusExecutionProfiles,
 } from "./nexus-executions";
 
@@ -15,6 +16,44 @@ function response(value: unknown, status = 200): Response {
 }
 
 describe("NEXUS execution API client", () => {
+  it("loads bounded project-wide execution history with a stable cursor", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({
+      runs: [{
+        run_id: "run-2", organization_id: "org", project_id: "project",
+        task_id: "task-2", profile_id: "python-tests", snapshot_sha256: "a".repeat(64),
+        status: "completed", version: 4, attempts: 1, max_attempts: 3,
+        cancel_requested: false, created_at: "2026-11-22T08:00:00Z",
+        updated_at: "2026-11-22T08:01:00Z",
+      }],
+      has_more: true,
+      next_cursor: { before_created_at: "2026-11-22T08:00:00Z", before_run_id: "run-2" },
+    }));
+    const page = await listNexusProjectExecutions(
+      "https://api.example.test", "org", "project", "token",
+      { limit: 20, cursor: { before_created_at: "2026-11-22T09:00:00Z", before_run_id: "run-3" }, fetcher },
+    );
+    expect(page.runs[0]?.run_id).toBe("run-2");
+    expect(page.has_more).toBe(true);
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain(
+      "/executions?limit=20&before_created_at=2026-11-22T09%3A00%3A00Z&before_run_id=run-3",
+    );
+    const init = fetcher.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer token");
+    expect(init.credentials).toBe("omit");
+  });
+
+  it("rejects unsafe page sizes and incomplete history cursors before network access", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({}));
+    await expect(listNexusProjectExecutions(
+      "https://api.example.test", "org", "project", "token", { limit: 101, fetcher },
+    )).rejects.toThrow("between 1 and 100");
+    await expect(listNexusProjectExecutions(
+      "https://api.example.test", "org", "project", "token",
+      { cursor: { before_created_at: "", before_run_id: "run" }, fetcher },
+    )).rejects.toThrow("incomplete");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("lists only server-approved execution profile identifiers", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({ profiles: [{ profile_id: "python-tests" }] }));
     const profiles = await listNexusExecutionProfiles(
