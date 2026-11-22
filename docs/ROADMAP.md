@@ -13,7 +13,7 @@ This status distinguishes merged mainline, open pull requests, CI evidence and e
 - **MAD:** PR #49 is merged. NEXUS includes an authenticated operator dashboard for aggregate metrics, alerts, persisted incidents and audited incident transitions. Real ODID scope/operator provisioning, production telemetry coverage, alert delivery and staging-calibrated thresholds remain open.
 - **MAC:** PR #41 supplies the deployment-owned platform RBAC foundation. Open PR #50 adds versioned environment governance, authenticated/audited lifecycle API and NEXUS MAC panel. PR #50 remains unmerged and its latest CI must pass. External secret-manager integration, provider deployment adapters, deployment verification and production acceptance remain open.
 - **Agents Window / CLI / cloud/background agents:** not implemented as complete end-to-end product workflows.
-- **CI:** PR #49 exact-head checks passed the Windows/Ubuntu Python 3.10/3.12 matrix, MongoDB integration, web, dependency audits, secret scanning and CodeQL before merge. PR #50 exact-head CI remains the current verification gate; do not infer success from earlier commits.
+- **CI:** PR #49 exact-head checks passed before merge. PR #50 head `909caf02edd077146e8a78f2f700fb02c83ec305` passed API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807), including Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB replica-set MAC atomicity integration, dependency audits, secret scanning and CodeQL.
 - **Production:** no deployment is claimed. Real ODID, MongoDB, model/provider, worker, secret-manager and hosting configuration; staging E2E; target Windows device acceptance; backup/restore and production rollback remain mandatory gates.
 
 ## Phase 0 — Repository and security baseline
@@ -238,7 +238,7 @@ No phase is complete because its screens exist. Each capability needs working be
 - [x] Keep failure/denial audit events outside the aborted state-change transaction.
 - [x] Add route-level coverage that the state store and audit writer receive the same session, plus real MongoDB replica-set integration coverage proving audit failure rolls back the MAC mutation and success commits both records; update store test doubles for optional sessions.
 - [x] Reject traversal-like and ambiguous secret-reference path segments; expand sensitive-key detection and regression coverage.
-- [ ] Complete exact-head CI/security verification for `40a7386fee9e22bd16df8c15d3fab1544e77a2ae` and subsequent documentation commits.
+- [x] Complete exact-head CI/security verification for MAC transaction implementation `909caf02edd077146e8a78f2f700fb02c83ec305`; API CI and security scans passed.
 - [ ] Replace embedded environment revision arrays with separately indexed immutable revision records and retention/archival.
 - [ ] Integrate a real server-side secret manager and provider deployment adapter with durable attempts, idempotency, verification and provider rollback.
 
