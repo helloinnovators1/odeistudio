@@ -22,3 +22,8 @@ This increment does not yet provide HTTP routes, API authorization/approval chec
 ## Snapshot ingestion increment
 
 A bounded ZIP snapshot ingestor is now implemented in services/workspace_snapshots.py. It rejects traversal, absolute and non-portable paths, duplicate normalized paths, symlinks and special files, file/directory conflicts, encrypted or unsupported entries, oversized archives/files and excessive compression ratios. It extracts only to a fresh worker-owned directory, uses exclusive no-follow file creation where supported, and calculates a deterministic content-manifest digest. See WORKSPACE_SNAPSHOTS.md. Authenticated upload, durable object storage, explicit consent and tenant-scoped API integration remain separate gates.
+
+
+## Authenticated API integration
+
+The execution API now consumes an already project-owner-approved task and atomically transitions it to executing while creating a durable queued run, run event, task event and audit record. Each run binds a durable snapshot object ID. See EXECUTION_API.md. Worker execution and artifact handling remain separate deployment gates.
