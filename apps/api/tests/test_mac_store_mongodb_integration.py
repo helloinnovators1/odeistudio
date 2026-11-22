@@ -132,3 +132,74 @@ async def test_mac_deployment_attempt_idempotency_claim_and_verification_on_mong
     finally:
         await client.drop_database(database_name)
         await client.close()
+
+
+
+@pytest.mark.asyncio
+async def test_mac_deployment_lease_reclaim_fences_stale_worker_on_mongodb():
+    uri = os.getenv("MONGODB_TEST_URI")
+    if not uri:
+        pytest.skip("MONGODB_TEST_URI is not configured")
+
+    from datetime import datetime, timedelta, timezone
+
+    from odei_api.services.mac_deployments import (
+        MacDeploymentConflict,
+        MongoMacDeploymentStore,
+    )
+
+    client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
+    database_name = f"odei_mac_lease_test_{uuid4().hex}"
+    database = client[database_name]
+    environments = MongoMacEnvironmentStore(database["mac_environments"])
+    deployments = MongoMacDeploymentStore(
+        database["mac_deployment_attempts"], environments
+    )
+    try:
+        topology = await client.admin.command("hello")
+        assert topology.get("setName") or topology.get("msg") == "isdbgrid"
+        await environments.initialize()
+        await deployments.initialize()
+        await environments.create_draft(
+            environment="staging", actor="oidc-author",
+            config={"replicas": 2}, change_summary="Lease integration setup",
+        )
+        await environments.submit_for_approval(
+            environment="staging", version=1, expected_latest_version=1,
+            actor="oidc-author",
+        )
+        await environments.approve(
+            environment="staging", version=1, expected_latest_version=1,
+            actor="oidc-reviewer",
+        )
+        attempt = await deployments.create_attempt(
+            environment="staging", version=1, provider="aws",
+            idempotency_key="lease-integration-12345", actor="oidc-deployer",
+        )
+        first = await deployments.claim(
+            attempt_id=attempt["_id"], worker_id="worker-before-crash",
+        )
+        assert first["attempt_count"] == 1
+        await database["mac_deployment_attempts"].update_one(
+            {"_id": attempt["_id"]},
+            {"$set": {"lease_expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
+        )
+        second = await deployments.claim(
+            attempt_id=attempt["_id"], worker_id="worker-after-crash",
+        )
+        assert second["attempt_count"] == 2
+        with pytest.raises(MacDeploymentConflict):
+            await deployments.finish(
+                attempt_id=attempt["_id"], worker_id="worker-before-crash",
+                verified=True, provider_deployment_id="stale-provider-id",
+                result_summary="Stale worker must be fenced",
+            )
+        completed = await deployments.finish(
+            attempt_id=attempt["_id"], worker_id="worker-after-crash",
+            verified=True, provider_deployment_id="provider-deploy-recovered",
+            result_summary="Recovered worker verified deployment",
+        )
+        assert completed["state"] == "succeeded"
+    finally:
+        await client.drop_database(database_name)
+        await client.close()
