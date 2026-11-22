@@ -184,7 +184,8 @@ class ExecutionWorker:
     async def serve(self, *, idle_seconds: float = 1.0) -> None:
         last_cleanup = 0.0
         while True:
-            await self.runs.expire_exhausted(actor_id=self.worker_id, limit=50)
+            await self.runs.expire_exhausted(actor_id=self.worker_id, limit=50,
+                                                    tasks=self.tasks, task_events=self.task_events)
             if time.monotonic() - last_cleanup >= 60:
                 await self.snapshots.delete_expired(limit=50)
                 await self.artifacts.delete_expired(limit=50)
