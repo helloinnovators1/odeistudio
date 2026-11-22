@@ -111,6 +111,31 @@ class MongoMacEnvironmentStore:
             raise
         return {"environment": environment, **revision}
 
+    async def create_revision(
+        self, *, environment: str, expected_latest_version: int,
+        actor: str, config: Mapping[str, Any], change_summary: str,
+    ) -> dict[str, Any]:
+        """Append a new draft revision using a latest-version compare-and-set."""
+        _validate_identity(environment, actor)
+        if not isinstance(change_summary, str) or not 1 <= len(change_summary.strip()) <= 500:
+            raise MacEnvironmentError("Change summary is required and must be at most 500 characters")
+        safe_config = validate_environment_config(config)
+        now = datetime.now(timezone.utc)
+        new_version = expected_latest_version + 1
+        revision = {
+            "version": new_version, "status": "draft", "config": safe_config,
+            "created_by": actor, "created_at": now,
+            "change_summary": change_summary.strip(),
+            "approvals": [], "promoted_at": None,
+        }
+        result = await self.collection.update_one(
+            {"_id": environment, "latest_version": expected_latest_version},
+            {"$set": {"latest_version": new_version, "updated_at": now},
+             "$push": {"versions": revision}},
+        )
+        if result.modified_count != 1:
+            raise MacEnvironmentConflict("Environment changed; refresh before creating a revision")
+        return {"environment": environment, **revision}
     async def update_draft(
         self, *, environment: str, version: int, expected_latest_version: int,
         actor: str, config: Mapping[str, Any], change_summary: str,
