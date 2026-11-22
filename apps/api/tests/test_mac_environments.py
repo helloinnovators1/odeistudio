@@ -1,7 +1,11 @@
 import pytest
+
 from odei_api.services.mac_environments import (
-    MacEnvironmentConflict, MacEnvironmentError, MacEnvironmentNotFound,
-    MongoMacEnvironmentStore, validate_environment_config,
+    MacEnvironmentConflict,
+    MacEnvironmentError,
+    MacEnvironmentNotFound,
+    MongoMacEnvironmentStore,
+    validate_environment_config,
 )
 
 
@@ -29,7 +33,7 @@ class Collection:
             return Result(0)
         selector = query.get("versions", {}).get("$elemMatch", {})
         revision = next((r for r in record["versions"] if all(
-            (r.get(k) != v if isinstance(v, dict) and "$ne" in v else r.get(k) != v)
+            (r.get(k) == v["$ne"] if isinstance(v, dict) and "$ne" in v else r.get(k) == v)
             for k, v in selector.items()
         )), None)
         if selector and revision is None:
