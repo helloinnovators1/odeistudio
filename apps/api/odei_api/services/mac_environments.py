@@ -44,11 +44,12 @@ def validate_environment_config(config: Mapping[str, Any]) -> dict[str, Any]:
     for key, value in config.items():
         if not isinstance(key, str) or not _CONFIG_KEY.fullmatch(key):
             raise MacEnvironmentError("Configuration key is invalid")
-        if isinstance(value, str):
+        if _SECRET_KEY.search(key):
+            if not isinstance(value, str) or not _SECRET_REF.fullmatch(value):
+                raise MacEnvironmentError("Secret values must be external secret:// references")
+        elif isinstance(value, str):
             if len(value) > 2048:
                 raise MacEnvironmentError("Configuration value is too long")
-            if _SECRET_KEY.search(key) and not _SECRET_REF.fullmatch(value):
-                raise MacEnvironmentError("Secret values must be external secret:// references")
         elif (not isinstance(value, (bool, int, float))
               or isinstance(value, int) and not isinstance(value, bool) and abs(value) > 2**53
               or isinstance(value, float) and not math.isfinite(value)):
