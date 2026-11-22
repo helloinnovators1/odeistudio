@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib
+import json
 import logging
 import os
 import re
@@ -27,10 +28,14 @@ logger = logging.getLogger("odei_api.mac_worker")
 _FACTORY_SPEC = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _load_factory(spec: str, *, setting_name: str) -> Any:
-    """Load one explicitly configured trusted module:callable adapter factory."""
+def _load_factory(
+    spec: str, *, setting_name: str, allowed_factories: tuple[str, ...] | list[str],
+) -> Any:
+    """Load a trusted factory only when its exact reference is deployment-allowlisted."""
     if not isinstance(spec, str) or not _FACTORY_SPEC.fullmatch(spec):
         raise RuntimeError(f"{setting_name} must be a trusted module:callable reference")
+    if spec not in allowed_factories:
+        raise RuntimeError(f"{setting_name} is not present in its deployment-owned factory allowlist")
     module_name, attribute = spec.split(":", 1)
     try:
         factory = getattr(importlib.import_module(module_name), attribute)
@@ -49,14 +54,18 @@ async def run_worker(*, once: bool = False, poll_interval: float = 2.0) -> None:
         raise ValueError("Poll interval must be between 0.25 and 30 seconds")
     provider_spec = os.getenv("ODEI_MAC_PROVIDER_FACTORY", "")
     resolver_spec = os.getenv("ODEI_MAC_SECRET_RESOLVER_FACTORY", "")
+    settings = get_settings()
+    provider_allowlist = json.loads(settings.mac_provider_factory_allowlist_json or "[]")
+    resolver_allowlist = json.loads(settings.mac_secret_resolver_factory_allowlist_json or "[]")
     provider_factory = _load_factory(
-        provider_spec, setting_name="ODEI_MAC_PROVIDER_FACTORY"
+        provider_spec, setting_name="ODEI_MAC_PROVIDER_FACTORY",
+        allowed_factories=provider_allowlist,
     )
     resolver_factory = _load_factory(
-        resolver_spec, setting_name="ODEI_MAC_SECRET_RESOLVER_FACTORY"
+        resolver_spec, setting_name="ODEI_MAC_SECRET_RESOLVER_FACTORY",
+        allowed_factories=resolver_allowlist,
     )
 
-    settings = get_settings()
     client, database_name = create_mongo_client(settings)
     try:
         database = client[database_name]
