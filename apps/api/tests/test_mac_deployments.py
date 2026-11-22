@@ -31,9 +31,6 @@ class Attempts:
                      if all(item.get(k) == v for k, v in query.items())), None)
 
     async def find_one_and_update(self, query, update, sort=None, return_document=True):
-        item = self.items.get(query["_id"])
-        if item is None:
-            return None
         def matches(candidate, condition):
             for key, value in condition.items():
                 if key == "$or":
@@ -52,7 +49,12 @@ class Attempts:
                 elif candidate.get(key) != value:
                     return False
             return True
-        if not matches(item, query):
+        candidates = list(self.items.values())
+        if sort:
+            key, direction = sort[0]
+            candidates.sort(key=lambda item: item.get(key), reverse=direction < 0)
+        item = next((candidate for candidate in candidates if matches(candidate, query)), None)
+        if item is None:
             return None
         item.update(update.get("$set", {}))
         for key, value in update.get("$inc", {}).items():
