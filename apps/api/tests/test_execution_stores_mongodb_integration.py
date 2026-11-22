@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from pymongo import AsyncMongoClient
+from pymongo.errors import DuplicateKeyError
 
 from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
@@ -103,7 +104,7 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         assert await database["execution_runs"].count_documents({"task_id": task_id}) == 1
         assert await database["audit_events"].count_documents({"target_id": run_id}) == 1
 
-        with pytest.raises(__import__("pymongo.errors", fromlist=["DuplicateKeyError"]).DuplicateKeyError):
+        with pytest.raises(DuplicateKeyError):
             duplicate = ExecutionRun(
                 id=uuid4().hex, organization_id="org-integration",
                 project_id="project-integration", task_id=task_id,
