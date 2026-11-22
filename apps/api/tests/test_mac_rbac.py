@@ -1,7 +1,7 @@
 import json
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from odei_api.config import Settings
 from odei_api.security import mac_rbac
