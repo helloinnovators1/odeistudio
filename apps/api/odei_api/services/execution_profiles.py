@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from odei_api.config import Settings
 from odei_api.services.execution_sandbox import SandboxProfile, SandboxProfileRegistry
