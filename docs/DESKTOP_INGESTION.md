@@ -35,9 +35,10 @@ From a Python 3.10+ environment with Tk support:
     cd apps/api
     python -m pip install .
     $env:ODEI_COMPANION_ALLOWED_ORIGINS = "https://YOUR-ODEI-STUDIO-ORIGIN"
+    odei-companion --diagnose
     odei-companion
 
-Replace the placeholder with the exact ODEI Studio frontend origin (scheme and host only; no path or wildcard). ODEI_COMPANION_PORT can override the default port. The companion listens on 127.0.0.1, not the LAN. The folder picker can be repeated in one companion process: after each selection, the console asks whether another project folder should be selected. This supports separate roots such as the ODEI Studio project and the Cursor product interface gallery. The pairing code appears in the local console, expires after five minutes and must not be shared.
+Run `odei-companion --diagnose` first to print a local prerequisite report (Python version, Tk availability, OS/build, Windows native file-handle API presence, loopback bind and exact-origin configuration). It does not open or scan folders. A successful report is not proof of actual folder-picker interaction or compatibility with every Windows build. Replace the placeholder with the exact ODEI Studio frontend origin (scheme and host only; no path or wildcard). ODEI_COMPANION_PORT can override the default port. The companion listens on 127.0.0.1, not the LAN. The folder picker can be repeated in one companion process: after each selection, the console asks whether another project folder should be selected. This supports separate roots such as the ODEI Studio project and the Cursor product interface gallery. The pairing code appears in the local console, expires after five minutes and must not be shared.
 
 An initial frontend pairing client is now available in `apps/web`. It requests Chrome loopback-network permission only after a user click, exchanges the one-time code, keeps the bearer token in memory, lists selected workspace labels and reads individual files. It is read-only and does not yet provide editing, ODID identity binding, tenant ownership or audit history.
 
