@@ -12,6 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.security.mac_rbac import require_mac_permission, resolve_mac_access
+from odei_api.services.mac_deployments import (
+    MacDeploymentConflict,
+    MacDeploymentError,
+    MacDeploymentNotFound,
+)
 from odei_api.services.mac_environments import (
     MacEnvironmentConflict,
     MacEnvironmentError,
@@ -44,6 +49,13 @@ class RevisionRequest(BaseModel):
 
 class PromotionRequest(RevisionRequest):
     expected_active_version: StrictInt = Field(ge=0)
+
+
+class DeploymentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: StrictInt = Field(ge=1)
+    provider: StrictStr = Field(min_length=2, max_length=64)
+    idempotency_key: StrictStr = Field(min_length=8, max_length=128)
 
 
 class RollbackRequest(BaseModel):
@@ -143,6 +155,12 @@ async def _mutate_with_audit(request: Request, store: Any, audit: Any,
 
 
 def _translate(exc: Exception) -> HTTPException:
+    if isinstance(exc, MacDeploymentNotFound):
+        return HTTPException(status_code=404, detail={"code": "MAC_DEPLOYMENT_NOT_FOUND", "message": str(exc)})
+    if isinstance(exc, MacDeploymentConflict):
+        return HTTPException(status_code=409, detail={"code": "MAC_DEPLOYMENT_CONFLICT", "message": str(exc)})
+    if isinstance(exc, MacDeploymentError):
+        return HTTPException(status_code=422, detail={"code": "MAC_DEPLOYMENT_INVALID", "message": str(exc)})
     if isinstance(exc, MacEnvironmentNotFound):
         return HTTPException(status_code=404, detail={"code": "MAC_ENVIRONMENT_NOT_FOUND", "message": str(exc)})
     if isinstance(exc, MacEnvironmentConflict):
@@ -282,3 +300,55 @@ async def rollback_environment(environment: str, payload: RollbackRequest,
         await _audit(audit, principal, "mac.environment.rollback_draft", environment, "failure")
         raise _translate(exc) from exc
     return {"revision": result}
+
+
+@router.post("/{environment}/deployments", status_code=202)
+async def request_environment_deployment(
+    environment: str, payload: DeploymentRequest, request: Request,
+    principal: Principal = principal_dependency,
+):
+    _environment_store, audit = await _context(
+        request, principal, "mac:deployments:approve", environment
+    )
+    deployment_store = getattr(request.app.state, "mac_deployment_store", None)
+    if deployment_store is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "MAC_DEPLOYMENT_STORAGE_UNAVAILABLE",
+            "message": "MAC deployment attempt storage is unavailable.",
+        })
+    try:
+        attempt = await _mutate_with_audit(
+            request, deployment_store, audit, principal,
+            "mac.deployment.request", environment, "create_attempt",
+            environment=environment, version=payload.version,
+            provider=payload.provider, idempotency_key=payload.idempotency_key,
+            actor=_actor_id(principal),
+        )
+    except Exception as exc:
+        await _audit(audit, principal, "mac.deployment.request", environment, "failure")
+        raise _translate(exc) from exc
+    return {"deployment": attempt}
+
+
+@router.get("/{environment}/deployments/{attempt_id}")
+async def read_environment_deployment(
+    environment: str, attempt_id: str, request: Request,
+    principal: Principal = principal_dependency,
+):
+    _environment_store, audit = await _context(request, principal, "mac:read", environment)
+    deployment_store = getattr(request.app.state, "mac_deployment_store", None)
+    if deployment_store is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "MAC_DEPLOYMENT_STORAGE_UNAVAILABLE",
+            "message": "MAC deployment attempt storage is unavailable.",
+        })
+    try:
+        attempt = await deployment_store.get(attempt_id)
+        if attempt.get("environment") != environment:
+            raise MacDeploymentNotFound("Deployment attempt does not exist")
+    except Exception as exc:
+        await _audit(audit, principal, "mac.deployment.read", environment, "failure")
+        raise _translate(exc) from exc
+    await _audit(audit, principal, "mac.deployment.read", environment, "success",
+                 {"attempt_id": attempt_id, "state": attempt.get("state")})
+    return {"deployment": attempt}
