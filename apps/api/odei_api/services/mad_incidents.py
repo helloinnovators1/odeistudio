@@ -89,10 +89,10 @@ class MongoMadIncidentStore:
                             "last_seen_at": now, "updated_at": now,
                         },
                         "$inc": {"version": 1},
-                        "$push": {"history": {
+                        "$push": {"history": {"$each": [{
                             "action": "reopened", "actor": "system", "at": now,
                             "version": int(existing.get("version", 0)) + 1,
-                        }},
+                        }], "$slice": -200}},
                     },
                 )
             else:
@@ -119,7 +119,7 @@ class MongoMadIncidentStore:
             raise MadIncidentValidationError("Incident ID is invalid")
         if action not in _ACTIONS:
             raise MadIncidentValidationError("Incident action is invalid")
-        if not isinstance(actor, str) or not actor or len(actor) > 128:
+        if not isinstance(actor, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}", actor):
             raise MadIncidentValidationError("Incident actor is invalid")
         if not isinstance(expected_version, int) or isinstance(expected_version, bool) or expected_version < 1:
             raise MadIncidentValidationError("Expected incident version is invalid")
@@ -155,10 +155,10 @@ class MongoMadIncidentStore:
             {
                 "$set": updates,
                 "$inc": {"version": 1},
-                "$push": {"history": {
+                "$push": {"history": {"$each": [{
                     "action": action, "actor": actor, "at": now, "version": new_version,
                     **({"assignee": assignee} if action == "assign" else {}),
-                }},
+                }], "$slice": -200}},
             },
         )
         if result.modified_count != 1:
