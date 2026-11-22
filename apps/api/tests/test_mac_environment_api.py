@@ -1,7 +1,6 @@
 """Route-level tests for authenticated MAC environment governance."""
 
 import asyncio
-from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -293,6 +292,8 @@ def test_mac_deployment_request_rejects_boolean_revision(monkeypatch):
 
 
 def test_mac_mutation_fails_closed_without_transaction_support():
+    from types import SimpleNamespace
+
     class Store:
         called = False
         async def create_draft(self, **_kwargs):
