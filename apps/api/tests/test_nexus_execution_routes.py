@@ -48,6 +48,7 @@ class Database:
                 "identity_subject": "task-owner", "status": "active",
             }),
             "tasks": Collection(None),
+            "task_events": Collection(None),
         }
 
     def __getitem__(self, key):
