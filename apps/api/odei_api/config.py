@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     execution_workspace_root: str | None = None
     execution_worker_id: str | None = None
     mad_metrics_token: SecretStr | None = None
+    mac_platform_operators_json: str = Field(default="", max_length=262_144)
     auth_issuer: str | None = None
     auth_audience: str | None = None
     auth_jwks_url: str | None = None
@@ -51,6 +52,10 @@ class Settings(BaseSettings):
                 or parsed.path not in {"", "/"}
             ):
                 raise ValueError("PATCH_APPROVAL_ISSUER must be an exact HTTPS origin")
+        if self.mac_platform_operators_json.strip():
+            from odei_api.security.mac_rbac import parse_mac_operator_registry
+
+            parse_mac_operator_registry(self.mac_platform_operators_json)
         if self.mad_metrics_token is not None and (
             not self.mad_metrics_token.get_secret_value().isascii()
             or len(self.mad_metrics_token.get_secret_value()) < 32
