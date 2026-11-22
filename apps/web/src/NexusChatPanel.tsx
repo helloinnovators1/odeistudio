@@ -249,7 +249,9 @@ export default function NexusChatPanel({
       setTaskPlan(null); setTaskError(""); setPatchProposals([]); setSelectedPatch(null); setPatchError("");
       setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
     setExecutionHistory([]); setExecutionHistoryCursor(null); setExecutionHistoryHasMore(false); setExecutionHistoryError("");
+    setExecutionHistoryBusy(false);
       setExecutionHistory([]); setExecutionHistoryCursor(null); setExecutionHistoryHasMore(false); setExecutionHistoryError("");
+      setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
       setNotice(message);
@@ -335,6 +337,7 @@ export default function NexusChatPanel({
     setExecutionHistoryCursor(null);
     setExecutionHistoryHasMore(false);
     setExecutionHistoryError("");
+    setExecutionHistoryBusy(false);
     if (!accessToken || !apiBaseUrl || !selectedOrganizationId || !selectedProjectId) return;
     let active = true;
     const controller = new AbortController();
