@@ -140,3 +140,12 @@ The target device reported by the project owner is Windows 10 version 1903, OS b
 ## 9. Operational truth
 
 The eight execution PRs (#26–#33) are merged into main. On the assembled main commit recorded above, Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web checks, dependency audits and secret scanning passed; CodeQL was still in progress at the last check and must be verified on the final release commit. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
+
+
+## MAC transactional audit implementation — 2026-11-22
+
+- Successful MAC lifecycle mutations and their success audit records now share one MongoDB transaction/session. If the audit insert fails, the mutation is rolled back. Failure/denial records are appended separately after the aborted transaction.
+- The transaction requires a replica set or sharded MongoDB topology. The API readiness check reports transaction support and rejects standalone MongoDB.
+- Route-level tests assert that the MAC store operation and audit insert receive the same session. Exact-head API CI/security checks for the implementation and current documentation commits remain required before merge.
+- PR #50 remains open and unmerged. The promotion endpoint still changes only the active configuration pointer; it is not a provider deployment.
+- Remaining MAC release gates: separate immutable revision collection with retention/archival; external secret-manager authorization/resolution in a server-side worker; provider adapter; durable idempotent deployment attempts; provider health verification and rollback; real ODID staging permissions; operational acceptance.
