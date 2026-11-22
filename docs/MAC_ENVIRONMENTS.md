@@ -148,3 +148,26 @@ This is an orchestration interface and tested worker implementation, not a
 configured production service. No concrete provider adapter, secret-manager
 adapter, hardened worker runtime, credentials, network policy or provider
 environment has been supplied. No cloud infrastructure has been modified.
+
+## Revision-history backfill preparation (implemented; cutover not yet enabled)
+
+`apps/api/odei_api/services/mac_environment_migrations.py` adds a
+transaction-scoped, repeatable backfill from legacy embedded `versions` arrays
+into `mac_environment_revisions`. It creates a unique `(environment, version)`
+index plus an environment/time history index, assigns deterministic revision
+IDs, validates sequence continuity against `latest_version`, and compares
+pre-existing target documents before accepting a retry. A divergent target
+raises `MacRevisionMigrationConflict`; neither side is overwritten.
+
+The backfill must be invoked by an operator-controlled migration runner inside
+a MongoDB replica-set/sharded transaction using the same session for source
+reads, target reads and inserts. It returns copied/already-present counts.
+The legacy embedded history is intentionally retained. **This is migration
+preparation, not the production storage cutover:** the current runtime store
+still reads and writes embedded history, and the new collection is not yet
+authoritative. Do not run the backfill as an automatic application-startup
+hook, and do not enable revision pruning. Before cutover, implement dual-write
+or a write freeze, migrate all environments, verify counts and content hashes,
+switch reads/writes atomically, and test rollback/recovery on a production-like
+replica set. Immutable history must remain available for approvals, rollback,
+audit correlation and regulatory retention.
