@@ -1,7 +1,5 @@
 """Route-level tests for authenticated MAC environment governance."""
 
-import asyncio
-
 import pytest
 from fastapi import HTTPException
 
@@ -222,7 +220,6 @@ def test_mac_lifecycle_routes_forward_verified_actor_and_compare_and_set_version
 
 
 def test_mac_success_audit_uses_same_mongo_transaction_session():
-    import asyncio
     from types import SimpleNamespace
 
     from odei_api.security.auth import Principal
@@ -290,7 +287,8 @@ def test_mac_deployment_request_rejects_boolean_revision(monkeypatch):
     assert response.status_code == 422
 
 
-def test_mac_mutation_fails_closed_without_transaction_support():
+@pytest.mark.asyncio
+async def test_mac_mutation_fails_closed_without_transaction_support():
     from types import SimpleNamespace
 
     class Store:
@@ -309,12 +307,12 @@ def test_mac_mutation_fails_closed_without_transaction_support():
         state=SimpleNamespace(mongo_database=object())
     ))
     with pytest.raises(HTTPException) as failure:
-        asyncio.run(_mutate_with_audit(
+        await _mutate_with_audit(
             request, store, audit, Principal(subject="operator-1", issuer=ISSUER),
             "mac.environment.draft.create", "staging", "create_draft",
             environment="staging", actor="oidc-actor", config={"replicas": 2},
             change_summary="Must fail closed",
-        ))
+        )
     assert failure.value.status_code == 503
     assert failure.value.detail["code"] == "TRANSACTIONAL_AUDIT_UNAVAILABLE"
     assert store.called is False
