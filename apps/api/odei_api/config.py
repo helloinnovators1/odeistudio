@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     mongodb_uri: SecretStr | None = None
     mongodb_database: str = "odei_studio"
     execution_profiles_json: str = ""
+    execution_runtime_path: str | None = None
+    execution_workspace_root: str | None = None
+    execution_worker_id: str | None = None
     auth_issuer: str | None = None
     auth_audience: str | None = None
     auth_jwks_url: str | None = None
