@@ -308,7 +308,7 @@ async def cancel_execution(
     run_id: str = PathParam(min_length=1, max_length=128),
     principal: Principal = principal_dependency,
 ) -> dict:
-    database, _project, task = await _authorize_execution_resource(request, organization_id, project_id, task_id, principal)
+    database, _, _ = await _authorize_execution_resource(request, organization_id, project_id, task_id, principal)
     store = getattr(request.app.state, "execution_run_store", None)
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "EXECUTION_STORAGE_UNAVAILABLE", "message": "Execution storage is not configured."})
