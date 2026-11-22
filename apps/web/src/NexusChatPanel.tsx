@@ -792,7 +792,7 @@ export default function NexusChatPanel({
     setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
     setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
     setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
-    setChatError(""); setProjectError(""); setOrganizationError("");
+    setChatError(""); setProjectError(""); setOrganizationError("");\n    setMadOpen(false); setMadMetrics(null); setMadIncidents([]); setMadError(""); setMadAssignee("");
     setPatchProposals([]); setSelectedPatch(null); setPatchError("");
     setNotice("Signed out. In-memory access/refresh tokens and conversation were cleared.");
   }
