@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path as PathParam, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
-from pymongo.errors import PyMongoError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 from starlette.concurrency import run_in_threadpool
 
 from odei_api.config import get_settings
@@ -226,6 +226,10 @@ async def create_execution(
         if snapshot is not None:
             await snapshots.delete_for_tenant(organization_id=organization_id, project_id=project_id, snapshot_id=snapshot["snapshot_id"])
         raise HTTPException(status_code=409, detail={"code": "EXECUTION_STATE_CONFLICT", "message": "The task changed or already has an active execution."}) from exc
+    except DuplicateKeyError as exc:
+        if snapshot is not None:
+            await snapshots.delete_for_tenant(organization_id=organization_id, project_id=project_id, snapshot_id=snapshot["snapshot_id"])
+        raise HTTPException(status_code=409, detail={"code": "ACTIVE_EXECUTION_EXISTS", "message": "This task already has an active execution."}) from exc
     except Exception as exc:
         if snapshot is not None:
             try:
