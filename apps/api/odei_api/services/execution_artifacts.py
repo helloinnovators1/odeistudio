@@ -116,8 +116,14 @@ class MongoExecutionArtifactStore:
             })
             if active_run is not None:
                 continue
-            await self._stdout.delete(row["stdout_blob_id"])
-            await self._stderr.delete(row["stderr_blob_id"])
+            for bucket, blob_id in (
+                (self._stdout, row["stdout_blob_id"]),
+                (self._stderr, row["stderr_blob_id"]),
+            ):
+                try:
+                    await bucket.delete(blob_id)
+                except NoFile:
+                    pass
             await self._metadata.delete_one({"_id": row["_id"], "created_at": {"$lte": cutoff}})
             deleted += 1
         return deleted
