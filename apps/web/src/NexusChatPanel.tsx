@@ -11,7 +11,7 @@ import {
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
-import { readWorkspaceFile, type CompanionFile } from "./companion";
+import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge, readWorkspaceFile, type CompanionFile } from "./companion";
 import { buildWorkspaceArchive } from "./workspace-archive";
 import {
   cancelNexusExecution,
@@ -29,6 +29,7 @@ import {
 } from "./nexus-executions";
 import {
   approveNexusPatchProposal,
+  createNexusPatchApplyCapability,
   getNexusPatchProposal,
   listNexusPatchProposals,
   rejectNexusPatchProposal,
@@ -780,8 +781,48 @@ export default function NexusChatPanel({
           : item
       ));
       setNotice(decision === "approve"
-        ? "Project owner approval recorded. The local file is unchanged; application is not enabled."
+        ? "Project owner approval recorded. The local file remains unchanged until you explicitly apply the approved change."
         : "Patch proposal rejected. The local file is unchanged.");
+    } catch (cause) {
+      setPatchError(errorMessage(cause));
+    } finally {
+      setPatchBusy(false);
+    }
+  }
+
+  async function applyApprovedPatchProposal() {
+    if (!access || !config.apiBaseUrl || !workspaceContext || !selectedPatch
+      || selectedPatch.status !== "approved" || !selectedPatch.can_decide
+      || selectedPatch.files.length !== 1 || patchBusy) return;
+    const file = selectedPatch.files[0];
+    if (!file || !window.confirm(
+      `Apply the approved ${file.operation} operation to "${file.path}" in the selected local workspace? This changes the local file and cannot currently be rolled back automatically.`,
+    )) return;
+    setPatchBusy(true);
+    setPatchError("");
+    try {
+      const challenge = await createWorkspaceApplyChallenge(
+        workspaceContext.accessToken, workspaceContext.workspaceId,
+      );
+      const capability = await createNexusPatchApplyCapability(
+        config.apiBaseUrl, organizationId, projectId, access.accessToken,
+        selectedPatch.proposal_id, selectedPatch.version,
+        workspaceContext.workspaceId, challenge.challenge,
+      );
+      const result = await applyApprovedWorkspacePatch(
+        workspaceContext.accessToken, workspaceContext.workspaceId,
+        {
+          organizationId, projectId, proposalId: selectedPatch.proposal_id,
+          proposalVersion: selectedPatch.version, challenge: challenge.challenge,
+          capability: capability.capability, file,
+        },
+      );
+      const applied = result.files[0];
+      if (!applied || !applied.durability_confirmed) {
+        setNotice("The companion reported the operation, but could not confirm durable storage. Inspect the workspace before continuing.");
+      } else {
+        setNotice(`Applied the approved ${file.operation} operation to ${file.path}. The local companion confirmed durable storage. Automatic rollback is not available yet.`);
+      }
     } catch (cause) {
       setPatchError(errorMessage(cause));
     } finally {
@@ -1079,7 +1120,17 @@ export default function NexusChatPanel({
             {selectedPatch.status === "pending" && !selectedPatch.can_decide && (
               <p className="nexus-task-safety">Awaiting a project-owner decision.</p>
             )}
-            <p className="nexus-task-safety">Approval records review intent only. It does not write, apply or delete local files. Application remains disabled.</p>
+            {selectedPatch.status === "approved" && selectedPatch.can_decide && workspaceContext && selectedPatch.files.length === 1 ? (
+              <button type="button" className="nexus-secondary-button" disabled={patchBusy}
+                onClick={() => void applyApprovedPatchProposal()}>
+                {patchBusy ? "Applying…" : "Apply approved change to selected workspace"}
+              </button>
+            ) : selectedPatch.status === "approved" && selectedPatch.files.length > 1 ? (
+              <p className="nexus-task-safety">This proposal contains multiple files. Local application is disabled until atomic multi-file apply and rollback are implemented.</p>
+            ) : selectedPatch.status === "approved" && !workspaceContext ? (
+              <p className="nexus-task-safety">Pair the local companion and select the target workspace before applying this approved change.</p>
+            ) : null}
+            <p className="nexus-task-safety">Local writes occur only after explicit confirmation, a fresh session-bound companion challenge and a short-lived owner-signed capability. Automatic rollback is not yet available.</p>
             <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
           </section>
         )}
