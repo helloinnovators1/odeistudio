@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 odei-companion = "odei_api.companion:main"
+odei-execution-worker = "odei_api.execution_worker:main"
 
 [project.optional-dependencies]
 dev = [
