@@ -1,6 +1,7 @@
 """Durable, bounded, secret-redacted execution result storage."""
 from __future__ import annotations
 
+import io
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -51,13 +52,13 @@ class MongoExecutionArtifactStore:
         safe_stdout = redact_secrets(stdout)
         safe_stderr = redact_secrets(stderr)
         stdout_id = await self._stdout.upload_from_stream(
-            f"{run_id}-stdout.txt", safe_stdout.encode("utf-8"),
+            f"{run_id}-stdout.txt", io.BytesIO(safe_stdout.encode("utf-8")),
             metadata={"organization_id": organization_id, "run_id": run_id},
         )
         stderr_id = None
         try:
             stderr_id = await self._stderr.upload_from_stream(
-                f"{run_id}-stderr.txt", safe_stderr.encode("utf-8"),
+                f"{run_id}-stderr.txt", io.BytesIO(safe_stderr.encode("utf-8")),
                 metadata={"organization_id": organization_id, "run_id": run_id},
             )
             document = {
