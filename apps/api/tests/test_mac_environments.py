@@ -183,3 +183,9 @@ async def test_only_verified_draft_author_can_edit_draft():
         change_summary="Author edit",
     )
     assert updated["versions"][0]["config"] == {"replicas": 4}
+
+
+@pytest.mark.parametrize("value", [123, True, None, {"token": "plaintext"}])
+def test_sensitive_configuration_keys_reject_non_reference_values(value):
+    with pytest.raises(MacEnvironmentError):
+        validate_environment_config({"api_key": value})
