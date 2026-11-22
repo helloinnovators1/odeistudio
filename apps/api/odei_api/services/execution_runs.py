@@ -242,7 +242,8 @@ class MongoExecutionRunStore:
                 version=claimed.version, actor_id=worker_id, attempt=claimed.attempts), session=session)
         return claimed
 
-    async def expire_exhausted(self, *, actor_id: str, limit: int = 50) -> int:
+    async def expire_exhausted(self, *, actor_id: str, limit: int = 50,
+                               tasks: Any | None = None, task_events: Any | None = None) -> int:
         """Fail runs whose queue or expired lease exhausted the bounded attempt budget."""
         _identifier(actor_id, "actor_id")
         if not 1 <= limit <= 500:
@@ -279,6 +280,28 @@ class MongoExecutionRunStore:
                     to_status=ExecutionRunStatus.FAILED.value,
                     reason="attempt_budget_exhausted",
                 ), session=session)
+                if tasks is not None and task_events is not None:
+                    task = await tasks.find_one({
+                        "_id": run.task_id, "organization_id": run.organization_id,
+                        "project_id": run.project_id, "status": "executing",
+                    }, session=session)
+                    if task is not None:
+                        task_updated = await tasks.find_one_and_update(
+                            {"_id": task["_id"], "organization_id": run.organization_id,
+                             "version": task["version"], "status": "executing"},
+                            {"$set": {"status": "failed", "updated_at": now},
+                             "$inc": {"version": 1}},
+                            return_document=ReturnDocument.AFTER, session=session,
+                        )
+                        if task_updated is None:
+                            raise ExecutionRunConflict("task changed while exhausted execution was finalized")
+                        await task_events.insert_one({
+                            "event_id": str(uuid4()), "organization_id": run.organization_id,
+                            "project_id": run.project_id, "task_id": run.task_id,
+                            "actor_id": actor_id, "type": "task.status_changed",
+                            "from_status": "executing", "to_status": "failed",
+                            "version": task_updated["version"], "occurred_at": now,
+                        }, session=session)
                 await self._audit_in_transaction({
                     "organization_id": run.organization_id,
                     "actor_issuer": "https://odei-studio.internal",
