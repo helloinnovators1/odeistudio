@@ -119,3 +119,46 @@ async def test_mad_metrics_are_aggregated_and_do_not_expose_tenant_or_artifact_d
     assert "secret-org" not in serialized
     assert "private output" not in serialized
     assert "worker-1" not in serialized
+
+
+def test_mad_metrics_endpoint_requires_configured_operations_credential(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from odei_api.main import app, settings
+
+    previous_database = getattr(app.state, "mongo_database", None)
+    monkeypatch.setattr(settings, "mad_metrics_token", None)
+    app.state.mongo_database = MetricsDatabase([], [])
+    try:
+        response = TestClient(app).get("/api/v1/internal/mad/execution-metrics")
+    finally:
+        app.state.mongo_database = previous_database
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "MAD_METRICS_NOT_CONFIGURED"
+
+
+def test_mad_metrics_endpoint_rejects_invalid_token_and_returns_safe_metrics(monkeypatch):
+    from fastapi.testclient import TestClient
+    from pydantic import SecretStr
+
+    from odei_api.main import app, settings
+
+    previous_database = getattr(app.state, "mongo_database", None)
+    monkeypatch.setattr(settings, "mad_metrics_token", SecretStr("operations-secret"))
+    app.state.mongo_database = MetricsDatabase([], [])
+    try:
+        client = TestClient(app)
+        denied = client.get(
+            "/api/v1/internal/mad/execution-metrics",
+            headers={"X-ODEI-MAD-Token": "wrong"},
+        )
+        allowed = client.get(
+            "/api/v1/internal/mad/execution-metrics",
+            headers={"X-ODEI-MAD-Token": "operations-secret"},
+        )
+    finally:
+        app.state.mongo_database = previous_database
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json()["workers"]["state"] == "unknown"
+    assert "tenant" not in allowed.text.lower()
