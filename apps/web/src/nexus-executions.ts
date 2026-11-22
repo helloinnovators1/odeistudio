@@ -110,9 +110,11 @@ export async function listNexusProjectExecutions(
     query.set("before_created_at", options.cursor.before_created_at);
     query.set("before_run_id", options.cursor.before_run_id);
   }
+  const base = normalizeBase(baseUrl);
+  const projectUrl = base + "/api/v1/organizations/" + encodeURIComponent(organizationId)
+    + "/projects/" + encodeURIComponent(projectId) + "/executions?" + query.toString();
   const response = await request<NexusExecutionHistoryPage>(
-    route(baseUrl, organizationId, projectId) + "/executions?" + query.toString(),
-    accessToken, { fetcher: options.fetcher, signal: options.signal },
+    projectUrl, accessToken, { fetcher: options.fetcher, signal: options.signal },
   );
   if (!Array.isArray(response.runs) || typeof response.has_more !== "boolean"
     || !(response.next_cursor === null || (
