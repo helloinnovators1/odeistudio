@@ -16,7 +16,7 @@ function response(value: unknown, status = 200): Response {
 
 describe("NEXUS execution API client", () => {
   it("lists only server-approved execution profile identifiers", async () => {
-    const fetcher = vi.fn(async () => response({ profiles: [{ profile_id: "python-tests" }] }));
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({ profiles: [{ profile_id: "python-tests" }] }));
     const profiles = await listNexusExecutionProfiles(
       "https://api.example.test/", "org/1", "project 1", "access-token", fetcher,
     );
@@ -27,7 +27,7 @@ describe("NEXUS execution API client", () => {
   });
 
   it("sends explicit upload and execution consent with the approved task version", async () => {
-    const fetcher = vi.fn(async () => response({
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({
       run_id: "run-1", status: "queued", task_id: "task-1", profile_id: "python-tests",
       snapshot: { sha256: "a".repeat(64) },
     }));
@@ -64,7 +64,7 @@ describe("NEXUS execution API client", () => {
   });
 
   it("does not leak server response internals when a request fails", async () => {
-    const fetcher = vi.fn(async () => response({
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({
       detail: { code: "TASK_APPROVAL_REQUIRED", message: "Project owner approval is required." },
     }, 409));
     await expect(listNexusExecutionProfiles(
