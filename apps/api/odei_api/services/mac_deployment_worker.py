@@ -170,7 +170,7 @@ class MacDeploymentWorker:
                 raise
             except MacDeploymentConflict:
                 raise
-            except Exception:
+            except Exception:  # noqa: BLE001 - provider error text may contain secrets
                 verified = False
             if not isinstance(verified, bool):
                 verified = False
@@ -191,12 +191,9 @@ class MacDeploymentWorker:
         except MacDeploymentConflict:
             # A superseded or expired worker must never overwrite the new owner.
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001 - never persist raw provider or secret-manager errors
             # Do not persist provider exception text: it may contain secrets or request data.
-            try:
-                return await self.store.fail(
-                    attempt_id=attempt_id, worker_id=self.worker_id,
-                    reason="Provider execution failed; inspect restricted worker diagnostics",
-                )
-            except MacDeploymentConflict:
-                raise
+            return await self.store.fail(
+                attempt_id=attempt_id, worker_id=self.worker_id,
+                reason="Provider execution failed; inspect restricted worker diagnostics",
+            )
