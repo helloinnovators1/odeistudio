@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from typing import Any, Protocol
 
 from odei_api.services.mac_deployments import (
@@ -73,7 +73,7 @@ class MacDeploymentWorker:
             return None
         return await self.execute_claimed(attempt)
 
-    async def _with_heartbeat(self, operation: Any, *, attempt_id: str) -> Any:
+    async def _with_heartbeat(self, operation: Awaitable[Any], *, attempt_id: str) -> Any:
         task = asyncio.create_task(operation)
         interval = max(5, self.lease_seconds // 3)
         try:
@@ -97,6 +97,7 @@ class MacDeploymentWorker:
 
     async def _resolve_config(
         self, config: Mapping[str, Any], *, environment: str, provider: str,
+        attempt_id: str,
     ) -> dict[str, Any]:
         resolved: dict[str, Any] = {}
         for key, value in config.items():
@@ -107,7 +108,7 @@ class MacDeploymentWorker:
                     self.secret_resolver.resolve(
                         value, environment=environment, provider=provider,
                     ),
-                    attempt_id=self._current_attempt_id,
+                    attempt_id=attempt_id,
                 )
                 if not isinstance(secret, str) or not secret or len(secret) > 16_384:
                     raise ValueError("Secret manager returned an invalid value")
@@ -118,7 +119,6 @@ class MacDeploymentWorker:
 
     async def execute_claimed(self, attempt: Mapping[str, Any]) -> dict[str, Any]:
         attempt_id = str(attempt.get("_id", ""))
-        self._current_attempt_id = attempt_id
         environment = str(attempt.get("environment", ""))
         provider_name = str(attempt.get("provider", ""))
         revision_number = attempt.get("revision")
@@ -136,7 +136,7 @@ class MacDeploymentWorker:
                 raise ValueError("Approved configuration revision is no longer available")
             config = await self._resolve_config(
                 revision.get("config", {}), environment=environment,
-                provider=provider_name,
+                provider=provider_name, attempt_id=attempt_id,
             )
             deployment_id = await asyncio.wait_for(
                 self._with_heartbeat(
