@@ -12,7 +12,7 @@ from pymongo import AsyncMongoClient
 from odei_api.security.auth import Principal
 from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.mac_environment_api import _mutate_with_audit
-from odei_api.services.mac_environments import MongoMacEnvironmentStore
+from odei_api.services.mac_environments import MacEnvironmentConflict, MongoMacEnvironmentStore
 
 
 @pytest.mark.asyncio
