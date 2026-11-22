@@ -266,6 +266,11 @@ export default function NexusChatPanel({
   }, [messages, sending]);
 
   useEffect(() => {
+    setAttachActiveFile(false);
+    setUseAttachedTools(false);
+  }, [activeFile?.path, activeFile?.content]);
+
+  useEffect(() => {
     const accessToken = access?.accessToken;
     if (!accessToken || !config.apiBaseUrl || !organizationId || !projectId) {
       setExecutionProfiles([]);
