@@ -89,7 +89,15 @@ def _client(monkeypatch, principal, roles=("infrastructure_admin",)):
     app.include_router(router)
     store = EnvironmentStore()
     audit = AuditStore()
-    app.state.mongo_database = object()
+    class TransactionSession:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): return False
+        async def with_transaction(self, callback): return await callback(self)
+
+    class TransactionClient:
+        def start_session(self): return TransactionSession()
+
+    app.state.mongo_database = type("Database", (), {"client": TransactionClient()})()
     app.state.mac_environment_store = store
     app.state.mac_deployment_store = DeploymentStore()
     app.state.audit_event_store = audit
@@ -273,3 +281,40 @@ def test_mac_deployment_request_rejects_boolean_revision(monkeypatch):
         json={"version": True, "provider": "aws", "idempotency_key": "request-12345678"},
     )
     assert response.status_code == 422
+
+
+def test_mac_mutation_fails_closed_without_transaction_support():
+    import asyncio
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from odei_api.security.auth import Principal
+    from odei_api.services.mac_environment_api import _mutate_with_audit
+
+    class Store:
+        called = False
+        async def create_draft(self, **_kwargs):
+            self.called = True
+            return {"version": 1}
+
+    class Audit:
+        called = False
+        async def append(self, **_kwargs):
+            self.called = True
+
+    store, audit = Store(), Audit()
+    request = SimpleNamespace(app=SimpleNamespace(
+        state=SimpleNamespace(mongo_database=object())
+    ))
+    with pytest.raises(HTTPException) as failure:
+        asyncio.run(_mutate_with_audit(
+            request, store, audit, Principal(subject="operator-1", issuer=ISSUER),
+            "mac.environment.draft.create", "staging", "create_draft",
+            environment="staging", actor="oidc-actor", config={"replicas": 2},
+            change_summary="Must fail closed",
+        ))
+    assert failure.value.status_code == 503
+    assert failure.value.detail["code"] == "TRANSACTIONAL_AUDIT_UNAVAILABLE"
+    assert store.called is False
+    assert audit.called is False
+
