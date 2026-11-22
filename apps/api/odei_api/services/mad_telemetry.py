@@ -72,7 +72,10 @@ async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
     runs = database["execution_runs"]
     workers = database["execution_worker_heartbeats"]
 
-    queued, leased, running, collecting, completed_24h, failed_24h, cancelled_24h, worker_total, worker_fresh = (
+    (
+        queued, leased, running, collecting, completed_24h, failed_24h,
+        cancelled_24h, worker_total, worker_fresh, worker_offline,
+    ) = (
         await runs.count_documents({"status": "queued"}),
         await runs.count_documents({"status": "leased"}),
         await runs.count_documents({"status": "running"}),
@@ -85,11 +88,13 @@ async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
             "status": {"$in": ["idle", "busy"]},
             "last_seen_at": {"$gte": stale_before},
         }),
+        await workers.count_documents({"status": "stopping"}),
     )
     oldest = await runs.find_one({"status": "queued"}, sort=[("created_at", ASCENDING)])
     active_runs = leased + running + collecting
-    worker_stale = max(0, worker_total - worker_fresh)
-    worker_state = "unknown" if worker_total == 0 else "healthy" if worker_stale == 0 else "degraded"
+    worker_offline = min(worker_total - worker_fresh, worker_offline)
+    worker_stale = max(0, worker_total - worker_fresh - worker_offline)
+    worker_state = "unknown" if worker_total == 0 else "healthy" if worker_fresh and not worker_stale else "degraded"
     queue_state = "degraded" if queued and worker_fresh == 0 else "healthy"
     return {
         "observed_at": now.isoformat(),
@@ -100,6 +105,7 @@ async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
             "known": worker_total,
             "fresh": worker_fresh,
             "stale": worker_stale,
+            "stopping": worker_offline,
         },
         "queue": {
             "state": queue_state,
