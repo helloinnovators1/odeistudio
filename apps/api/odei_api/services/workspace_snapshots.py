@@ -25,13 +25,13 @@ _SENSITIVE_DIRECTORIES = {".git", ".ssh", ".aws", ".azure", ".kube", ".gnupg"}
 _ALLOWED_ENV_TEMPLATES = {".env.example", ".env.sample", ".env.template", ".env.dist"}
 _SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", re.IGNORECASE),
-    re.compile(r"\\bAKIA[0-9A-Z]{16}\\b"),
-    re.compile(r"\\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})\\b"),
-    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{20,}\\b"),
-    re.compile(r"\\bAIza[0-9A-Za-z_-]{35}\\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
     re.compile(
-        r"\\b(?:aws_secret_access_key|client_secret|api_key|secret_key|access_token|refresh_token|password)"
-        r"\\s*[:=]\\s*['\\\"]?[A-Za-z0-9/+_=-]{24,}",
+        r"\b(?:aws_secret_access_key|client_secret|api_key|secret_key|access_token|refresh_token|password)"
+        r"\s*[:=]\s*['\"]?[A-Za-z0-9/+_=-]{24,}",
         re.IGNORECASE,
     ),
 )
