@@ -58,7 +58,7 @@ async def test_environment_requires_author_distinct_approval_and_compare_and_set
         change_summary="Initial staging configuration",
     )
     assert draft["status"] == "draft"
-    with pytest.raises(MacEnvironmentError):
+    with pytest.raises(MacEnvironmentConflict):
         await store.submit_for_approval(
             environment="staging", version=1, expected_latest_version=1, actor="other",
         )
