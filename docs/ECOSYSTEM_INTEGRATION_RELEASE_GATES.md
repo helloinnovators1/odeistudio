@@ -2,15 +2,17 @@
 
 **Reviewed:** 2026-11-22  
 **Status:** PR integration merged to `main`; production readiness remains unverified and is not claimed.  
-**Integrated main commit:** `47fcd781a39bfff27a60eee7bc77b5ea9fe4685c` (superseded by follow-up fixes as they merge).  
+**Integrated main commit:** `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db` (PR #49 MAD dashboard).  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
 
-- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged; GitHub reports no open PRs in this integration set.
-- The assembled main commit passed Windows and Ubuntu Python 3.10/3.12, MongoDB integration, web, dependency-audit and secret-scanning jobs. CodeQL was still running at the last exact-head inspection; recheck it on the final release commit.
-- Merging is not deployment. Real ODID configuration, provisioned worker/runtime, production secret manager, staging E2E, MAD UI/alerting, MAC control-plane acceptance and Windows 10 build 18362 device acceptance remain external/product gates.
-- The eight PR descriptions below record their original scope; they are historical scope descriptions, not open work items.
+- PRs #26–#47 are merged. PR #49 adds the authenticated MAD operator dashboard and is merged at `0d1bc4cb71d97d340f7a2fe6422730aac2deb3db`.
+- PR #50 remains open and adds MAC versioned environment governance, authenticated/audited lifecycle API, and a NEXUS MAC panel. Its latest exact-head CI is the merge gate; it is not merged or deployed.
+- The MAD dashboard is now in NEXUS with aggregate metrics, alerts, persisted incidents and audited incident lifecycle actions. Real ODID operator/scope provisioning, broad production telemetry and alert delivery remain open.
+- The MAC panel supports versioned configuration drafts, author submission, distinct-identity approval, active-configuration pointer promotion and rollback drafts. It does not execute cloud deployments. Secret-manager integration, provider deployers, deployment verification, revision archival and production acceptance remain open.
+- The older PR descriptions below record their original scope and are historical scope descriptions, not a complete current-status list.
+
 
 
 This document records verified repository/CI evidence separately from external acceptance. A green pull-request workflow proves only that the tested commit passed those jobs. It does not prove that the change is merged, deployed, configured against a real identity provider, or accepted on the target Windows device.
