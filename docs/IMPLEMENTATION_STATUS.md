@@ -520,7 +520,7 @@ Still outstanding: a short-lived single-use approval capability independently ve
 ## MAC transactional audit hardening — 2026-11-22
 
 - MAC lifecycle state changes now execute through a MongoDB session transaction, and the success audit event is inserted using that same session. Audit insertion failure aborts the state change; failure/denial events are recorded outside the aborted transaction.
-- The MAC store's read/write methods accept an optional Mongo session. Route tests verify shared session identity between the state mutation and audit insert; store fakes support the optional session parameter.
+- The MAC store's read/write methods accept an optional Mongo session. Route tests verify shared session identity; `apps/api/tests/test_mac_store_mongodb_integration.py` additionally verifies real replica-set rollback when audit insertion fails and successful joint persistence when it succeeds. The API CI MongoDB integration job now runs this test.
 - Secret-reference validation rejects dot-segments, empty path segments and traversal-like values; sensitive key detection covers API/access/private/signing/encryption keys, tokens, passwords and credential names.
 - Current PR #50 head: `40a7386fee9e22bd16df8c15d3fab1544e77a2ae`. Fresh API CI and security workflows are pending for this exact head. The preceding hardening head `dd62f25cb6e05474a25658739f03205f0df7d940` passed API CI and security scans, including Windows/Ubuntu Python 3.10/3.12, MongoDB replica-set integration, web tests/build, dependency audits, secret scanning and CodeQL.
 - PR #50 remains open and unmerged; no cloud deployment is performed. Provider secret resolution/deployment, separate revision archival, ODID staging and production acceptance remain external/incomplete.
