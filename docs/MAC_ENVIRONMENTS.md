@@ -44,13 +44,7 @@ for loading revisions, saving drafts, submitting, approving, promoting the activ
 configuration pointer, and creating rollback drafts. Browser controls are convenience
 only: the API remains authoritative for every permission and lifecycle transition.
 
-This increment still does **not** provide an external secret-manager connector,
-provider-specific deployment execution, staging identity provisioning, or production
-infrastructure changes. Promotion changes the approved
-active configuration pointer only; it is not evidence that a cloud deployment ran.
-The current revision history is embedded in one environment document, so a separate
-revision collection and retention/archival policy are required before unbounded
-production history can be supported safely.
+This increment provides a durable deployment-attempt ledger and a provider-neutral worker orchestration contract, but it does **not** provide a configured external secret-manager connector, concrete provider adapter, staging identity provisioning, or production infrastructure changes. Promotion changes the approved active configuration pointer only; it is not evidence that a cloud deployment ran. The current revision history is embedded in one environment document, so a separate revision collection and retention/archival policy are required before unbounded production history can be supported safely.
 
 
 ## Additional hardening and explicit production boundaries
@@ -60,7 +54,7 @@ production history can be supported safely.
 - Successful MAC lifecycle mutations and their success audit events now share one MongoDB transaction/session. If the audit insert fails, the configuration mutation is rolled back. Failure/denial audit records are written separately because the failed state change must not commit. This requires a replica set or sharded MongoDB deployment with transaction support; readiness checks explicitly reject standalone MongoDB.
 - Environment revisions remain embedded in one document. Move them to a separately indexed revision collection with retention/archival before the history can grow without bound.
 - `secret://` validation is not secret resolution. A production secret-manager adapter must authorize each reference against the environment/provider, resolve values only inside the server-side deployment worker, prevent values from entering API responses/logs/audit/events, and support rotation/revocation.
-- Provider deployment adapters, durable deployment attempts, idempotency, health verification, and provider-side rollback are not yet implemented. No cloud deployment is performed by this lifecycle API.
+- Durable deployment attempts, request idempotency, worker leases, health-verification state, and provider-neutral worker orchestration are implemented. Concrete provider deployment adapters, an external secret-manager adapter, provider-specific health probes, provider-side rollback, and a hardened worker deployment remain unconfigured. No cloud deployment is performed by this lifecycle API.
 
 
 ### Atomicity verification
