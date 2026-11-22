@@ -13,6 +13,7 @@ Do not run the worker on the user's desktop. Do not mount a Docker socket, host 
 - EXECUTION_RUNTIME_PATH: absolute path to the approved OCI runtime executable on the worker host.
 - EXECUTION_WORKSPACE_ROOT: private worker-owned directory for disposable snapshot extraction; it must not be shared with unrelated services or user files.
 - EXECUTION_WORKER_ID: optional stable worker identifier. If omitted, the process creates a random identifier at startup.
+- MAD_METRICS_TOKEN: API-only high-entropy secret for the private MAD aggregate execution-metrics endpoint. It is not mounted into the worker or sandbox.
 
 Example service invocation after package installation:
 
@@ -33,7 +34,7 @@ odei-execution-worker
 
 ## Operational controls and limits
 
-Worker logs include run identifiers and exception classes, not lease tokens, prompts, environment values or raw output. Container output is bounded by the profile. Artifact retrieval is tenant/project/task/run authorized and returns redacted output. Artifact retention defaults to 30 days; snapshot retention defaults to 7 days. Tune these policies against legal, security and product requirements before production.
+Worker logs include run identifiers and exception classes, not lease tokens, prompts, environment values or raw output. The worker writes low-cardinality heartbeats to `execution_worker_heartbeats` at startup, every 15 seconds while idle, during long executions and on graceful shutdown. Heartbeat status is idle, busy or stopping; records expire after 30 days. The worker never receives or stores `MAD_METRICS_TOKEN`. Container output is bounded by the profile. Artifact retrieval is tenant/project/task/run authorized and returns redacted output. Artifact retention defaults to 30 days; snapshot retention defaults to 7 days. Tune these policies against legal, security and product requirements before production.
 
 MongoDB GridFS is not transaction-compatible. Blob upload and metadata insertion are separate operations with compensating cleanup; the approved-task-to-run, task/run event and audit writes themselves use a MongoDB transaction. Configure backups and orphan-blob reconciliation for GridFS.
 
