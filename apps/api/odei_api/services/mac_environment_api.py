@@ -100,7 +100,7 @@ async def _context(request: Request, principal: Principal, permission: str, envi
 
 
 async def _audit(audit, principal: Principal, action: str, environment: str,
-                 outcome: str, metadata: dict[str, Any] | None = None) -> None:
+                 outcome: str, metadata: dict[str, Any] | None = None, session: Any | None = None) -> None:
     try:
         await audit.append(
             organization_id="platform",
@@ -112,6 +112,7 @@ async def _audit(audit, principal: Principal, action: str, environment: str,
             outcome=outcome,
             request_id=uuid4().hex,
             metadata=metadata or {},
+            session=session,
         )
     except Exception as exc:
         logger.error("MAC environment audit append failed (%s)", type(exc).__name__)
