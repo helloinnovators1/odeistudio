@@ -19,6 +19,7 @@ class MongoWorkspaceSnapshotStore:
 
     def __init__(self, database: Any):
         self._metadata = database["workspace_snapshots"]
+        self._runs = database["execution_runs"]
         self._bucket = AsyncGridFSBucket(database, bucket_name="workspace_snapshot_blobs")
 
     async def initialize(self) -> None:
@@ -117,6 +118,12 @@ class MongoWorkspaceSnapshotStore:
         rows = await cursor.to_list(length=limit)
         deleted = 0
         for row in rows:
+            active_run = await self._runs.find_one({
+                "snapshot_id": row["_id"],
+                "status": {"$in": ["queued", "leased", "running", "collecting"]},
+            })
+            if active_run is not None:
+                continue
             await self._bucket.delete(row["blob_id"])
             await self._metadata.delete_one({"_id": row["_id"], "expires_at": {"$lte": now}})
             deleted += 1
