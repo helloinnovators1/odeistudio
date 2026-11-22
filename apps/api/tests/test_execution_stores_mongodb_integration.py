@@ -194,6 +194,36 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         assert cancelled_task["status"] == "cancelled"
         assert cancelled_task["version"] == 6
 
+        task3_id, run3_id = uuid4().hex, uuid4().hex
+        await database["tasks"].insert_one({
+            "_id": task3_id, "organization_id": "org-integration",
+            "project_id": "project-integration", "owner_id": "owner",
+            "goal": "exhausted run", "status": "executing",
+            "plan": "already approved", "version": 8,
+            "created_at": now, "updated_at": now,
+        })
+        await database["execution_runs"].insert_one({
+            "_id": run3_id, "organization_id": "org-integration",
+            "project_id": "project-integration", "task_id": task3_id,
+            "requester_issuer": "https://identity.example.test/",
+            "requester_subject": "owner", "profile_id": "python-tests",
+            "snapshot_sha256": digest, "snapshot_id": snapshot2["snapshot_id"],
+            "arguments": [], "status": "queued", "version": 0,
+            "attempts": 3, "max_attempts": 3, "worker_id": None,
+            "lease_token": None, "lease_expires_at": None,
+            "cancel_requested": False, "active_task_id": task3_id,
+            "available_at": now, "created_at": now, "updated_at": now,
+        })
+        assert await runs.expire_exhausted(
+            actor_id="worker-integration", tasks=database["tasks"],
+            task_events=database["task_events"],
+        ) == 1
+        exhausted_run = await runs.get(organization_id="org-integration", run_id=run3_id)
+        exhausted_task = await database["tasks"].find_one({"_id": task3_id})
+        assert exhausted_run.status is ExecutionRunStatus.FAILED
+        assert exhausted_task["status"] == "failed"
+        assert exhausted_task["version"] == 9
+
         await database["workspace_snapshots"].update_one(
             {"_id": snapshot["snapshot_id"]},
             {"$set": {"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
