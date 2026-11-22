@@ -8,6 +8,18 @@ import {
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
+import { readWorkspaceFile, type CompanionFile } from "./companion";
+import { buildWorkspaceArchive } from "./workspace-archive";
+import {
+  cancelNexusExecution,
+  createNexusExecution,
+  getNexusExecution,
+  getNexusExecutionArtifacts,
+  listNexusExecutionProfiles,
+  type NexusExecutionArtifacts,
+  type NexusExecutionProfile,
+  type NexusExecutionRun,
+} from "./nexus-executions";
 import {
   approveNexusPatchProposal,
   getNexusPatchProposal,
@@ -22,6 +34,7 @@ interface Props {
   onClose: () => void;
   isOpen?: boolean;
   activeFile?: { path: string; content: string } | null;
+  workspaceContext?: { accessToken: string; workspaceId: string; files: CompanionFile[] } | null;
 }
 
 interface TranscriptMessage extends NexusChatMessage {
@@ -61,7 +74,9 @@ function newMessageId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function NexusChatPanel({ onClose, isOpen = true, activeFile = null }: Props) {
+export default function NexusChatPanel({
+  onClose, isOpen = true, activeFile = null, workspaceContext = null,
+}: Props) {
   const config = useMemo(environmentConfig, []);
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -88,6 +103,16 @@ export default function NexusChatPanel({ onClose, isOpen = true, activeFile = nu
   const [taskPlan, setTaskPlan] = useState<NexusTask | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState("");
+  const [executionProfiles, setExecutionProfiles] = useState<NexusExecutionProfile[]>([]);
+  const [executionProfileId, setExecutionProfileId] = useState("");
+  const [executionBusy, setExecutionBusy] = useState(false);
+  const [executionError, setExecutionError] = useState("");
+  const [workspaceUploadConsent, setWorkspaceUploadConsent] = useState(false);
+  const [codeExecutionConsent, setCodeExecutionConsent] = useState(false);
+  const [executionRun, setExecutionRun] = useState<NexusExecutionRun | null>(null);
+  const [executionArtifacts, setExecutionArtifacts] = useState<NexusExecutionArtifacts | null>(null);
+  const [snapshotSummary, setSnapshotSummary] = useState("");
+  const executionAbortRef = useRef<AbortController | null>(null);
   const [patchProposals, setPatchProposals] = useState<NexusPatchProposalSummary[]>([]);
   const [selectedPatch, setSelectedPatch] = useState<NexusPatchProposal | null>(null);
   const [patchBusy, setPatchBusy] = useState(false);
