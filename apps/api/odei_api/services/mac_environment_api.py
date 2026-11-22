@@ -159,6 +159,8 @@ async def _mutate_with_audit(request: Request, store: Any, audit: Any,
 
 
 def _translate(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
     if isinstance(exc, MacDeploymentNotFound):
         return HTTPException(status_code=404, detail={"code": "MAC_DEPLOYMENT_NOT_FOUND", "message": str(exc)})
     if isinstance(exc, MacDeploymentConflict):
