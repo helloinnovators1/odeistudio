@@ -184,3 +184,29 @@ async def test_mad_metrics_normalize_naive_mongodb_timestamps_to_utc():
         workers=[],
     ))
     assert metrics["queue"]["oldest_queued_at"] == "2026-01-02T03:04:05+00:00"
+
+
+@pytest.mark.asyncio
+async def test_mad_metrics_degrade_when_workers_are_stopping_even_if_another_is_fresh():
+    now = datetime.now(timezone.utc)
+    metrics = await collect_mad_execution_metrics(MetricsDatabase(
+        runs=[{"status": "running"}],
+        workers=[
+            {"status": "idle", "last_seen_at": now, "worker_id": "worker-live"},
+            {"status": "stopping", "last_seen_at": now, "worker_id": "worker-stopping"},
+        ],
+    ))
+    assert metrics["workers"] == {
+        "state": "degraded", "known": 2, "fresh": 1, "stale": 0, "stopping": 1,
+    }
+
+
+@pytest.mark.asyncio
+async def test_mad_queue_degrades_when_active_runs_have_no_fresh_workers():
+    now = datetime.now(timezone.utc)
+    metrics = await collect_mad_execution_metrics(MetricsDatabase(
+        runs=[{"status": "running"}],
+        workers=[{"status": "stopping", "last_seen_at": now, "worker_id": "worker-stopping"}],
+    ))
+    assert metrics["workers"]["state"] == "degraded"
+    assert metrics["queue"] == {"state": "degraded", "queued": 0, "active": 1, "oldest_queued_at": None}

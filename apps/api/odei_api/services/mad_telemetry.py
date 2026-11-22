@@ -97,10 +97,14 @@ async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
     )
     oldest = await runs.find_one({"status": "queued"}, sort=[("created_at", ASCENDING)])
     active_runs = leased + running + collecting
-    worker_offline = min(worker_total - worker_fresh, worker_offline)
-    worker_stale = max(0, worker_total - worker_fresh - worker_offline)
-    worker_state = "unknown" if worker_total == 0 else "healthy" if worker_fresh and not worker_stale else "degraded"
-    queue_state = "degraded" if queued and worker_fresh == 0 else "healthy"
+    worker_stopping = min(worker_total - worker_fresh, worker_offline)
+    worker_stale = max(0, worker_total - worker_fresh - worker_stopping)
+    worker_state = (
+        "unknown" if worker_total == 0
+        else "healthy" if worker_fresh and not worker_stale and not worker_stopping
+        else "degraded"
+    )
+    queue_state = "degraded" if (queued or active_runs) and worker_fresh == 0 else "healthy"
     return {
         "observed_at": now.isoformat(),
         "freshness": "fresh",
@@ -110,7 +114,7 @@ async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
             "known": worker_total,
             "fresh": worker_fresh,
             "stale": worker_stale,
-            "stopping": worker_offline,
+            "stopping": worker_stopping,
         },
         "queue": {
             "state": queue_state,

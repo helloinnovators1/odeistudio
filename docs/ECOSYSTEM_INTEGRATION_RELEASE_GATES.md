@@ -1,14 +1,23 @@
 # Ecosystem integration and release gates
 
-**Reviewed:** 2026-11-21  
-**Status:** integration work in progress; not production-ready  
-**Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work currently represented by open pull requests.
+**Reviewed:** 2026-11-22  
+**Status:** PR integration merged to `main`; production readiness remains unverified and is not claimed.  
+**Integrated main commit:** `47fcd781a39bfff27a60eee7bc77b5ea9fe4685c` (superseded by follow-up fixes as they merge).  
+**Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
+
+## Verified integration state
+
+- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged; GitHub reports no open PRs in this integration set.
+- The assembled main commit passed Windows and Ubuntu Python 3.10/3.12, MongoDB integration, web, dependency-audit and secret-scanning jobs. CodeQL was still running at the last exact-head inspection; recheck it on the final release commit.
+- Merging is not deployment. Real ODID configuration, provisioned worker/runtime, production secret manager, staging E2E, MAD UI/alerting, MAC control-plane acceptance and Windows 10 build 18362 device acceptance remain external/product gates.
+- The eight PR descriptions below record their original scope; they are historical scope descriptions, not open work items.
+
 
 This document records verified repository/CI evidence separately from external acceptance. A green pull-request workflow proves only that the tested commit passed those jobs. It does not prove that the change is merged, deployed, configured against a real identity provider, or accepted on the target Windows device.
 
 ## 1. Current execution change set
 
-The following pull requests are open draft changes at the time of review:
+The following table records the scope delivered by the merged pull requests:
 
 | PR | Scope | Base/dependency | Evidence and remaining boundary |
 |---|---|---|---|
@@ -21,7 +30,7 @@ The following pull requests are open draft changes at the time of review:
 | [#32](https://github.com/helloinnovators1/odeistudio/pull/32) | Snapshot credential heuristics | #30 | Adds common-pattern content scanning. Heuristics cannot prove a workspace is secret-free; managed DLP/secret scanning and malware/content scanning remain required. |
 | [#33](https://github.com/helloinnovators1/odeistudio/pull/33) | Worker heartbeat and MAD execution metrics API | #30 | Adds private aggregate metrics endpoint and worker heartbeat. It is not the MAD web dashboard, full alerting, incident workflow or MAC governance. |
 
-All eight changes are still draft/open and must not be represented as merged or deployed.
+All eight changes are merged into the repository mainline. They must not be represented as deployed, connected to production providers, or production-accepted until the external gates in this document are evidenced.
 
 ## 2. Dependency-correct integration sequence
 
@@ -128,4 +137,4 @@ The target device reported by the project owner is Windows 10 version 1903, OS b
 
 ## 9. Operational truth
 
-At review time, the execution PRs listed above are open drafts. Their PR descriptions report successful CI on their respective heads, including Windows/Ubuntu Python matrices, MongoDB replica-set integration and web tests/build. That evidence must be rechecked after rebases and merges. There is no claim here that the execution stack is merged, deployed, connected to production ODID, running on a provisioned worker, accepted on the target Windows device, or that the full MAC/MAD products are complete.
+The eight execution PRs (#26–#33) are merged into main. On the assembled main commit recorded above, Windows/Ubuntu Python 3.10/3.12, MongoDB integration, web checks, dependency audits and secret scanning passed; CodeQL was still in progress at the last check and must be verified on the final release commit. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
