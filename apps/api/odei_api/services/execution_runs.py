@@ -91,8 +91,10 @@ class ExecutionRun:
             _identifier(getattr(self, name), name)
         if not isinstance(self.requester_issuer, str) or not self.requester_issuer.startswith("https://"):
             raise ValueError("requester_issuer must be an HTTPS issuer")
-        if not isinstance(self.requester_subject, str) or not self.requester_subject.strip():
-            raise ValueError("requester_subject is required")
+        if (not isinstance(self.requester_subject, str) or not self.requester_subject.strip()
+                or len(self.requester_subject) > 512
+                or any(ord(char) < 32 or ord(char) == 127 for char in self.requester_subject)):
+            raise ValueError("requester_subject is invalid")
         if not 1 <= self.max_attempts <= 10 or self.attempts < 0 or self.version < 0:
             raise ValueError("execution run counters are invalid")
         validate_execution_request(profile_id=self.profile_id,
@@ -188,7 +190,7 @@ class MongoExecutionRunStore:
         expiry = now + timedelta(seconds=lease_seconds)
         result = await self._runs.update_one(
             {"_id": run_id, "organization_id": organization_id, "worker_id": worker_id,
-             "lease_token": lease_token, "status": {"$in": ["leased", "running"]},
+             "lease_token": lease_token, "status": {"$in": ["leased", "running", "collecting"]},
              "lease_expires_at": {"$gt": now}},
             {"$set": {"lease_expires_at": expiry, "updated_at": now}})
         if result.modified_count != 1:
@@ -226,7 +228,7 @@ class MongoExecutionRunStore:
             current = await self._runs.find_one(
                 {"_id": run_id, "organization_id": organization_id, "worker_id": worker_id,
                  "lease_token": lease_token, "lease_expires_at": {"$gt": now},
-                 "status": {"$in": ["leased", "running"]}}, session=session)
+                 "status": {"$in": ["leased", "running", "collecting"]}}, session=session)
             if current is None:
                 raise ExecutionRunConflict("worker lease is missing, expired or no longer owned")
             current_status = ExecutionRunStatus(current["status"])
