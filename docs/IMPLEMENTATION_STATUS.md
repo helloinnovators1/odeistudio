@@ -549,10 +549,23 @@ Still outstanding: a short-lived single-use approval capability independently ve
 
 
 
-## NEXUS companion apply request validation — in review (2026-11-22)
+## NEXUS capability hardening and integration status — 2026-11-22
 
-- PR [#54](https://github.com/helloinnovators1/odeistudio/pull/54) changes the companion's `proposal_version` field from coercive `int` to Pydantic `StrictInt`, rejecting JSON booleans at the local companion HTTP boundary.
-- Added a regression test for `true` being rejected as a proposal version.
-- Exact-head API CI passed on `1e8ecd51e63df716cd73204ddfb70869166d74a9`: 6/6 jobs, including Ubuntu and Windows Python 3.10/3.12, web tests/build, and MongoDB integration.
-- Exact-head Security Scanning passed: 4/4 jobs, including CodeQL, Python/web dependency audits, and secret scanning.
-- This is schema hardening only. The companion apply route remains single-file; durable multi-file transactions, journaling, rollback and crash recovery are not enabled.
+- PR [#52](https://github.com/helloinnovators1/odeistudio/pull/52) carries strict integer validation for companion `proposal_version`, rejecting JSON booleans. Exact-head API CI passed 6/6 jobs and Security Scanning passed 4/4 jobs on `240b432cbf029a32e48ecd57ba2320f0757706dd`.
+- PR [#53](https://github.com/helloinnovators1/odeistudio/pull/53) hardens signed capability digests against parent/descendant path collisions, including case-insensitive aliases. Exact-head API CI passed 6/6 jobs and Security Scanning passed 4/4 jobs on `20d7a48db207d3ae7bc243178bef74058db78994`.
+- PR [#54](https://github.com/helloinnovators1/odeistudio/pull/54) is closed as a duplicate. Its strict-version change was consolidated into PR #52; no functionality is lost and #54 is not counted as a merged feature.
+- PRs #50 and #51 are closed as superseded by the consolidated [MAC/MAD integration PR #55](https://github.com/helloinnovators1/odeistudio/pull/55). PR #55 preserves the MAC environment-governance and MAD transactional-audit changes on current `main`.
+- PR #55 exact-head API CI [45045760888](https://github.com/helloinnovators1/odeistudio/actions/runs/45045760888) and Security Scanning [45045761063](https://github.com/helloinnovators1/odeistudio/actions/runs/45045761063) both passed on `d408f68efc6085309f48c77bfd635705d47c4173`.
+- These PRs remain open and unmerged pending independent review. Their passing CI/security runs do not imply production deployment.
+
+The NEXUS local companion remains intentionally single-file per apply request. Durable multi-file transactions, journal recovery, rollback and cross-platform acceptance remain outstanding.
+
+
+## NEXUS local patch snapshot consistency — in review (2026-11-22)
+
+- PR [#56](https://github.com/helloinnovators1/odeistudio/pull/56) hardens the existing single-file apply path on both POSIX and Windows. It compares device, inode, mode, size, modification time and change time before and after reading, and rejects a snapshot if metadata or byte count changed.
+- Added deterministic regression tests for concurrent same-length overwrites. The Windows test explicitly advances mtime to avoid filesystem timestamp-resolution flakiness.
+- Exact-head API CI [45047023019](https://github.com/helloinnovators1/odeistudio/actions/runs/45047023019) passed 6/6 jobs, including Windows Python 3.10/3.12, Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration.
+- Exact-head Security Scanning [45047023065](https://github.com/helloinnovators1/odeistudio/actions/runs/45047023065) passed 4/4 jobs, including CodeQL, dependency audits and secret scanning.
+- An earlier Windows test run failed because the simulated same-size write did not deterministically change the observed timestamp. The regression was corrected and the exact-head matrix passed.
+- This is snapshot consistency hardening only. It does not enable multi-file writes, transaction journaling, crash recovery or rollback. PR #56 remains open and unmerged pending independent review.
