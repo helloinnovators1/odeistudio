@@ -269,6 +269,7 @@ export default function NexusChatPanel({
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+      setMacOpen(false); setMacRecord(null); setMacError("");
       setNotice(message);
     };
     const remaining = access.expiresAt - Date.now();
@@ -810,7 +811,10 @@ export default function NexusChatPanel({
         : await createMacEnvironmentDraft(config.apiBaseUrl, macEnvironmentId, access.accessToken,
             configValues, macChangeSummary, macRecord ? latest : undefined);
       if ("environment" in result) setMacRecord(result.environment);
-      else await refreshMacEnvironment();
+      else {
+        const refreshed = await getMacEnvironment(config.apiBaseUrl, macEnvironmentId, access.accessToken);
+        setMacRecord(refreshed.environment);
+      }
       setNotice("MAC draft saved. It has not been approved or deployed.");
     } catch (cause) {
       setMacError(errorMessage(cause));
