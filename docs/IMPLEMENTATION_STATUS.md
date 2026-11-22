@@ -6,14 +6,14 @@ This section is the source of truth for the current repository state. Older impl
 
 | Workstream | Current verified state | Remaining gates |
 |---|---|---|
-| Mainline | Main commit `8b2b2e6f9449732256fb756d7d81f848e5a91597`. PR #49 MAD dashboard is merged. | Production configuration, external telemetry/alert delivery, staging and production acceptance. |
+| Mainline | Main commit `cd03e40605327324adb9cf2284f659f4f1e582a0`. PRs #49, #52, #53 and #56 are merged. | Production configuration, external telemetry/alert delivery, staging and production acceptance. |
 | NEXUS chat and workspace | Main includes ODID PKCE client foundation, tenant-scoped conversations, project/task workflows, streamed chat, bounded attached-excerpt inspection, patch proposals/review and the read-only Monaco workspace. | Real ODID issuer/client/redirect/resource/scopes, production API issuer/JWKS/CORS, staging identity and tenant acceptance. |
 | NEXUS execution | PRs #26–#33, #35, #43 and #44 are merged; durable runs/events, worker leases, bounded snapshots, API/worker integration, artifacts, project execution history and MAD worker metrics are present. | Hardened hostile-code isolation, dedicated production workers, storage/secrets configuration, staging E2E and recovery drills. |
-| Local companion | Main includes explicit folder selection, bounded read-only inspection, pairing and signed, fresh-challenge-bound single-file patch apply. PR #56 adds stable-snapshot validation but remains open. | Multi-file transactions, durable journal, rollback/crash recovery, Windows target-device validation and signed installer/update. |
-| NEXUS strict version validation | PR #52 open; exact head `e36dd3c015c50ab9212fead9c56e4bd26a52ce79`; API CI 6/6 and Security Scanning 4/4 passed. | Independent review and merge. |
-| NEXUS capability path validation | PR #53 open; exact head `f445b3a117c605805b2f9741dc6d1b4112530082`; API CI 6/6 and Security Scanning 4/4 passed. | Independent review and merge. |
-| NEXUS stable file snapshots | PR #56 open; exact head `b5e7ae3e811aded126156705ab0236b2f18050a2`; API CI 6/6 and Security Scanning 4/4 passed. | Independent review and merge; this remains single-file snapshot hardening only. |
-| MAC environment governance and MAD transactional auditing | Consolidated PR #55 open; exact head `be5c57b6c4a981ddaabe3e4d188b7fc91afa5582`; API CI 6/6 and Security Scanning 4/4 passed. PRs #50/#51 are superseded. | Independent review; real provider and secret-manager adapters; worker deployment; operator-run migration; staging and operational acceptance. |
+| Local companion | Main includes explicit folder selection, bounded read-only inspection, pairing, signed single-file apply and stable-snapshot validation from merged PR #56. | Multi-file transactions, durable journal, rollback/crash recovery, Windows target-device validation and signed installer/update. |
+| NEXUS strict version validation | PR #52 merged as `98b11dabbbbc0984e060e0f33653c8391d4cb1fd`; boolean proposal versions are rejected. | Independent post-merge review remains desirable; no deployment is implied. |
+| NEXUS capability path validation | PR #53 merged as `c37c63a8c398e317212ec7f48db787174bc30f5c`; parent/descendant and case-folded path collisions are rejected. | Independent post-merge review remains desirable; no deployment is implied. |
+| NEXUS stable file snapshots | PR #56 merged as `cd03e40605327324adb9cf2284f659f4f1e582a0`; POSIX and Windows concurrent-write snapshots are rejected. | This remains single-file snapshot hardening only. |
+| MAC environment governance and MAD transactional auditing | Consolidated integration candidate PR #66 is open; it carries PR #55 implementation on current main and the NEXUS stale-project-load guard from #65. | Fresh CI/security on exact candidate, independent security review, real provider and secret-manager adapters, worker deployment, operator-run migration, staging and operational acceptance. |
 | MAD dashboard | PR #49 merged to main. | Real infrastructure telemetry, ODID operator/scope provisioning, calibrated alerts and external alert delivery. |
 | ODID | Browser PKCE and token lifecycle foundation exist. | Real issuer/client configuration, API trust/JWKS, scopes and staging acceptance. |
 | Windows | Windows Python 3.10/3.12 CI runs pass for the verified PR heads. | Actual Windows 10 build 18362.1256 device acceptance, companion installer, signing and key rotation. |
@@ -579,3 +579,14 @@ The NEXUS local companion remains intentionally single-file per apply request. D
 - Exact reconciled-head Security Scanning [45047325153](https://github.com/helloinnovators1/odeistudio/actions/runs/45047325153) passed 4/4 jobs, including CodeQL, dependency audits and secret scanning.
 - An earlier Windows test run failed because the simulated same-size write did not deterministically change the observed timestamp. The regression was corrected and the exact reconciled-head matrix passed.
 - This is snapshot consistency hardening only. It does not enable multi-file writes, transaction journaling, crash recovery or rollback. PR #56 remains open and unmerged pending independent review.
+
+
+## Post-audit integration update — 2026-11-22
+
+- NEXUS hardening PRs #52, #53 and #56 have been merged into main. The exact merge commits are recorded in the authoritative table above.
+- The previous MAC/MAD PR #55 and standalone NEXUS race-fix PR #65 were closed as superseded. Their changes are consolidated in [PR #66](https://github.com/helloinnovators1/odeistudio/pull/66), rebuilt on main commit `cd03e40605327324adb9cf2284f659f4f1e582a0`. PR #66 adds explicit unit coverage for request-generation invalidation and includes the MAC/MAD implementation and current release-gate documentation.
+- The five major web dependency updates from Dependabot PRs #57–#61 are being validated together in [PR #67](https://github.com/helloinnovators1/odeistudio/pull/67). That candidate also adds a Playwright Chromium smoke suite and moves web CI/dependency audit to Node 22. The exact combined candidate checks must pass before integration.
+- Issue [#62](https://github.com/helloinnovators1/odeistudio/issues/62) remains open: no committed npm lockfile, so deterministic `npm ci` is not yet available.
+- Issue [#63](https://github.com/helloinnovators1/odeistudio/issues/63) remains open: main branch protection and required independent review/status checks are not configured.
+- Issue [#64](https://github.com/helloinnovators1/odeistudio/issues/64) remains open: the new Playwright tests are initial smoke coverage only; authenticated ODID, project-switch races, cross-browser, accessibility and visual-regression acceptance remain.
+- Mainline API CI and Security Scanning passed on commit `cd03e40605327324adb9cf2284f659f4f1e582a0`. PR #66 and #67 require their own exact-head checks. No production deployment or external acceptance is claimed.
