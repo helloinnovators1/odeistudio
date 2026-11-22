@@ -59,3 +59,8 @@ This remains an execution-backend foundation plus a durable run/lease persistenc
 - Test worker crash/restart, lease expiry, duplicate delivery, cancellation races and audit rollback.
 - Run the full end-to-end path: project snapshot → approved task → sandbox run → test report → reviewable artifact → user acceptance.
 - Do not mark execution operational until the actual worker host, OCI runtime, image digests, queue, storage and monitoring are configured and tested.
+
+
+## Workspace snapshot ingestion
+
+A bounded ZIP ingestion module is implemented on the stacked workspace-snapshot branch. It validates archive metadata and actual expanded bytes, rejects unsafe path/link entries and writes a deterministic content snapshot into a fresh worker directory. It is not yet exposed as an authenticated API or backed by durable object storage; do not use it as a direct browser-to-worker upload path until those controls are integrated.
