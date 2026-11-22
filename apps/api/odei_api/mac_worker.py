@@ -12,6 +12,7 @@ import importlib
 import logging
 import os
 import re
+import signal
 import socket
 from collections.abc import Mapping
 from typing import Any
@@ -87,20 +88,39 @@ async def run_worker(*, once: bool = False, poll_interval: float = 2.0) -> None:
             providers=providers,
             worker_id=worker_id,
         )
-        while True:
-            attempt = await worker.run_once()
-            if attempt is not None:
-                logger.info(
-                    "MAC deployment attempt %s finished with state %s",
-                    str(attempt.get("_id", "unknown")),
-                    str(attempt.get("state", "unknown")),
-                )
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(signum, stop.set)
+            except NotImplementedError:
+                # Windows does not expose loop signal handlers; KeyboardInterrupt
+                # still provides an orderly local-development shutdown.
+                pass
+        try:
+            while not stop.is_set():
+                attempt = await worker.run_once()
+                if attempt is not None:
+                    logger.info(
+                        "MAC deployment attempt %s finished with state %s",
+                        str(attempt.get("_id", "unknown")),
+                        str(attempt.get("state", "unknown")),
+                    )
+                    if once:
+                        return
+                    continue
                 if once:
                     return
-                continue
-            if once:
-                return
-            await asyncio.sleep(poll_interval)
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=poll_interval)
+                except TimeoutError:
+                    pass
+        finally:
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                try:
+                    loop.remove_signal_handler(signum)
+                except NotImplementedError:
+                    pass
     finally:
         await client.close()
 
