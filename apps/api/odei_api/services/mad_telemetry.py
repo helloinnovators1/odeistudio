@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from pymongo import ReturnDocument
+
 
 _WORKER_STALE_SECONDS = 45
 _QUEUE_DELAY_ALERT_SECONDS = 300
@@ -38,6 +40,9 @@ class MongoMADTelemetryStore:
     async def heartbeat(
         self, *, worker_id: str, status: str, active_run_id: str | None = None,
     ) -> None:
+        if (not isinstance(worker_id, str) or not worker_id or len(worker_id) > 128
+                or any(ord(char) < 33 or ord(char) > 126 for char in worker_id)):
+            raise ValueError("worker identifier is invalid")
         if status not in {"idle", "running", "draining"}:
             raise ValueError("worker heartbeat status is invalid")
         if active_run_id is not None and (
@@ -148,6 +153,11 @@ class MongoMADTelemetryStore:
                 "age_seconds": age,
                 "active_run_id": row.get("active_run_id"),
             })
+        worker_total = await self._workers.count_documents({})
+        fresh_workers = await self._workers.count_documents({
+            "last_seen_at": {"$gte": now - timedelta(seconds=_WORKER_STALE_SECONDS)},
+        })
+        stale_worker_total = max(0, worker_total - fresh_workers)
         oldest = await self._runs.find_one({"status": "queued"}, sort=[("created_at", 1)])
         queue_age = (
             max(0, int((now - oldest["created_at"]).total_seconds()))
@@ -158,7 +168,7 @@ class MongoMADTelemetryStore:
         audit_count = await self._audit.count_documents({"occurred_at": {"$gte": audit_since}})
         if not worker_rows:
             platform_status = "unknown"
-        elif stale_workers or (queue_age is not None and queue_age > _QUEUE_DELAY_ALERT_SECONDS):
+        elif stale_worker_total or (queue_age is not None and queue_age > _QUEUE_DELAY_ALERT_SECONDS):
             platform_status = "degraded"
         else:
             platform_status = "healthy"
@@ -181,9 +191,10 @@ class MongoMADTelemetryStore:
             },
             "tasks": {"tasks_by_status": task_counts},
             "workers": {
-                "observed": len(worker_rows),
-                "fresh": len(worker_rows) - stale_workers,
-                "stale": stale_workers,
+                "observed": worker_total,
+                "fresh": fresh_workers,
+                "stale": stale_worker_total,
+                "items_returned": len(worker_rows),
                 "items": workers,
             },
             "alerts": {"open_or_acknowledged": open_alerts},
@@ -209,10 +220,12 @@ class MongoMADTelemetryStore:
             {"$set": {
                 "status": target, "updated_at": now,
                 "acknowledged_by": actor_subject if action == "acknowledge" else None,
+                "acknowledged_by_issuer": actor_issuer if action == "acknowledge" else None,
                 "resolved_by": actor_subject if action == "resolve" else None,
+                "resolved_by_issuer": actor_issuer if action == "resolve" else None,
                 "resolved_at": now if action == "resolve" else None,
             }},
-            return_document=True,
+            return_document=ReturnDocument.AFTER,
         )
         return self._public_alert(result) if result else None
 
@@ -226,6 +239,8 @@ class MongoMADTelemetryStore:
             "created_at": row["created_at"].isoformat(),
             "updated_at": row["updated_at"].isoformat(),
             "acknowledged_by": row.get("acknowledged_by"),
+            "acknowledged_by_issuer": row.get("acknowledged_by_issuer"),
             "resolved_by": row.get("resolved_by"),
+            "resolved_by_issuer": row.get("resolved_by_issuer"),
             "resolved_at": row["resolved_at"].isoformat() if row.get("resolved_at") else None,
         }
