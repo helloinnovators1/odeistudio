@@ -12,6 +12,7 @@ This top-level snapshot supersedes older status statements in the historical not
 | NEXUS local companion | Mainline approved apply remains single-file, signed-capability and fresh-challenge gated. | Multi-file atomic apply, durable journal, rollback and crash recovery. |
 | NEXUS strict proposal-version validation | PR #52 open, unmerged; head `cce3b8348c03b1f6bdd6ef050fffc9623251bf3c`. Exact-head API CI [45040300873](https://github.com/helloinnovators1/odeistudio/actions/runs/45040300873) (6/6 jobs) and Security Scanning [45040300773](https://github.com/helloinnovators1/odeistudio/actions/runs/45040300773) (4/4 jobs) passed. | Independent review and merge; this does not implement multi-file transactions. |
 | NEXUS capability path hierarchy validation | PR #53 open, unmerged; head `d4e419ca26608975dcf73ddcd1047529269be98d`. Exact-head API CI [45040664116](https://github.com/helloinnovators1/odeistudio/actions/runs/45040664116) (6/6 jobs) and Security Scanning [45040664100](https://github.com/helloinnovators1/odeistudio/actions/runs/45040664100) (4/4 jobs) passed. | Independent review and merge; this does not implement multi-file transactions. |
+| NEXUS companion apply-request validation | PR #54 open, unmerged; head `1e8ecd51e63df716cd73204ddfb70869166d74a9`. Exact-head API CI [45042633390](https://github.com/helloinnovators1/odeistudio/actions/runs/45042633390) passed 6/6 jobs and Security Scanning [45042633379](https://github.com/helloinnovators1/odeistudio/actions/runs/45042633379) passed 4/4 jobs. Rejects boolean `proposal_version` values at the companion boundary. | Independent review and merge; does not enable multi-file apply or add transaction journaling/recovery. |
 | NEXUS execution | Earlier execution, worker, snapshots, artifact and history increments are integrated. | Hardened hostile-code isolation, production worker/storage/secrets, cancellation/recovery drills and staging E2E. |
 | ODID | Browser PKCE foundation exists. | Real issuer/client/redirect/resource/scopes, API issuer/JWKS, callback and staging identity acceptance. |
 | Windows | Cross-platform CI exists; companion diagnostic is available. | Actual Windows 10 build 18362.1256 device acceptance, signed installer/update and key rotation. |
@@ -20,7 +21,7 @@ This top-level snapshot supersedes older status statements in the historical not
 
 ### Integration and release rules
 
-- PR #49 is merged. PRs #50 and #51 are still open and unmerged; green CI is not independent review or production acceptance.
+- PR #49 is merged. PRs #50–#54 are open and unmerged; green CI is not independent review or production acceptance. The five feature branches have diverged from current `main` to varying degrees and require reconciliation/revalidation before integration.
 - Do not merge security-sensitive PRs without the repository's required independent review and checks.
 - MAC's revision-store migration is an operator-controlled production procedure: backup, freeze writes, dry-run, explicit apply, reconcile counts/content/pointers, then deploy. No production migration was performed by the PR.
 - A packaged MAC worker is not a deployed worker. A queued or verified test deployment attempt is not proof of a cloud infrastructure change.
