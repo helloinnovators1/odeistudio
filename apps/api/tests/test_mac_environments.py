@@ -117,8 +117,6 @@ async def test_rollback_creates_new_reviewable_revision_without_mutating_history
 def test_environment_configuration_rejects_plaintext_secrets_and_unbounded_values():
     with pytest.raises(MacEnvironmentError):
         validate_environment_config({"database_password": "plaintext"})
-    with pytest.raises(MacEnvironmentError):
-        validate_environment_config({"database_password": "secret://vault/prod/db"})
     assert validate_environment_config({"database_password": "secret://vault/prod/db"}) == {
         "database_password": "secret://vault/prod/db"
     }
