@@ -201,3 +201,14 @@ def test_all_credential_key_variants_require_secret_references(key):
     assert validate_environment_config({key: "secret://vault/prod/credential"}) == {
         key: "secret://vault/prod/credential"
     }
+
+
+@pytest.mark.parametrize("reference", [
+    "secret://vault/../production/db",
+    "secret://vault/./production/db",
+    "secret://vault//production/db",
+    "secret://vault/",
+])
+def test_secret_references_reject_ambiguous_or_traversal_paths(reference):
+    with pytest.raises(MacEnvironmentError):
+        validate_environment_config({"database_password": reference})
