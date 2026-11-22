@@ -99,7 +99,8 @@ Authenticated endpoints:
 
 Every successful or denied read/transition is written to the append-only
 platform audit store. State transitions also append an incident history item
-with actor, action, timestamp and version. The compare-and-set update rejects
+with actor, action, timestamp and version; each incident retains the latest 200
+history entries to keep MongoDB documents bounded. The compare-and-set update rejects
 stale versions with HTTP 409. No tenant IDs, prompts, command output, artifact
 contents, hostnames or secrets are stored in incident records.
 
