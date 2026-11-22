@@ -51,6 +51,11 @@ class Settings(BaseSettings):
                 or parsed.path not in {"", "/"}
             ):
                 raise ValueError("PATCH_APPROVAL_ISSUER must be an exact HTTPS origin")
+        if self.mad_metrics_token is not None and (
+            not self.mad_metrics_token.get_secret_value().isascii()
+            or len(self.mad_metrics_token.get_secret_value()) < 32
+        ):
+            raise ValueError("MAD_METRICS_TOKEN must contain at least 32 ASCII characters")
         if self.patch_approval_key_id is not None and (
             not self.patch_approval_key_id.isascii()
             or not self.patch_approval_key_id
