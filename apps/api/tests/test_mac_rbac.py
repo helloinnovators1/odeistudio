@@ -120,7 +120,7 @@ def test_mac_access_endpoint_denies_unassigned_identity_and_audits_denial(monkey
     }])
     response, audit = _call_mac_access(
         monkeypatch,
-        principal=Principal(subject="unassigned", issuer=ISSUER),
+        principal=Principal(subject="unassigned", issuer=ISSUER, scopes=frozenset({"mac:admin"})),
         registry=raw,
     )
     assert response.status_code == 403
