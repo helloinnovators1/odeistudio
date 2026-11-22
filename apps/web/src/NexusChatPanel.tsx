@@ -532,7 +532,9 @@ export default function NexusChatPanel({
       );
       setNotice("Workspace snapshot uploaded. The approved server profile has been queued for isolated execution.");
     } catch (cause) {
-      if (!controller.signal.aborted) setExecutionError(errorMessage(cause));
+      if (!controller.signal.aborted && generation === executionGenerationRef.current) {
+        setExecutionError(errorMessage(cause));
+      }
     } finally {
       if (executionAbortRef.current === controller) executionAbortRef.current = null;
       setExecutionBusy(false);
@@ -541,6 +543,7 @@ export default function NexusChatPanel({
 
   async function cancelExecution() {
     if (!access || !executionRun || !config.apiBaseUrl || executionBusy) return;
+    const generation = executionGenerationRef.current;
     const controller = new AbortController();
     executionAbortRef.current = controller;
     setExecutionBusy(true);
@@ -550,7 +553,7 @@ export default function NexusChatPanel({
         config.apiBaseUrl, organizationId, projectId, executionRun.task_id,
         executionRun.run_id, access.accessToken, fetch, controller.signal,
       );
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== executionGenerationRef.current) return;
       setExecutionRun(updated);
       if (updated.status === "cancelled") {
         setTaskPlan((current) => current && current.task_id === updated.task_id
