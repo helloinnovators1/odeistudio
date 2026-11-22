@@ -62,7 +62,12 @@ class IncidentCollection:
         for key, amount in update.get("$inc", {}).items():
             current[key] = current.get(key, 0) + amount
         for key, value in update.get("$push", {}).items():
-            current.setdefault(key, []).append(deepcopy(value))
+            if isinstance(value, dict) and "$each" in value:
+                current.setdefault(key, []).extend(deepcopy(value["$each"]))
+                if "$slice" in value:
+                    current[key] = current[key][value["$slice"]:]
+            else:
+                current.setdefault(key, []).append(deepcopy(value))
         return UpdateResult(1)
 
     def find(self, query):
