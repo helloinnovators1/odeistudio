@@ -33,6 +33,9 @@ describe("NEXUS execution API client", () => {
       { limit: 20, cursor: { before_created_at: "2026-11-22T09:00:00Z", before_run_id: "run-3" }, fetcher },
     );
     expect(page.runs[0]?.run_id).toBe("run-2");
+    expect(String(fetcher.mock.calls[0]?.[0])).toMatch(
+      /^https:\/\/api\.example\.test\/api\/v1\/organizations\/org\/projects\/project\/executions\?/,
+    );
     expect(page.has_more).toBe(true);
     expect(String(fetcher.mock.calls[0]?.[0])).toContain(
       "/executions?limit=20&before_created_at=2026-11-22T09%3A00%3A00Z&before_run_id=run-3",
