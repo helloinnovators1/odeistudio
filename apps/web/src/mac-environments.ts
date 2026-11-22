@@ -30,9 +30,33 @@ function normalizeBase(value: string): string {
 async function readBounded(response: Response): Promise<string> {
   const length = Number(response.headers.get("Content-Length"));
   if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) throw new Error("MAC API returned an oversized response.");
-  const raw = await response.text();
-  if (new TextEncoder().encode(raw).byteLength > MAX_RESPONSE_BYTES) throw new Error("MAC API returned an oversized response.");
-  return raw;
+  if (!response.body) {
+    const raw = await response.text();
+    if (new TextEncoder().encode(raw).byteLength > MAX_RESPONSE_BYTES) throw new Error("MAC API returned an oversized response.");
+    return raw;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new Error("MAC API returned an oversized response.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch { throw new Error("MAC API returned an invalid response."); }
 }
 async function request<T>(
   base: string, environment: string, token: string, fetcher: Fetcher,
