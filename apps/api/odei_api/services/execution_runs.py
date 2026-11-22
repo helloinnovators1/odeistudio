@@ -230,6 +230,57 @@ class MongoExecutionRunStore:
                 version=claimed.version, actor_id=worker_id, attempt=claimed.attempts), session=session)
         return claimed
 
+    async def expire_exhausted(self, *, actor_id: str, limit: int = 50) -> int:
+        """Fail runs whose queue or expired lease exhausted the bounded attempt budget."""
+        _identifier(actor_id, "actor_id")
+        if not 1 <= limit <= 500:
+            raise ValueError("expiry batch limit is invalid")
+        now = datetime.now(timezone.utc)
+        exhausted = {"$expr": {"$gte": ["$attempts", "$max_attempts"]}}
+        query = {"$or": [
+            {"status": ExecutionRunStatus.QUEUED.value, **exhausted},
+            {"status": {"$in": ["leased", "running", "collecting"]},
+             "lease_expires_at": {"$lte": now}, **exhausted},
+        ]}
+        count = 0
+        async with self._client.start_session() as session, await session.start_transaction():
+            cursor = self._runs.find(query, session=session).sort("created_at", 1).limit(limit)
+            rows = await cursor.to_list(length=limit)
+            for row in rows:
+                status = ExecutionRunStatus(row["status"])
+                updated = await self._runs.find_one_and_update(
+                    {"_id": row["_id"], "organization_id": row["organization_id"],
+                     "version": row["version"], "status": row["status"]},
+                    {"$set": {"status": ExecutionRunStatus.FAILED.value,
+                              "worker_id": None, "lease_token": None,
+                              "lease_expires_at": None, "updated_at": now},
+                     "$unset": {"active_task_id": ""},
+                     "$inc": {"version": 1}},
+                    return_document=ReturnDocument.AFTER, session=session,
+                )
+                if updated is None:
+                    continue
+                run = self._from_document(updated)
+                await self._events.insert_one(_event(
+                    run, event_type="execution.failed", version=run.version,
+                    actor_id=actor_id, from_status=status.value,
+                    to_status=ExecutionRunStatus.FAILED.value,
+                    reason="attempt_budget_exhausted",
+                ), session=session)
+                await self._audit_in_transaction({
+                    "organization_id": run.organization_id,
+                    "actor_issuer": "https://odei-studio.internal",
+                    "actor_subject": actor_id,
+                    "action": "nexus.execution.exhausted",
+                    "target_type": "nexus_execution_run",
+                    "target_id": run.id,
+                    "outcome": "failure",
+                    "request_id": uuid4().hex,
+                    "metadata": {"attempts": run.attempts, "max_attempts": run.max_attempts},
+                }, session)
+                count += 1
+        return count
+
     async def heartbeat(self, *, organization_id: str, run_id: str, worker_id: str,
                         lease_token: str, lease_seconds: int = 30) -> datetime:
         now = datetime.now(timezone.utc)
