@@ -312,7 +312,7 @@ export default function NexusChatPanel({
     async function pollRun() {
       try {
         const updated = await getNexusExecution(
-          apiBaseUrl, organizationId, projectId, taskId, runId,
+          apiBaseUrl, selectedOrganizationId, selectedProjectId, taskId, runId,
           accessToken, fetch, controller.signal,
         );
         if (!active) return;
@@ -321,7 +321,7 @@ export default function NexusChatPanel({
         if (terminal) {
           try {
             const artifacts = await getNexusExecutionArtifacts(
-              apiBaseUrl, organizationId, projectId, taskId, runId,
+              apiBaseUrl, selectedOrganizationId, selectedProjectId, taskId, runId,
               accessToken, fetch, controller.signal,
             );
             if (active) setExecutionArtifacts(artifacts);
