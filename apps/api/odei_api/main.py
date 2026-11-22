@@ -27,6 +27,10 @@ from odei_api.services.nexus_inspection import router as nexus_inspection_router
 from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
 from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
+from odei_api.services.nexus_execution import router as nexus_execution_router
+from odei_api.services.execution_runs import MongoExecutionRunStore
+from odei_api.services.execution_profiles import load_execution_profiles
+from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
 from odei_api.services.task_store import MongoTaskStore
@@ -45,6 +49,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.http_client = http_client
     application.state.jwks_cache = None
     application.state.jwks_lock = asyncio.Lock()
+    application.state.execution_profile_registry = load_execution_profiles(settings)
     try:
         if settings.mongodb_uri is not None and settings.mongodb_uri.get_secret_value():
             client, database_name = create_mongo_client(settings)
@@ -83,10 +88,23 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             patch_proposal_store = MongoPatchProposalStore(application.state.mongo_database["nexus_patch_proposals"])
             await patch_proposal_store.initialize()
             application.state.patch_proposal_store = patch_proposal_store
+            execution_run_store = MongoExecutionRunStore(
+                application.state.mongo_database["execution_runs"],
+                application.state.mongo_database["execution_run_events"],
+                client,
+                audit_store=audit_store,
+            )
+            await execution_run_store.initialize()
+            application.state.execution_run_store = execution_run_store
+            snapshot_store = MongoWorkspaceSnapshotStore(application.state.mongo_database)
+            await snapshot_store.initialize()
+            application.state.workspace_snapshot_store = snapshot_store
         else:
             application.state.task_store = None
             application.state.conversation_store = None
             application.state.patch_proposal_store = None
+            application.state.execution_run_store = None
+            application.state.workspace_snapshot_store = None
         yield
     finally:
         if client is not None:
@@ -103,6 +121,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(nexus_tasks_router)
+app.include_router(nexus_execution_router)
 app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
 app.include_router(nexus_patch_proposals_router)
