@@ -92,4 +92,14 @@ describe("MAD operator transport", () => {
     await expect(getMadExecutionMetrics("https://api.example.test", "token", fetcher))
       .rejects.toThrow("The verified identity lacks the mad:read scope.");
   });
+
+  it("bounds streamed API responses and propagates abort signals", async () => {
+    const oversized = vi.fn<typeof fetch>().mockResolvedValue(new Response("x".repeat(256_001)));
+    await expect(getMadExecutionMetrics("https://api.example.test", "token", oversized))
+      .rejects.toThrow("oversized response");
+    const controller = new AbortController();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(metrics));
+    await getMadExecutionMetrics("https://api.example.test", "token", fetcher, controller.signal);
+    expect((fetcher.mock.calls[0]?.[1] as RequestInit).signal).toBe(controller.signal);
+  });
 });
