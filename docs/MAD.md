@@ -102,10 +102,13 @@ platform audit store. State transitions also append an incident history item
 with actor, action, timestamp and version; each incident retains the latest 200
 history entries to keep MongoDB documents bounded. The compare-and-set update rejects
 stale versions with HTTP 409. Successful state transitions and their append-only
-success audit events now commit in the same MongoDB transaction. If the audit
-insert fails, the incident state change is rolled back; the API fails closed and
-returns a safe service error. Denial events are written separately because no
-state mutation is performed. This requires a replica-set or sharded MongoDB
+success audit events now commit in the same MongoDB transaction. Alert
+observations created or refreshed by the authenticated metrics route and its
+success audit event are also committed in one transaction. A failure to append
+either success audit aborts the associated incident mutation; the API fails
+closed. Denial events are written separately because no state mutation is
+performed. Alert batches are bounded to 100 observations per transaction.
+ This requires a replica-set or sharded MongoDB
 topology with transaction support. A real MongoDB replica-set integration test
 verifies both rollback on audit failure and joint state/audit commit. No tenant
 IDs, prompts, command output, artifact contents, hostnames or secrets are stored
@@ -136,3 +139,25 @@ The backend remains authoritative: `mad:read` is required for telemetry and inci
 - Calibrate alert thresholds against staging telemetry before enabling paging.
 - Add infrastructure, integrations, deployment, model-cost and product-adoption telemetry only when authoritative sources and privacy/retention contracts exist.
 - Alert notification delivery, dashboard visualizations beyond the current operational cards, and MAC-governed configuration remain separate work.
+
+
+### Transactional alert observation audit — implementation increment
+
+The authenticated metrics route now requires the transactional MongoDB client
+and incident store. It evaluates aggregate alerts, then commits all resulting
+incident observations and the corresponding `mad.metrics.read` success audit
+event in a single MongoDB transaction. This covers new incidents, refreshes of
+active incidents and reopenings of resolved incidents. Alert observation batches
+are limited to 100 items. Duplicate-key insert races inside a transaction are
+allowed to abort rather than being swallowed after MongoDB has marked the
+transaction failed.
+
+A replica-set integration test injects an audit-write failure and verifies that
+the incident insert is rolled back; it also verifies that a successful
+observation and audit event commit together. This complements the existing
+transition/audit atomicity test. Denied reads remain separately audited because
+they do not mutate incident state.
+
+This is repository implementation and CI coverage only. It does not establish
+real ODID operator provisioning, external alert delivery, production telemetry
+coverage, staging thresholds or production deployment.
