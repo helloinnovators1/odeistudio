@@ -177,6 +177,10 @@ export async function buildWorkspaceArchive(
   let totalBytes = 0;
   const candidates = [...selected.values()];
   for (let index = 0; index < candidates.length; index += READ_CONCURRENCY) {
+    if (totalBytes >= MAX_TOTAL_BYTES) {
+      skippedPaths.push(...candidates.slice(index).map((file) => file.path));
+      break;
+    }
     const batch = candidates.slice(index, index + READ_CONCURRENCY);
     const results = await Promise.all(batch.map(async (file) => {
       try {
