@@ -19,7 +19,7 @@ def test_new_run_is_queued_and_hides_lease_token():
 @pytest.mark.parametrize("overrides", [
     {"profile_id": "../python"}, {"snapshot_sha256": "A" * 64},
     {"snapshot_sha256": "not-a-digest"}, {"arguments": "python -m pytest"},
-    {"arguments": ("x\\nmalicious",)}, {"arguments": ("x" * 1025,)},
+    {"arguments": ("x\nmalicious",)}, {"arguments": ("x" * 1025,)},
     {"arguments": tuple(str(i) for i in range(33))},
     {"organization_id": "../other-tenant"}, {"requester_issuer": "http://identity.example"},
 ])
@@ -31,3 +31,11 @@ def test_argument_vector_is_not_shell_joined():
     args = validate_execution_request(profile_id="node-tests", snapshot_sha256="b" * 64,
         arguments=("--runInBand", "path with spaces/test.py"))
     assert args == ("--runInBand", "path with spaces/test.py")
+
+def test_persisted_non_initial_state_can_be_hydrated():
+    run = make_run(status=ExecutionRunStatus.LEASED, version=1, attempts=1,
+                   worker_id="worker-1", lease_token="f" * 32)
+    assert run.status is ExecutionRunStatus.LEASED
+    assert run.version == 1
+    assert run.attempts == 1
+    assert "f" * 32 not in repr(run)
