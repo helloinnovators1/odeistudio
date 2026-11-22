@@ -115,3 +115,36 @@ async def test_revision_backfill_rejects_inconsistent_legacy_sequence():
         await backfill_mac_environment_revisions(
             Environments(legacy), Revisions(), session="transaction",
         )
+
+
+@pytest.mark.asyncio
+async def test_revision_backfill_dry_run_counts_without_writing():
+    legacy = [{
+        "_id": "development",
+        "environment": "development",
+        "latest_version": 1,
+        "versions": [{"version": 1, "status": "draft", "config": {"replicas": 1}}],
+    }]
+    revisions = Revisions()
+    result = await backfill_mac_environment_revisions(
+        Environments(legacy), revisions, session="transaction", dry_run=True,
+    )
+    assert result == {"copied": 1, "already_present": 0}
+    assert revisions.records == {}
+
+
+@pytest.mark.asyncio
+async def test_revision_backfill_rejects_gapped_legacy_history():
+    legacy = [{
+        "_id": "production",
+        "environment": "production",
+        "latest_version": 3,
+        "versions": [
+            {"version": 1, "status": "promoted", "config": {"replicas": 1}},
+            {"version": 3, "status": "draft", "config": {"replicas": 3}},
+        ],
+    }]
+    with pytest.raises(MacRevisionMigrationConflict):
+        await backfill_mac_environment_revisions(
+            Environments(legacy), Revisions(), session="transaction",
+        )
