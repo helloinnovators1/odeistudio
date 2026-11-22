@@ -12,7 +12,7 @@ This section is authoritative for the current PR branch. Merged mainline, open p
 | Multi-file apply and durable recovery | Not implemented | Transaction journal, atomic multi-file apply, rollback, crash recovery and acceptance tests |
 | NEXUS execution stack | PRs #26–#33, #35, #43–#44 merged; includes OCI sandbox foundation, durable runs/leases/events, bounded snapshots, authenticated API, worker, artifacts, event timeline and project-wide execution history | Dedicated hardened Linux worker, reviewed immutable profiles, production storage/secrets, staging E2E, cancellation/recovery drills and richer artifact/review closure |
 | MAD | PR #49 merged: authenticated MAD dashboard in NEXUS, aggregate metrics, active alerts, persisted incidents and audited incident lifecycle actions | Real ODID scope/operator provisioning, production telemetry coverage, alert delivery, staging thresholds and production operations |
-| MAC environment governance | PR #50 open: versioned environments, authenticated two-person approval and atomic mutation/audit; durable idempotent deployment ledger with worker leases, heartbeats, expired-lease reclaim, stale-worker fencing and verification-gated terminal states | Provider worker/adapters, secret-manager resolution, provider idempotency/reconciliation, retry/rollback orchestration, immutable separate revision collection/archival, staging identity and production acceptance remain |
+| MAC environment governance | PR #50 open: versioned environments, authenticated two-person approval and atomic mutation/audit; durable idempotent deployment ledger with expiring leases, heartbeat/reclaim/fencing, persisted provider deployment identity, and provider-neutral worker orchestration that resolves secrets in memory and resumes verification | Deployed worker service, concrete provider/secret-manager adapters, provider idempotency/reconciliation contract acceptance, retry/rollback orchestration, immutable separate revision collection/archival, staging identity and production acceptance remain |
 | Agents Window / CLI / cloud or background agents | Not implemented as complete product workflows | Agent lifecycle, policy enforcement, tools, orchestration, observability and acceptance |
 | Production deployment | Not completed or claimed | Real provider configuration, staging acceptance, backups/restore, release provenance, approval, monitored rollout and rollback |
 
@@ -546,12 +546,19 @@ create queued records only; no infrastructure deployment is executed.
 
 ### MAC deployment worker recovery increment — 2026-11-22
 
-The deployment-attempt ledger now issues bounded expiring worker leases, supports
-lease heartbeats, and allows a new worker to reclaim an expired running attempt.
-Claims increment a bounded attempt counter using one MongoDB compare-and-set
-update. Completion and failure require the current unexpired lease, so a worker
-whose lease expired or was superseded cannot overwrite the new owner's result.
-Unit tests cover heartbeat renewal, lease expiry, reclaim, stale-worker fencing
-and invalid lease/retry limits. The API CI and security workflows for exact head
-`719224f209087c10341492736ea34b1dc0c19315` are pending; no pass is claimed yet.
-This remains a ledger primitive, not a provider worker or actual cloud deployment.
+The deployment ledger now supports bounded expiring leases, heartbeat renewal,
+expired-lease reclaim, stale-worker fencing, and durable provider deployment IDs.
+A provider-neutral worker orchestrator claims queued attempts, loads approved
+configuration, resolves secret references only in memory through an injected
+resolver, calls an injected provider adapter with the stable idempotency key,
+persists the provider deployment ID before verification, and resumes verification
+rather than reapplying when a worker is reclaimed after that point. Provider
+exceptions are sanitized before persistence. Unit tests cover secret isolation,
+verification gating, recovery, worker ownership and lease behavior; the real
+MongoDB replica-set integration job covers lease reclaim and stale-worker fencing.
+Exact code head `ea966eb0f072473f682a7cfd79a62658b709aa1e` passed API CI
+[45023666183](https://github.com/helloinnovators1/odeistudio/actions/runs/45023666183),
+including Windows/Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration.
+Security Scanning [45023666145](https://github.com/helloinnovators1/odeistudio/actions/runs/45023666145)
+is still running. No concrete provider adapter, secret manager or deployed worker
+service is configured, so no cloud deployment is claimed.
