@@ -11,7 +11,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from odei_api.companion import ApplyChallengeManager, ApplyPatchRequest, PairingManager, create_companion_app
+from odei_api.companion import (
+    ApplyChallengeManager,
+    ApplyPatchRequest,
+    PairingManager,
+    create_companion_app,
+)
 from odei_api.config import Settings
 from odei_api.services.patch_approval import issue_patch_apply_capability
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
