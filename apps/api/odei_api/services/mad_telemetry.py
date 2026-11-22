@@ -64,6 +64,14 @@ class MongoWorkerHeartbeatStore:
         return await self.heartbeat(worker_id=worker_id, status="stopping")
 
 
+def _utc_iso(value: Any) -> str | None:
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
 async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
     """Return platform-level execution counters without tenant or artifact content."""
     now = datetime.now(timezone.utc)
@@ -111,11 +119,7 @@ async def collect_mad_execution_metrics(database: Any) -> dict[str, Any]:
             "state": queue_state,
             "queued": queued,
             "active": active_runs,
-            "oldest_queued_at": (
-                oldest["created_at"].isoformat()
-                if oldest and isinstance(oldest.get("created_at"), datetime)
-                else None
-            ),
+            "oldest_queued_at": _utc_iso(oldest.get("created_at")) if oldest else None,
         },
         "executions_24h": {
             "completed": completed_24h,
