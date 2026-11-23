@@ -1234,6 +1234,25 @@ export default function NexusChatPanel({
       {access && (
         <section className="nexus-project-context">
           <div className="nexus-auth-status"><span className="nexus-online-dot" /> Signed in · access and optional refresh tokens held in memory</div>
+          {isDesktopHost && (
+            <label className="nexus-desktop-auth-toggle">
+              <input type="checkbox" checked={desktopAuthEnabled} disabled={!desktopSettingsLoaded || authBusy}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  void window.odeiDesktop!.settings.setODIDSignIn(enabled)
+                    .then((settings) => {
+                      setDesktopAuthEnabled(settings.odidSignInEnabled);
+                      if (!settings.odidSignInEnabled) signOut();
+                    })
+                    .catch(() => {
+                      setDesktopAuthEnabled(false);
+                      setAuthError("Could not save the desktop ODID setting. Sign-in remains disabled.");
+                      signOut();
+                    });
+                }} />
+              <span><strong>ODEI Studio desktop · ODID sign-in</strong><small>{desktopAuthEnabled ? "Enabled on this desktop" : "Disabled"}</small></span>
+            </label>
+          )}
           <div className="nexus-org-form">
             <label htmlFor="nexus-org-id">ORGANIZATION</label>
             <select id="nexus-org-id" value={organizationId} onChange={(event) => {
