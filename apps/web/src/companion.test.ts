@@ -28,7 +28,7 @@ describe("searchWorkspaceFiles", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await searchWorkspaceFiles(
-      "local-session", "workspace-1", "NEXUS", controller.signal,
+      "local-session", "workspace-1", "  NEXUS  ", controller.signal,
     );
     expect(result).toEqual(response);
     const request = fetchMock.mock.calls[0][0] as Request;
