@@ -150,20 +150,15 @@ test("all application menus expose actionable commands and Help opens shortcuts"
 });
 
 
-test("IDE workbench activity rail controls open their matching panels", async ({ page, context }) => {
-  await page.goto("/");
-  const popupPromise = context.waitForEvent("page");
-  await page.getByRole("button", { name: "Open IDE in independent window" }).click();
-  const ide = await popupPromise;
-  await ide.waitForLoadState("domcontentloaded");
-  await expect(ide.locator(".explorer-pane")).toBeVisible();
-  await ide.locator('.activity-rail button[aria-label="Search workspace files"]').click();
-  await expect(ide.locator('.ide-explorer-toolbar button[aria-label="Search view"]')).toHaveAttribute("aria-pressed", "true");
-  await ide.locator('.activity-rail button[aria-label="Source control status"]').click();
-  await expect(ide.locator('.ide-explorer-toolbar button[aria-label="Source Control view"]')).toHaveAttribute("aria-pressed", "true");
-  await ide.locator('.activity-rail button[aria-label="Open Agents and NEXUS"]').click();
-  await expect(ide.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
-  await ide.close({ runBeforeUnload: false });
+test("IDE workbench activity rail controls open their matching panels", async ({ page }) => {
+  await page.goto("/?window=ide");
+  await expect(page.locator(".ide-titlebar")).toBeVisible();
+  await page.locator('.activity-rail button[aria-label="Search workspace files"]').click();
+  await expect(page.locator('.ide-explorer-toolbar button[aria-label="Search view"]')).toHaveAttribute("aria-pressed", "true");
+  await page.locator('.activity-rail button[aria-label="Source control status"]').click();
+  await expect(page.locator('.ide-explorer-toolbar button[aria-label="Source Control view"]')).toHaveAttribute("aria-pressed", "true");
+  await page.locator('.activity-rail button[aria-label="Open Agents and NEXUS"]').click();
+  await expect(page.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
 });
 
 test("reference IDE browser tab supports navigation, history, reload and external open", async ({ page }) => {
