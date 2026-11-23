@@ -38,6 +38,18 @@ describe("loadNexusWorkspaceExcerpts", () => {
     expect(readFile).not.toHaveBeenCalled();
   });
 
+  it("rejects null bytes and cancelled context reads", async () => {
+    const readFile = vi.fn(async () => "should not be read");
+    await expect(loadNexusWorkspaceExcerpts(["src/\\0main.ts"], readFile))
+      .rejects.toThrow("workspace-relative");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(loadNexusWorkspaceExcerpts(
+      ["src/main.ts"], readFile, null, controller.signal,
+    )).rejects.toThrow("cancelled");
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
   it("rejects files over 8,000 characters and aggregate context over 40,000", async () => {
     await expect(loadNexusWorkspaceExcerpts(
       ["large.ts"], async () => "x".repeat(8_001),
