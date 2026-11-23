@@ -522,6 +522,10 @@ export default function App() {
     }
   }
   async function selectNativeRepository() { await selectNativeWorkspace(); }
+  useEffect(() => {
+    if (isIDEWindow && window.odeiDesktop) void selectNativeWorkspace();
+  }, []);
+
 
   async function updateNativeGitPath(path: string, action: "stage" | "unstage") {
     if (!window.odeiDesktop) return;

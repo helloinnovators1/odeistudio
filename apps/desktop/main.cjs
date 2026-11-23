@@ -153,14 +153,15 @@ function safeWorkspaceFile(relativePath) {
     if (stat.isSymbolicLink()) throw new Error("Symbolic links are not opened by the workspace explorer");
   }
   const resolved = fs.realpathSync(current);
-  if (!resolved.startsWith(root + path.sep) || !fs.statSync(resolved).isFile()) throw new Error("Selected path is not a regular workspace file");
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith(".." + path.sep) || relative === ".." || path.isAbsolute(relative) || !fs.statSync(resolved).isFile()) throw new Error("Selected path is not a regular workspace file");
   return resolved;
 }
 handle("odei:workspace:select", async () => {
   const result = await dialog.showOpenDialog(mainWindow, { title: "Open ODEI workspace", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || !result.filePaths[0]) return null;
   selectedWorkspace = fs.realpathSync(result.filePaths[0]);
-  return { name: path.basename(selectedWorkspace), path: selectedWorkspace };
+  return { name: path.basename(selectedWorkspace) };
 });
 handle("odei:workspace:current", () => selectedWorkspace ? ({ name: path.basename(selectedWorkspace) }) : null);
 handle("odei:workspace:files", () => listWorkspaceFiles(requireWorkspace()));
