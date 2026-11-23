@@ -40,7 +40,7 @@ describe("loadNexusWorkspaceExcerpts", () => {
 
   it("rejects null bytes and cancelled context reads", async () => {
     const readFile = vi.fn(async () => "should not be read");
-    await expect(loadNexusWorkspaceExcerpts(["src/\\0main.ts"], readFile))
+    await expect(loadNexusWorkspaceExcerpts(["src/" + String.fromCharCode(0) + "main.ts"], readFile))
       .rejects.toThrow("workspace-relative");
     const controller = new AbortController();
     controller.abort();
