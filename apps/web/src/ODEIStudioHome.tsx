@@ -21,6 +21,22 @@ export default function ODEIStudioHome({
 }: Props) {
   const [prompt, setPrompt] = useState("");
   const [activeSection, setActiveSection] = useState("New Chat");
+  const [minimized, setMinimized] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+  const [closed, setClosed] = useState(false);
+
+  async function toggleMaximize() {
+    const next = !maximized;
+    setMaximized(next);
+    try {
+      if (next && !document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else if (!next && document.fullscreenElement) await document.exitFullscreen();
+    } catch {
+      // Keep the in-app expanded layout when fullscreen is unavailable.
+    }
+  }
+
+  if (closed) return <section className="studio-home studio-home-exited" aria-label="ODEI Studio closed"><div className="studio-exit-card"><span className="studio-home-mark">O</span><h1>ODEI Studio is closed</h1><p>The ODEI workspace view is closed. Your browser window remains under browser control.</p><button className="studio-reopen-button" onClick={() => { setClosed(false); setMinimized(false); }}>Reopen ODEI Studio</button></div></section>;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,9 +54,14 @@ export default function ODEIStudioHome({
         <div className="studio-home-brand"><span className="studio-home-mark">O</span><strong>ODEI STUDIO</strong></div>
         <nav aria-label="Application menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></nav>
         <span className="studio-home-window-label">ODEI Studio Window</span>
+        <div className="studio-window-controls" role="group" aria-label="ODEI Studio window controls">
+          <button type="button" className="studio-window-control" aria-label="Minimize ODEI Studio" title="Minimize" onClick={() => setMinimized(true)}>—</button>
+          <button type="button" className="studio-window-control" aria-label={maximized ? "Restore ODEI Studio" : "Maximize ODEI Studio"} title={maximized ? "Restore down" : "Maximize"} onClick={() => void toggleMaximize()}>{maximized ? "❐" : "□"}</button>
+          <button type="button" className="studio-window-control studio-window-close" aria-label="Close ODEI Studio" title="Close" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); setClosed(true); }}>×</button>
+        </div>
       </header>
 
-      <div className="studio-home-layout">
+      {minimized ? <div className="studio-minimized-view"><span className="studio-home-mark">O</span><strong>ODEI Studio is minimized</strong><button type="button" onClick={() => setMinimized(false)}>Restore ODEI Studio</button></div> : <div className="studio-home-layout">
         <aside className="studio-home-sidebar">
           <div className="studio-home-nav" aria-label="Primary navigation">
             <button className={activeSection === "New Chat" ? "studio-nav-item active" : "studio-nav-item"} onClick={() => { setActiveSection("New Chat"); onStartChat(""); }}>
@@ -112,7 +133,7 @@ export default function ODEIStudioHome({
           </div>
           <div className="studio-home-status"><span>{companionConnected ? "Local companion connected" : "Local workspace not connected"}</span><span>ODEI Studio Window</span></div>
         </section>
-      </div>
+      </div>}
     </section>
   );
 }
