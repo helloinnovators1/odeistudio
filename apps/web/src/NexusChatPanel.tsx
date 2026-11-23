@@ -334,6 +334,10 @@ export default function NexusChatPanel({
     setWorkspaceSearchBusy(false);
   }, [workspaceContext?.workspaceId]);
 
+  useEffect(() => () => {
+    workspaceSearchAbortRef.current?.abort();
+  }, []);
+
   useEffect(() => {
     const accessToken = access?.accessToken;
     if (!accessToken || !config.apiBaseUrl || !organizationId || !projectId) {
@@ -906,6 +910,7 @@ export default function NexusChatPanel({
     workspaceSearchAbortRef.current?.abort();
     workspaceSearchAbortRef.current = null;
     setWorkspaceSearchResults(null);
+    setWorkspaceSearchQuery("");
     setWorkspaceSearchError("");
     setWorkspaceSearchBusy(false);
     macRequestGenerationRef.current.invalidate();
