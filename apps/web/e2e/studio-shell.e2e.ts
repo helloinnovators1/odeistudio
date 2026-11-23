@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("ODEI Studio Window is the first screen and opens the workspace", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle("ODEI Studio Window");
-  await expect(page.getByRole("main", { name: "ODEI Studio Window" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "ODEI Studio Window" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "What are we building today?" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Automations Coming soon" })).toBeDisabled();
   await page.locator(".studio-quick-actions button").nth(1).click();
