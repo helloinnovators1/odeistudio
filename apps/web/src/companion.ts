@@ -18,6 +18,50 @@ export async function pairWithCompanion(code:string):Promise<Pair>{
 export async function listWorkspaces(token:string):Promise<CompanionWorkspace[]>{return(await call<{workspaces:CompanionWorkspace[]}>("/v1/workspaces",{token})).workspaces}
 export async function listWorkspaceFiles(token:string,id:string):Promise<CompanionFile[]>{return(await call<{files:CompanionFile[]}>("/v1/workspaces/"+encodeURIComponent(id)+"/files",{token})).files}
 export async function readWorkspaceFile(token:string,id:string,path:string,signal?:AbortSignal):Promise<string>{const q=new URLSearchParams({path});return(await call<{content:string}>("/v1/workspaces/"+encodeURIComponent(id)+"/file?"+q.toString(),{token,signal})).content}
+export interface WorkspaceSearchResult {
+  path: string;
+  line: number;
+  text: string;
+  sha256: string;
+}
+export interface WorkspaceSearchResponse {
+  workspace_id: string;
+  results: WorkspaceSearchResult[];
+  files_scanned: number;
+  bytes_scanned: number;
+  skipped_files: number;
+  truncated: boolean;
+}
+export async function searchWorkspaceFiles(
+  token: string,
+  workspaceId: string,
+  query: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceSearchResponse> {
+  if (!query.trim() || query.length > 200 || query.includes("\\0")) {
+    throw new Error("Workspace search requires 1–200 non-NUL characters.");
+  }
+  const response = await call<WorkspaceSearchResponse>(
+    "/v1/workspaces/" + encodeURIComponent(workspaceId) + "/search",
+    { method: "POST", token, body: { query }, signal },
+  );
+  const valid = response && response.workspace_id === workspaceId &&
+    Array.isArray(response.results) && response.results.length <= 50 &&
+    Number.isInteger(response.files_scanned) && response.files_scanned >= 0 &&
+    Number.isInteger(response.bytes_scanned) && response.bytes_scanned >= 0 &&
+    Number.isInteger(response.skipped_files) && response.skipped_files >= 0 &&
+    typeof response.truncated === "boolean" &&
+    response.results.every((item) =>
+      item && typeof item.path === "string" && item.path.length > 0 &&
+      !item.path.startsWith("/") && !item.path.includes("\\\\") &&
+      !item.path.split("/").some((part) => !part || part === "." || part === "..") &&
+      Number.isInteger(item.line) && item.line >= 1 &&
+      typeof item.text === "string" && item.text.length <= 500 &&
+      /^[a-f0-9]{64}$/.test(item.sha256)
+    );
+  if (!valid) throw new Error("Companion returned an invalid workspace search response.");
+  return response;
+}
 export async function disconnectFromCompanion(token:string):Promise<void>{await call<void>("/v1/session/revoke",{method:"POST",token})}
 
 export interface PatchPreviewFile {
