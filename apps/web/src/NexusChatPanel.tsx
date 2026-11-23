@@ -11,7 +11,7 @@ import {
 import { listNexusOrganizations, listNexusProjects, type NexusOrganization, type NexusProject } from "./projects";
 import { createNexusConversation, deleteNexusConversation, getNexusConversation, listNexusConversations, sendNexusChatInspection, sendNexusChatStream, type NexusChatMessage, type NexusConversationSummary } from "./nexus-chat";
 import { approveNexusTask, cancelNexusTask, createNexusTask, type NexusTask } from "./nexus-tasks";
-import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge, readWorkspaceFile, type CompanionFile } from "./companion";
+import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge, readWorkspaceFile, searchWorkspaceFiles, type CompanionFile, type WorkspaceSearchResponse } from "./companion";
 import { buildWorkspaceArchive } from "./workspace-archive";
 import {
   cancelNexusExecution,
@@ -111,6 +111,11 @@ export default function NexusChatPanel({
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
   const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
+  const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState("");
+  const [workspaceSearchResults, setWorkspaceSearchResults] = useState<WorkspaceSearchResponse | null>(null);
+  const [workspaceSearchBusy, setWorkspaceSearchBusy] = useState(false);
+  const [workspaceSearchError, setWorkspaceSearchError] = useState("");
+  const workspaceSearchAbortRef = useRef<AbortController | null>(null);
   const [useAttachedTools, setUseAttachedTools] = useState(false);
   const [inspectionRunning, setInspectionRunning] = useState(false);
   const [sending, setSending] = useState(false);
@@ -321,6 +326,12 @@ export default function NexusChatPanel({
   useEffect(() => {
     setSelectedContextPaths([]);
     setUseAttachedTools(false);
+    workspaceSearchAbortRef.current?.abort();
+    workspaceSearchAbortRef.current = null;
+    setWorkspaceSearchQuery("");
+    setWorkspaceSearchResults(null);
+    setWorkspaceSearchError("");
+    setWorkspaceSearchBusy(false);
   }, [workspaceContext?.workspaceId]);
 
   useEffect(() => {
@@ -892,6 +903,11 @@ export default function NexusChatPanel({
   }
 
   function signOut() {
+    workspaceSearchAbortRef.current?.abort();
+    workspaceSearchAbortRef.current = null;
+    setWorkspaceSearchResults(null);
+    setWorkspaceSearchError("");
+    setWorkspaceSearchBusy(false);
     macRequestGenerationRef.current.invalidate();
     setMacBusy(false);
     projectLoadGenerationRef.current.invalidate();
@@ -1014,6 +1030,38 @@ export default function NexusChatPanel({
       setPatchError(errorMessage(cause));
     } finally {
       setPatchBusy(false);
+    }
+  }
+
+  async function submitWorkspaceSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!workspaceContext) return;
+    const query = workspaceSearchQuery.trim();
+    if (!query) {
+      setWorkspaceSearchError("Enter a search term.");
+      return;
+    }
+    workspaceSearchAbortRef.current?.abort();
+    const controller = new AbortController();
+    workspaceSearchAbortRef.current = controller;
+    setWorkspaceSearchBusy(true);
+    setWorkspaceSearchError("");
+    setWorkspaceSearchResults(null);
+    try {
+      const result = await searchWorkspaceFiles(
+        workspaceContext.accessToken,
+        workspaceContext.workspaceId,
+        query,
+        controller.signal,
+      );
+      if (!controller.signal.aborted) setWorkspaceSearchResults(result);
+    } catch (cause) {
+      if (!controller.signal.aborted) setWorkspaceSearchError(errorMessage(cause));
+    } finally {
+      if (workspaceSearchAbortRef.current === controller) {
+        workspaceSearchAbortRef.current = null;
+        setWorkspaceSearchBusy(false);
+      }
     }
   }
 
@@ -1629,6 +1677,53 @@ export default function NexusChatPanel({
                 <input type="checkbox" checked={attachActiveFile} disabled={!isNexusContextPathAllowed(activeFile.path) || (!attachActiveFile && selectedContextCount >= 5 && !selectedContextPaths.includes(activeFile.path))} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
                 Attach active file excerpt: {activeFile.path}{!isNexusContextPathAllowed(activeFile.path) ? " · excluded from AI context for security" : ""}
               </label>
+            )}
+            {workspaceContext && (
+              <form className="nexus-workspace-search" onSubmit={(event) => void submitWorkspaceSearch(event)}>
+                <label htmlFor="nexus-workspace-search">Search local workspace</label>
+                <div className="nexus-workspace-search-row">
+                  <input id="nexus-workspace-search" type="search" value={workspaceSearchQuery}
+                    maxLength={200} disabled={workspaceSearchBusy || sending}
+                    placeholder="Find text across eligible files…"
+                    onChange={(event) => setWorkspaceSearchQuery(event.target.value)} />
+                  <button type="submit" disabled={workspaceSearchBusy || sending || !workspaceSearchQuery.trim()}>
+                    {workspaceSearchBusy ? "Searching…" : "Search"}
+                  </button>
+                </div>
+                <p className="nexus-muted">Exact, case-insensitive search runs locally in the paired workspace. Results stay on this device until you attach a file and separately consent to cloud context.</p>
+                {workspaceSearchError && <p className="nexus-error" role="alert">{workspaceSearchError}</p>}
+                {workspaceSearchResults && (
+                  <div className="nexus-workspace-search-results">
+                    <p className="nexus-muted">
+                      {workspaceSearchResults.results.length} matches · {workspaceSearchResults.files_scanned} files scanned · {workspaceSearchResults.bytes_scanned.toLocaleString()} bytes · {workspaceSearchResults.skipped_files} skipped
+                      {workspaceSearchResults.truncated ? " · Results capped; refine the query." : ""}
+                    </p>
+                    {workspaceSearchResults.results.map((result, index) => {
+                      const alreadyAttached = selectedContextPaths.includes(result.path) ||
+                        (attachActiveFile && activeFile?.path === result.path);
+                      return (
+                        <div className="nexus-search-result" key={result.path + ":" + result.line + ":" + index}>
+                          <div className="nexus-search-result-heading">
+                            <strong>{result.path}:{result.line}</strong>
+                            <button type="button" disabled={alreadyAttached || selectedContextCount >= 5}
+                              onClick={() => setSelectedContextPaths((current) => {
+                                const occupied = new Set([
+                                  ...(attachActiveFile && activeFile ? [activeFile.path] : []),
+                                  ...current,
+                                ]);
+                                if (occupied.has(result.path) || occupied.size >= 5) return current;
+                                return [...current, result.path];
+                              })}>
+                              {alreadyAttached ? "Attached" : "Attach file"}
+                            </button>
+                          </div>
+                          <pre>{result.text}</pre>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </form>
             )}
             {workspaceContext && availableContextFiles.length > 0 && (
               <details className="nexus-context-picker">
