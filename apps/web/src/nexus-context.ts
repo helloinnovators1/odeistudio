@@ -3,10 +3,6 @@ export interface NexusContextFile {
   content: string;
 }
 
-export interface NexusContextFileReference {
-  path: string;
-}
-
 export type NexusContextReader = (path: string) => Promise<string>;
 
 export const MAX_NEXUS_CONTEXT_FILES = 5;
@@ -17,7 +13,7 @@ function validateRelativePath(path: string): string {
   const clean = path.trim();
   if (
     !clean || clean.length > 1_024 || clean.startsWith("/") ||
-    clean.includes("\\") || clean.includes("\\0") ||
+    clean.includes("\\") || clean.includes("\0") ||
     clean.split("/").some((part) => !part || part === "." || part === "..") ||
     /^[a-z]:/i.test(clean)
   ) {
