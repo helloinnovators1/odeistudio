@@ -28,6 +28,23 @@ Configure these Vite build-time variables in the Vercel project. Values are publ
 
 Do not guess the API URL path or ODID values. Confirm them against the deployed API routes and ODID application registration. Register the exact redirect URI and exact browser origin at the identity provider and API. `VITE_BASE_PATH` changes generated asset URLs only; a subpath mount also requires a route/rewrite on the owning Vercel project. The checked-in setting does not create that cross-project route.
 
+### Required host routing for `https://zurios.vercel.app/odeistudio`
+
+The ODEI frontend is a separate Vite project mounted below the existing Zurios domain. Build the ODEI project with `VITE_BASE_PATH=/odeistudio/`. After the ODEI project has a real production deployment URL, the administrator of the existing `zurios` host project must add external rewrites before any catch-all route. Replace `<ODEI-PROJECT-DEPLOYMENT>` below with the verified deployment origin; do not deploy this example with the placeholder:
+
+```json
+{
+  "rewrites": [
+    { "source": "/odeistudio", "destination": "https://<ODEI-PROJECT-DEPLOYMENT>/" },
+    { "source": "/odeistudio/:path*", "destination": "https://<ODEI-PROJECT-DEPLOYMENT>/:path*" }
+  ]
+}
+```
+
+The host rewrite intentionally strips the public `/odeistudio` prefix when forwarding to the ODEI deployment root. Vite-generated browser asset URLs retain `/odeistudio/`, so subsequent asset requests pass through the same host rewrite and arrive at the upstream deployment's root-level `/assets/...` paths. Keep these specific rules ahead of the Zurios application's SPA fallback/catch-all. Preserve the existing root application, domain ownership, authentication/SSO and unrelated routes. Verify the root route, nested client-side routes, JS/CSS/assets, API calls, ODID callback and refresh/deep-link behavior on a preview before production promotion.
+
+This is a host-project administrator action, not a change that can be completed from the ODEI repository alone. Do not claim the requested URL is live until the separate ODEI project exists, the host rewrite is active, and end-to-end checks pass.
+
 ## API container — provider-neutral OCI image
 
 Build from the API directory:
