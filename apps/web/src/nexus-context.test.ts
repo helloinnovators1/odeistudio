@@ -45,6 +45,18 @@ describe("loadNexusWorkspaceExcerpts", () => {
     expect(readFile).toHaveBeenCalledWith("src/main.ts", controller.signal);
   });
 
+  it("excludes credential files, sensitive directories and private-key formats", async () => {
+    const readFile = vi.fn(async () => "must not read");
+    for (const path of [
+      ".env", ".env.staging", ".ssh/id_ed25519", ".aws/credentials",
+      ".git/config", "secrets.json", "config/service.pem", "private/client.key",
+    ]) {
+      await expect(loadNexusWorkspaceExcerpts([path], readFile))
+        .rejects.toThrow("workspace-relative");
+    }
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
   it("rejects null bytes and cancelled context reads", async () => {
     const readFile = vi.fn(async () => "should not be read");
     await expect(loadNexusWorkspaceExcerpts(["src/" + String.fromCharCode(0) + "main.ts"], readFile))
