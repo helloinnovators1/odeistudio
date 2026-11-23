@@ -1710,14 +1710,16 @@ export default function NexusChatPanel({
                       {workspaceSearchResults.truncated ? " · Results capped; refine the query." : ""}
                     </p>
                     {workspaceSearchResults.results.map((result, index) => {
-                      const alreadyAttached = selectedContextPaths.includes(result.path) ||
-                        (attachActiveFile && activeFile?.path === result.path);
+                      const activeFileAttached = attachActiveFile && activeFile?.path === result.path;
+                      const selectedForContext = selectedContextPaths.includes(result.path);
+                      const alreadyAttached = selectedForContext || activeFileAttached;
                       return (
                         <div className="nexus-search-result" key={result.path + ":" + result.line + ":" + index}>
                           <div className="nexus-search-result-heading">
                             <strong>{result.path}:{result.line}</strong>
-                            <button type="button" disabled={alreadyAttached || selectedContextCount >= 5}
+                            <button type="button" disabled={activeFileAttached || (!alreadyAttached && selectedContextCount >= 5)}
                               onClick={() => setSelectedContextPaths((current) => {
+                                if (current.includes(result.path)) return current.filter((path) => path !== result.path);
                                 const occupied = new Set([
                                   ...(attachActiveFile && activeFile ? [activeFile.path] : []),
                                   ...current,
@@ -1725,7 +1727,7 @@ export default function NexusChatPanel({
                                 if (occupied.has(result.path) || occupied.size >= 5) return current;
                                 return [...current, result.path];
                               })}>
-                              {alreadyAttached ? "Attached" : "Attach file"}
+                              {activeFileAttached ? "Active file" : selectedForContext ? "Remove" : "Attach file"}
                             </button>
                           </div>
                           <pre>{result.text}</pre>
