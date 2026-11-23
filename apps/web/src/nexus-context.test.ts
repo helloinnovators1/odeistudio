@@ -38,6 +38,13 @@ describe("loadNexusWorkspaceExcerpts", () => {
     expect(readFile).not.toHaveBeenCalled();
   });
 
+  it("passes the active cancellation signal to companion file reads", async () => {
+    const controller = new AbortController();
+    const readFile = vi.fn(async (_path: string, _signal?: AbortSignal) => "content");
+    await loadNexusWorkspaceExcerpts(["src/main.ts"], readFile, null, controller.signal);
+    expect(readFile).toHaveBeenCalledWith("src/main.ts", controller.signal);
+  });
+
   it("rejects null bytes and cancelled context reads", async () => {
     const readFile = vi.fn(async () => "should not be read");
     await expect(loadNexusWorkspaceExcerpts(["src/" + String.fromCharCode(0) + "main.ts"], readFile))
