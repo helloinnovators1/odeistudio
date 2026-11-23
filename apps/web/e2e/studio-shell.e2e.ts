@@ -158,9 +158,9 @@ test("IDE workbench activity rail controls open their matching panels", async ({
   await ide.waitForLoadState("domcontentloaded");
   await expect(ide.locator(".explorer-pane")).toBeVisible();
   await ide.locator('.activity-rail button[aria-label="Search workspace files"]').click();
-  await expect(ide.getByRole("status")).toContainText("Connect the local companion");
+  await expect(ide.locator('.ide-explorer-toolbar button[aria-label="Search view"]')).toHaveAttribute("aria-pressed", "true");
   await ide.locator('.activity-rail button[aria-label="Source control status"]').click();
-  await expect(ide.getByRole("status")).toContainText("Git status is unavailable");
+  await expect(ide.locator('.ide-explorer-toolbar button[aria-label="Source Control view"]')).toHaveAttribute("aria-pressed", "true");
   await ide.locator('.activity-rail button[aria-label="Open Agents and NEXUS"]').click();
   await expect(ide.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
   await ide.close({ runBeforeUnload: false });
