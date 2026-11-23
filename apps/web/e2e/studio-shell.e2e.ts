@@ -15,6 +15,8 @@ test("NEXUS keyboard shortcut opens the chat panel", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Control+i");
   await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeVisible();
+  await page.keyboard.press("Control+i");
+  await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeHidden();
 });
 
 test("the workspace shell has no horizontal overflow at 320px", async ({ page }) => {

@@ -87,7 +87,7 @@ export default function App() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [chatOpen]);
 
   async function connect() {
     setBusy(true);
