@@ -1,8 +1,8 @@
 # Ecosystem integration and release gates
 
-**Reviewed:** 2026-11-22  
+**Reviewed:** 2026-11-23  
 **Status:** PR #49 MAD dashboard and NEXUS hardening PRs #52, #53 and #56 are merged. This integration candidate combines MAC/MAD transactional governance with the NEXUS project-load race fix; production readiness is not claimed.  
-**Current main commit at review:** `50221094e7560810f7d7a5e98eb4a41d0809108e`.  
+**Current main commit at review:** `33354c866beda0da44a3f65bbf42a35b552bb509`.  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
@@ -148,3 +148,11 @@ Execution PRs #26–#33 are merged into main. PR #49 MAD dashboard is merged. PR
 - PRs #50 and #51 are closed as superseded by PR #55, which consolidates both implementations on current `main`. The latest reconciled PR #55 head has passed API CI 6/6 and Security Scanning 4/4, including Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB replica-set integration, CodeQL, dependency audits and secret scanning.
 - PR #55 is open and unmerged pending independent review. The promotion endpoint changes only the active configuration pointer; it is not a provider deployment.
 - Remaining MAC release gates: production secret-manager adapter and authorization, concrete provider adapter, provider-side idempotency/reconciliation, provider health verification and rollback/compensation, operator-applied revision migration, real ODID staging permissions, worker deployment, monitoring and operational acceptance.
+
+
+## MAC/MAD current integration candidate — 2026-11-23
+
+- PR #66 is closed as superseded. PR #74 is the current-main integration candidate for MAC environment revisions, NEXUS MAC panel, deployment worker, transactional audit, bounded secret resolution, separate request/approval permissions and associated tests.
+- PR #74 latest head `e2d4e106decfde1916defea8b93cbb509d9743d6` is based directly on current main `33354c866beda0da44a3f65bbf42a35b552bb509`, has no merge conflicts and is rerunning API CI and Security Scanning. Its preceding code-equivalent head passed both workflows (API CI 6/6, Security Scanning 4/4).
+- PR #74 remains unmerged and has no independent security approval. Main remains unprotected; no production migration, worker deployment, provider invocation or production rollout has been performed.
+- Before merge: independent review of transaction/audit session propagation, provider idempotency/reconciliation, secret resolver cancellation, allowlisted factory loading, migration/rollback and worker crash recovery. Before rollout: staging replica-set migration rehearsal, real ODID and operator-role acceptance, concrete provider/secret-manager adapters, hardened isolated worker and monitored rollback.
