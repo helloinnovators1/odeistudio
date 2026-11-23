@@ -14,3 +14,26 @@
 .studio-exit-card p{max-width:420px;color:#9aa6b4;line-height:1.6}
 .studio-home-maximized{width:100%;height:100dvh}
 @media(max-width:650px){.studio-home-menubar{gap:8px}.studio-home-window-label{display:none}.studio-window-controls{margin-left:auto}.studio-window-control{width:36px;min-width:36px}}
+
+/* IDE app launcher and overflow controls */
+.studio-home-tools{display:flex;align-items:center;gap:5px;flex:0 0 auto}
+.studio-ide-label{height:27px;padding:0 10px;border:1px solid #35414e;border-radius:6px;background:#202832;color:#dce5ed;font-size:10px;font-weight:700;letter-spacing:.08em}
+.studio-menu-anchor{position:relative;display:flex;align-items:center}
+.studio-topbar-icon{display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:6px;background:transparent;color:#bdc8d3;font-size:19px;line-height:1}
+.studio-topbar-icon:hover,.studio-topbar-icon[aria-expanded=true]{background:#2a3541;color:#e9f1f7}
+.studio-topbar-icon:focus-visible,.studio-ide-label:focus-visible{outline:2px solid #9de5c1;outline-offset:2px}
+.studio-more-button{font-size:23px;letter-spacing:1px}
+.studio-topbar-popover{position:absolute;z-index:20;top:calc(100% + 9px);left:0;min-width:210px;padding:8px;border:1px solid #35414e;border-radius:10px;background:#1b222c;box-shadow:0 18px 45px #0008}
+.studio-popover-heading{padding:7px 8px 10px;color:#8f9cab;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.studio-app-launcher{display:grid;grid-template-columns:1fr 1fr;gap:5px;min-width:245px}
+.studio-app-tile{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:76px;padding:11px;border:1px solid transparent;border-radius:7px;background:transparent;text-align:left}
+.studio-app-tile:hover{border-color:#3b4a58;background:#25313a}
+.studio-app-tile span{color:#9de5c1;font-size:20px}
+.studio-app-tile strong{font-size:10px;font-weight:550}
+.studio-overflow-menu{min-width:190px}
+.studio-overflow-menu button{display:block;width:100%;padding:9px 10px;border:0;border-radius:5px;background:transparent;color:#d5dee7;text-align:left;font-size:11px}
+.studio-overflow-menu button:hover{background:#2a3541}
+.studio-overflow-menu .studio-menu-danger{color:#ff9b9b}
+.studio-popover-divider{height:1px;margin:5px 3px;background:#35414e}
+@media(max-width:850px){.studio-home-menubar{gap:12px}.studio-home-brand{min-width:0}.studio-home-menubar nav{gap:12px}}
+@media(max-width:650px){.studio-home-menubar{gap:7px}.studio-home-menubar nav{display:none}.studio-home-tools{gap:2px}.studio-topbar-popover{left:auto;right:0}.studio-window-controls{margin-left:3px}.studio-window-control{width:34px;min-width:34px}}

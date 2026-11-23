@@ -95,3 +95,23 @@ test("all enabled top-level controls expose accessible names", async ({ page }) 
   );
   expect(unnamed).toBe(0);
 });
+
+
+test("ODEI title bar exposes IDE, app launcher, overflow menu and window controls", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "IDE home" })).toBeVisible();
+  const apps = page.getByRole("button", { name: "Show apps" });
+  await apps.click();
+  await expect(page.getByRole("dialog", { name: "Apps" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "NEXUS" })).toBeVisible();
+  await apps.click();
+  const more = page.getByRole("button", { name: "More options" });
+  await more.click();
+  await expect(page.getByRole("menu", { name: "IDE options" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Minimize window" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Maximize window" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Close ODEI Studio" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Minimize ODEI Studio" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Maximize ODEI Studio" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close ODEI Studio" })).toBeVisible();
+});

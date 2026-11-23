@@ -24,6 +24,8 @@ export default function ODEIStudioHome({
   const [minimized, setMinimized] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [closed, setClosed] = useState(false);
+  const [showApps, setShowApps] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
 
   async function toggleMaximize() {
     const next = !maximized;
@@ -52,6 +54,31 @@ export default function ODEIStudioHome({
     <section className="studio-home" aria-label="ODEI Studio Window">
       <header className="studio-home-menubar">
         <div className="studio-home-brand"><span className="studio-home-mark">O</span><strong>ODEI STUDIO</strong></div>
+        <div className="studio-home-tools">
+          <button type="button" className="studio-ide-label" aria-label="IDE home" onClick={() => { setShowApps(false); setOverflowOpen(false); }}>IDE</button>
+          <div className="studio-menu-anchor">
+            <button type="button" className="studio-topbar-icon" aria-label="Show apps" title="Show apps" aria-expanded={showApps} onClick={() => { setShowApps((open) => !open); setOverflowOpen(false); }}>▦</button>
+            {showApps && <div className="studio-topbar-popover studio-app-launcher" role="dialog" aria-label="Apps">
+              <div className="studio-popover-heading">Your apps</div>
+              <button type="button" className="studio-app-tile" onClick={() => { setShowApps(false); onOpenWorkspace(); }}><span>▱</span><strong>IDE Workspace</strong></button>
+              <button type="button" className="studio-app-tile" onClick={() => { setShowApps(false); onStartChat(""); }}><span>✧</span><strong>NEXUS</strong></button>
+              <button type="button" className="studio-app-tile" onClick={() => { setShowApps(false); onOpenWorkspace(); }}><span>▦</span><strong>Projects</strong></button>
+              <button type="button" className="studio-app-tile" onClick={() => { setShowApps(false); onCustomize(); }}><span>⚙</span><strong>Settings</strong></button>
+            </div>}
+          </div>
+          <div className="studio-menu-anchor">
+            <button type="button" className="studio-topbar-icon studio-more-button" aria-label="More options" title="More options" aria-expanded={overflowOpen} onClick={() => { setOverflowOpen((open) => !open); setShowApps(false); }}>⋯</button>
+            {overflowOpen && <div className="studio-topbar-popover studio-overflow-menu" role="menu" aria-label="IDE options">
+              <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); onStartChat(""); }}>New chat</button>
+              <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); onOpenWorkspace(); }}>Open workspace</button>
+              <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); onCustomize(); }}>Customize</button>
+              <div className="studio-popover-divider" />
+              <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); setMinimized(true); }}>Minimize window</button>
+              <button type="button" role="menuitem" onClick={() => { setOverflowOpen(false); void toggleMaximize(); }}>{maximized ? "Restore down" : "Maximize window"}</button>
+              <button type="button" role="menuitem" className="studio-menu-danger" onClick={() => { setOverflowOpen(false); setClosed(true); }}>Close ODEI Studio</button>
+            </div>}
+          </div>
+        </div>
         <nav aria-label="Application menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></nav>
         <span className="studio-home-window-label">ODEI Studio Window</span>
         <div className="studio-window-controls" role="group" aria-label="ODEI Studio window controls">
