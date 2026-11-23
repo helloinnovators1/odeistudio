@@ -7,6 +7,7 @@ write operations remain relative to retained native root handles.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import stat
@@ -21,11 +22,19 @@ from odei_api.services.project_files import (
     DEFAULT_MAX_TOTAL_BYTES,
     MAX_TEXT_FILE_BYTES,
     ProjectFile,
+    ProjectFileError,
     list_project_files_from_posix_fd,
     list_project_files_from_windows_handle,
     read_project_text_file_from_posix_fd,
     read_project_text_file_from_windows_handle,
 )
+from odei_api.services.secret_redaction import redact_secrets
+
+MAX_SEARCH_QUERY_CHARS = 200
+MAX_SEARCH_RESULTS = 50
+MAX_SEARCH_FILES = 1_000
+MAX_SEARCH_TOTAL_BYTES = 20_000_000
+MAX_SEARCH_FILE_BYTES = 128_000
 
 
 class WorkspaceHandleError(RuntimeError):
@@ -159,6 +168,82 @@ class WorkspaceHandleRegistry:
             return read_project_text_file_from_posix_fd(
                 int(grant.handle), relative_path, max_bytes=max_bytes
             )
+
+    def search_text(
+        self,
+        workspace_id: str,
+        query: str,
+        *,
+        max_results: int = MAX_SEARCH_RESULTS,
+    ) -> dict[str, object]:
+        """Search bounded, eligible UTF-8 files under a selected workspace handle."""
+        if (
+            not isinstance(query, str)
+            or not query.strip()
+            or len(query) > MAX_SEARCH_QUERY_CHARS
+            or "\\x00" in query
+        ):
+            raise ValueError("Search query must contain 1–200 non-NUL characters")
+        if not isinstance(max_results, int) or not 1 <= max_results <= MAX_SEARCH_RESULTS:
+            raise ValueError("Search result limit is invalid")
+
+        files = self.list_files(
+            workspace_id,
+            max_files=MAX_SEARCH_FILES,
+            max_total_bytes=MAX_SEARCH_TOTAL_BYTES,
+        )
+        listed_bytes = sum(item.size for item in files)
+        truncated = len(files) >= MAX_SEARCH_FILES or listed_bytes >= MAX_SEARCH_TOTAL_BYTES
+        needle = query.casefold()
+        results: list[dict[str, str | int]] = []
+        files_scanned = 0
+        bytes_scanned = 0
+        skipped_files = 0
+
+        for item in files:
+            if len(results) >= max_results:
+                truncated = True
+                break
+            if item.size > MAX_SEARCH_FILE_BYTES:
+                skipped_files += 1
+                continue
+            if bytes_scanned + item.size > MAX_SEARCH_TOTAL_BYTES:
+                truncated = True
+                break
+            try:
+                content = self.read_text(
+                    workspace_id, item.path, max_bytes=MAX_SEARCH_FILE_BYTES
+                )
+            except (ProjectFileError, OSError, UnicodeError):
+                skipped_files += 1
+                continue
+
+            encoded = content.encode("utf-8")
+            if len(encoded) > MAX_SEARCH_FILE_BYTES:
+                skipped_files += 1
+                continue
+            files_scanned += 1
+            bytes_scanned += len(encoded)
+            digest = hashlib.sha256(encoded).hexdigest()
+            for line_number, line in enumerate(content.splitlines(), start=1):
+                if needle in line.casefold():
+                    results.append({
+                        "path": item.path,
+                        "line": line_number,
+                        "text": redact_secrets(line)[:500],
+                        "sha256": digest,
+                    })
+                    if len(results) >= max_results:
+                        truncated = True
+                        break
+
+        return {
+            "results": results,
+            "files_scanned": files_scanned,
+            "bytes_scanned": bytes_scanned,
+            "skipped_files": skipped_files,
+            "truncated": truncated,
+        }
 
     def can_apply_patch(self, workspace_id: str) -> bool:
         """Report whether the selected root was opened with patch-write rights."""
