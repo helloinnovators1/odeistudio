@@ -33,7 +33,7 @@ export default function ODEIStudioHome({
   }
 
   return (
-    <main className="studio-home" aria-label="ODEI Studio Window">
+    <div className="studio-home" role="main" aria-label="ODEI Studio Window">
       <header className="studio-home-menubar">
         <div className="studio-home-brand"><span className="studio-home-mark">O</span><strong>ODEI STUDIO</strong></div>
         <nav aria-label="Application menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></nav>
@@ -113,6 +113,6 @@ export default function ODEIStudioHome({
           <div className="studio-home-status"><span>{companionConnected ? "Local companion connected" : "Local workspace not connected"}</span><span>ODEI Studio Window</span></div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
