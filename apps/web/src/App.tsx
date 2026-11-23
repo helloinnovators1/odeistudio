@@ -439,7 +439,7 @@ export default function App() {
       </header>
 
       <div className="ide-menubar">
-        <span>File</span><span>Edit</span><span>Selection</span><span>View</span><span>Go</span><span>Run</span><span>Terminal</span><span>Help</span>
+        <nav className="ide-menu-items" aria-label="Workbench menu">{Object.keys(workbenchMenus).map((menu) => <button type="button" key={menu} aria-haspopup="menu" aria-expanded={activeWorkbenchMenu === menu} onClick={() => setActiveWorkbenchMenu((current) => current === menu ? null : menu)}>{menu}</button>)}</nav>{activeWorkbenchMenu && <div className="ide-menu-popover" role="menu" aria-label={`${activeWorkbenchMenu} menu`}>{workbenchMenus[activeWorkbenchMenu].map((item) => <button type="button" role="menuitem" key={item.label} onClick={() => runWorkbenchCommand(item.command)}>{item.label}</button>)}</div>}
         <span className="menubar-spacer" />
         <span className="access-pill">LOCAL · READ ONLY</span>
       </div>
@@ -462,10 +462,10 @@ export default function App() {
 
       <div className={`workbench ${chatOpen ? `chat-${chatSide}` : "chat-closed"}`}>
         <nav className="activity-rail" aria-label="Activity bar">
-          <button className="rail-button active" title="Explorer" aria-label="Explorer">▤</button>
-          <button className="rail-button" title="Search (not connected)" aria-label="Search (not connected)" disabled>⌕</button>
-          <button className="rail-button" title="Source control (not connected)" aria-label="Source control (not connected)" disabled>⑂</button>
-          <button className="rail-button" title="Agents window (not connected)" aria-label="Agents window (not connected)" disabled>✧</button>
+          <button className="rail-button active" title="Explorer" aria-label="Explorer" onClick={() => runWorkbenchCommand("explorer")}>▤</button>
+          <button className="rail-button" title="Search workspace files" aria-label="Search workspace files" onClick={() => runWorkbenchCommand("search")}>⌕</button>
+          <button className="rail-button" title="Source control status" aria-label="Source control status" onClick={() => runWorkbenchCommand("source-control")}>⑂</button>
+          <button className="rail-button" title="Open Agents and NEXUS" aria-label="Open Agents and NEXUS" onClick={() => runWorkbenchCommand("agents")}>✧</button>
           <span className="rail-spacer" />
           <button className="rail-button" title="Settings" aria-label="Settings" onClick={() => setSettingsOpen(true)}>⚙</button>
         </nav>
