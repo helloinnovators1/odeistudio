@@ -61,9 +61,11 @@ test("settings dialog manages keyboard focus and restores its opener", async ({ 
 
   const dialog = page.getByRole("dialog", { name: "WORKSPACE SETTINGS" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("radio", { name: "Left side" })).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Close settings" })).toBeFocused();
 
   await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "Done" })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(dialog.getByRole("button", { name: "Close settings" })).toBeFocused();
 
   await page.keyboard.press("Escape");
