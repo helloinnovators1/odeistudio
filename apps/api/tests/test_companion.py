@@ -1023,7 +1023,7 @@ api_key = "supersecretvalue123"
         response = client.post(
             f"/v1/workspaces/{workspace_id}/search",
             headers=headers,
-            json={"query": "nexus"},
+            json={"query": "  nexus  "},
         )
         assert response.status_code == 200
         payload = response.json()
