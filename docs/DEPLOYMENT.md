@@ -28,4 +28,4 @@ The API's readiness check verifies both a live MongoDB ping and transaction-capa
 
 ## Production release gate
 
-Use [Production and Deployment Readiness](PRODUCTION_READINESS.md) as the authoritative, evidence-backed go/no-go checklist. Production remains NO-GO until the identity, database, secrets, hardened worker, MAC/MAD, browser/device, observability, governance, staging and rollback gates have been independently accepted. A green CI run is necessary but is not production acceptance.
+Use [Production and Deployment Readiness](PRODUCTION_READINESS.md) as the authoritative, evidence-backed go/no-go checklist and [Multi-provider Hosting, Domain and Infrastructure Deployment Matrix](PROVIDER_DEPLOYMENT_MATRIX.md) for registrar/DNS, Vercel, API/worker hosting, database, storage, secrets and operational provider selection. Production remains NO-GO until the identity, database, secrets, hardened worker, MAC/MAD, browser/device, observability, governance, staging and rollback gates have been independently accepted. A green CI run is necessary but is not production acceptance.
