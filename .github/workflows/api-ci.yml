@@ -1,0 +1,128 @@
+name: API CI
+
+on:
+  push:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - ".github/workflows/api-ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - ".github/workflows/api-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Lint
+        run: python -m ruff check odei_api tests
+      - name: Run tests
+        run: python -m pytest
+
+  mongodb-integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      MONGODB_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Start MongoDB replica set
+        run: |
+          docker run --detach --name odei-mongodb -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
+          for attempt in $(seq 1 30); do
+            if docker exec odei-mongodb mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q 1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec odei-mongodb mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+          for attempt in $(seq 1 30); do
+            if docker exec odei-mongodb mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MongoDB replica set did not become primary" >&2
+          exit 1
+      - name: Verify real transaction rollback and commit
+        run: |
+          tests=(
+            tests/test_task_store_mongodb_integration.py
+            tests/test_execution_stores_mongodb_integration.py
+          )
+          for optional_test in \
+            tests/test_mac_store_mongodb_integration.py \
+            tests/test_mad_incident_mongodb_integration.py; do
+            if [[ -f "$optional_test" ]]; then
+              tests+=("$optional_test")
+            fi
+          done
+          python -m pytest "${tests[@]}"
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Test
+        run: npm test
+      - name: Build root and subpath variants
+        run: |
+          npm run build
+          VITE_BASE_PATH=/odeistudio/ npm run build
+      - name: Install Chromium for browser acceptance tests
+        run: npx playwright install --with-deps chromium
+      - name: Run browser end-to-end tests
+        run: npm run test:e2e
