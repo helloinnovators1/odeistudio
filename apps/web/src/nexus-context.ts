@@ -30,6 +30,7 @@ export async function loadNexusWorkspaceExcerpts(
   selectedPaths: string[],
   readFile: NexusContextReader,
   activeFile?: NexusContextFile | null,
+  signal?: AbortSignal,
 ): Promise<NexusContextFile[]> {
   if (!Array.isArray(selectedPaths) || selectedPaths.length < 1 || selectedPaths.length > MAX_NEXUS_CONTEXT_FILES) {
     throw new TypeError("Select between one and five workspace files.");
@@ -46,7 +47,9 @@ export async function loadNexusWorkspaceExcerpts(
   const result: NexusContextFile[] = [];
   let total = 0;
   for (const path of normalized) {
+    if (signal?.aborted) throw new DOMException("Context loading was cancelled.", "AbortError");
     const content = activeFile?.path === path ? activeFile.content : await readFile(path);
+    if (signal?.aborted) throw new DOMException("Context loading was cancelled.", "AbortError");
     if (typeof content !== "string" || content.length > MAX_NEXUS_CONTEXT_FILE_CHARS) {
       throw new TypeError(`Selected file ${path} exceeds the 8,000-character context limit.`);
     }
