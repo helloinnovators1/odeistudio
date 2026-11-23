@@ -31,7 +31,17 @@ interface OpenTab {
 }
 
 export default function App() {
-  const [homeOpen, setHomeOpen] = useState(() => !window.location.search);
+  const [homeOpen, setHomeOpen] = useState(() => {
+    try {
+      const callback = new URL(import.meta.env.VITE_ODID_REDIRECT_URI);
+      const isAuthCallback = window.location.origin === callback.origin
+        && window.location.pathname === callback.pathname
+        && Boolean(window.location.search);
+      return !isAuthCallback;
+    } catch {
+      return true;
+    }
+  });
   const [initialPrompt, setInitialPrompt] = useState("");
   const [connected, setConnected] = useState(false);
   const [token, setToken] = useState<string | null>(null);
