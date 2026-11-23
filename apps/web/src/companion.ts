@@ -1,3 +1,4 @@
+import { isNexusContextPathAllowed } from "./nexus-context";
 const BASE=import.meta.env.VITE_COMPANION_ORIGIN||"http://127.0.0.1:8765";
 export interface CompanionWorkspace{workspace_id:string;name:string;access:"read-only"|"approval-gated"}
 export interface CompanionFile{path:string;size:number}
@@ -52,9 +53,7 @@ export async function searchWorkspaceFiles(
     Number.isInteger(response.skipped_files) && response.skipped_files >= 0 &&
     typeof response.truncated === "boolean" &&
     response.results.every((item) =>
-      item && typeof item.path === "string" && item.path.length > 0 &&
-      !item.path.startsWith("/") && !item.path.includes("\\") &&
-      !item.path.split("/").some((part) => !part || part === "." || part === "..") &&
+      item && typeof item.path === "string" && isNexusContextPathAllowed(item.path) &&
       Number.isInteger(item.line) && item.line >= 1 &&
       typeof item.text === "string" && item.text.length <= 500 &&
       /^[a-f0-9]{64}$/.test(item.sha256)
