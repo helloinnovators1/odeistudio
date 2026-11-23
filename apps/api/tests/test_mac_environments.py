@@ -185,6 +185,12 @@ async def test_only_verified_draft_author_can_edit_draft():
     assert updated["versions"][0]["config"] == {"replicas": 4}
 
 
+@pytest.mark.parametrize("key", ["region", "endpoint", "feature_flag"])
+def test_secret_references_are_rejected_under_non_sensitive_keys(key):
+    with pytest.raises(MacEnvironmentError, match="sensitive configuration key"):
+        validate_environment_config({key: "secret://vault/prod/credential"})
+
+
 @pytest.mark.parametrize("value", [123, True, None, {"token": "plaintext"}])
 def test_sensitive_configuration_keys_reject_non_reference_values(value):
     with pytest.raises(MacEnvironmentError):
