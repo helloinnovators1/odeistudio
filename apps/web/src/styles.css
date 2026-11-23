@@ -17,3 +17,61 @@
 .patch-diff{max-height:300px;overflow:auto;margin:0;padding:12px;background:#0d1219;color:#dce2e9;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
 
 .ide-menubar{position:relative}.ide-menu-items{display:flex;align-items:center;gap:2px}.ide-menu-items button{padding:5px 8px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit}.ide-menu-items button:hover,.ide-menu-items button[aria-expanded=true]{background:#303a46;color:#fff}.ide-menu-popover{position:absolute;z-index:60;top:100%;left:8px;min-width:210px;padding:6px;border:1px solid #3a4652;border-radius:7px;background:#1b222c;box-shadow:0 18px 45px #0009}.ide-menu-popover button{display:block;width:100%;padding:9px 10px;border:0;border-radius:4px;background:transparent;color:#d5dee7;text-align:left;font:inherit}.ide-menu-popover button:hover{background:#2a3541}
+
+/* OIPTECH Core reference workbench layout */
+.ide-reference .ide-titlebar{height:38px;flex-basis:38px;gap:12px;padding:0 10px;background:#f2f3f5;color:#5b626b;border-bottom:1px solid #cfd2d6}
+.ide-reference .brand-lockup{min-width:150px;gap:8px;color:#5a626b}
+.ide-reference .brand-lockup .brand-mark{width:22px;height:22px;background:#dce1e5;color:#59616a;border-radius:5px;font-size:12px}
+.ide-reference .brand-lockup b{font-size:12px;letter-spacing:0;font-weight:500}
+.ide-reference .brand-lockup small,.ide-reference .titlebar-project{display:none}
+.ide-reference .titlebar-actions{gap:6px}
+.ide-reference .titlebar-actions .toolbar-button{padding:5px 10px;background:#087cc1;color:white;border-radius:14px;font-size:11px;font-weight:650}
+.ide-reference .titlebar-actions .toolbar-button[aria-label="Open settings"]{background:transparent;color:#6b737d}
+.ide-reference .ide-menubar{height:34px;flex-basis:34px;background:#f6f7f8;color:#656d76;border-bottom:1px solid #d8dade;gap:12px;padding:0 14px}
+.ide-reference .ide-menu-items button{color:#616972;font-size:12px}
+.ide-reference .access-pill{border:0;color:#65717c}
+.ide-reference .welcome-strip,.ide-reference .connection-status{display:none}
+.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:305px minmax(0,1fr) 440px;background:#fff}
+.ide-reference .activity-rail{display:none}
+.ide-reference .explorer-pane{grid-column:1;grid-row:1;border-right:1px solid #d6d9dd;background:#f5f6f7;color:#4e555d}
+.ide-reference .pane-heading{height:34px;flex-basis:34px;border-bottom:0;color:#4d555e}
+.ide-reference .pane-empty{color:#747d87}
+.ide-reference .explorer-pane select,.ide-reference .file-filter{background:#fff;color:#404850;border-color:#d1d5da}
+.ide-reference .file-row{color:#4f5861;font-size:11px}
+.ide-reference .file-row:hover,.ide-reference .file-row.active{background:#e6e9ed}
+.ide-reference .file-row .file-glyph{color:#707b85}
+.ide-reference .editor-column{grid-column:2;grid-row:1;background:#fff;color:#454c54}
+.ide-reference .editor-actionbar{height:30px;flex-basis:30px;background:#f7f8f9;border-bottom:1px solid #d9dce0}
+.ide-reference .editor-tabs{height:34px;flex-basis:34px;background:#f4f5f6;border-bottom:1px solid #d5d8dc}
+.ide-reference .editor-tab{background:#f0f1f3;border-right:1px solid #d5d8dc}
+.ide-reference .editor-tab.active{background:#fff;border-top:0;border-bottom:2px solid #1685c4}
+.ide-reference .editor-tab button{color:#59616b}
+.ide-reference .editor-tab.active button{color:#333b44}
+.ide-reference .editor-tab-action{align-self:center;margin-left:4px;padding:3px 7px;border:0;background:transparent;color:#68727d}
+.ide-reference .browser-tab-menu{position:absolute;z-index:80;top:72px;left:calc(305px + 220px);min-width:180px;padding:6px;background:#fff;border:1px solid #d6d9dd;box-shadow:0 8px 25px #0002}
+.ide-reference .browser-tab-menu button{display:block;width:100%;padding:8px;border:0;background:transparent;color:#4d5660;text-align:left}
+.ide-reference .browser-tab-menu button:hover{background:#edf0f3}
+.ide-reference .editor-surface{background:#fff}
+.ide-reference .editor-welcome{color:#6b747e}
+.ide-reference .editor-welcome h2{color:#404850}
+.ide-reference .bottom-panel{height:118px;flex-basis:118px;background:#f7f8f9;border-top:1px solid #d7dade}
+.ide-reference .bottom-tabs{border-bottom:1px solid #d7dade}
+.ide-reference .bottom-tabs button{color:#737c86}
+.ide-reference .bottom-tabs button.active{color:#303942;border-bottom-color:#1685c4}
+.ide-reference .bottom-content{color:#606a74}
+.ide-reference .statusbar{height:23px;flex-basis:23px;background:#f0f2f4;color:#69727c;border-top:1px solid #d5d9dd}
+.ide-reference .nexus-pane{grid-column:3;grid-row:1;background:#fff;color:#3e454d;border-left:1px solid #d5d8dc}
+.ide-reference .nexus-pane .pane-heading{background:#fff;border-bottom:1px solid #e0e2e5;color:#424a53}
+.ide-reference .chat-composer{background:#fff;border-top:1px solid #e0e2e5}
+.ide-reference .chat-composer textarea{background:#fff;color:#414950;border-color:#d5d9de}
+.ide-reference .chat-empty h2{color:#3f4750}
+.ide-reference .chat-empty p{color:#707983}
+.embedded-browser{height:100%;min-height:0;display:flex;flex-direction:column;background:#fff}
+.browser-toolbar{height:34px;flex:0 0 34px;display:flex;align-items:center;gap:4px;padding:0 8px;border-bottom:1px solid #e1e3e6;background:#fafbfc}
+.browser-toolbar button{width:25px;height:25px;padding:0;border:0;background:transparent;color:#65717d;font-size:16px}
+.browser-toolbar button:disabled{opacity:.35}
+.browser-toolbar input{min-width:0;flex:1;height:25px;padding:0 10px;border:1px solid #e0e3e7;border-radius:13px;background:#fff;color:#626b74;font-size:11px}
+.browser-frame{width:100%;height:100%;min-height:0;flex:1;border:0;background:#fff}
+.browser-tools-note{padding:7px 10px;background:#fff8df;color:#6f5a20;font-size:10px}
+@media(max-width:900px){.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:250px minmax(0,1fr)}.ide-reference .nexus-pane{grid-column:1 / -1;grid-row:2;min-height:280px}.ide-reference .explorer-pane{grid-column:1;grid-row:1}.ide-reference .editor-column{grid-column:2;grid-row:1}}
+@media(max-width:650px){.ide-reference .ide-titlebar{padding:0 6px}.ide-reference .brand-lockup{min-width:0}.ide-reference .titlebar-actions .toolbar-button{font-size:9px;padding:4px 6px}.ide-reference .ide-menubar{overflow-x:auto}.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:1fr;grid-template-rows:180px minmax(400px,1fr) auto}.ide-reference .explorer-pane{grid-column:1;grid-row:1}.ide-reference .editor-column{grid-column:1;grid-row:2}.ide-reference .nexus-pane{grid-column:1;grid-row:3}}

@@ -72,6 +72,17 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
   const [activeWorkbenchMenu, setActiveWorkbenchMenu] = useState<string | null>(null);
+  const isIDEWindow = new URLSearchParams(window.location.search).get("window") === "ide";
+  const [activeEditorView, setActiveEditorView] = useState<"editor" | "browser">(() => isIDEWindow ? "browser" : "editor");
+  const [browserUrl, setBrowserUrl] = useState("http://127.0.0.1:3003");
+  const [browserDraft, setBrowserDraft] = useState("http://127.0.0.1:3003");
+  const [browserHistory, setBrowserHistory] = useState<string[]>(["http://127.0.0.1:3003"]);
+  const [browserHistoryIndex, setBrowserHistoryIndex] = useState(0);
+  const [browserReloadKey, setBrowserReloadKey] = useState(0);
+  const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
+  const [browserFavorite, setBrowserFavorite] = useState(false);
+  const [browserToolsOpen, setBrowserToolsOpen] = useState(false);
+
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
   const [patchDraft, setPatchDraft] = useState("");
   const [patchDiff, setPatchDiff] = useState<string | null>(null);
@@ -215,6 +226,7 @@ export default function App() {
     const existing = tabs.find((tab) => tab.path === file.path);
     if (existing) {
       setActivePath(file.path);
+      setActiveEditorView("editor");
       return;
     }
     setBusy(true);
@@ -223,6 +235,7 @@ export default function App() {
       const content = await readWorkspaceFile(token, workspace, file.path);
       setTabs((current) => [...current, { path: file.path, content }]);
       setActivePath(file.path);
+      setActiveEditorView("editor");
       setMessage(`Opened ${file.path} in read-only mode.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "File read failed.");
@@ -373,6 +386,33 @@ export default function App() {
     });
   }
 
+  function navigateBrowser(nextValue = browserDraft) {
+    const candidate = nextValue.trim();
+    if (!candidate) return;
+    let parsed: URL;
+    try { parsed = new URL(/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate) ? candidate : `http://${candidate}`); }
+    catch { setMessage("Enter a valid web address."); return; }
+    if (!["http:", "https:"].includes(parsed.protocol)) { setMessage("Only HTTP and HTTPS browser navigation is allowed."); return; }
+    const next = parsed.toString();
+    setBrowserUrl(next); setBrowserDraft(next);
+    setBrowserHistory((items) => [...items.slice(0, browserHistoryIndex + 1), next]);
+    setBrowserHistoryIndex((index) => index + 1);
+    setBrowserReloadKey((key) => key + 1);
+    setActiveEditorView("browser");
+  }
+  function moveBrowserHistory(delta: number) {
+    const nextIndex = browserHistoryIndex + delta;
+    if (nextIndex < 0 || nextIndex >= browserHistory.length) return;
+    setBrowserHistoryIndex(nextIndex);
+    setBrowserUrl(browserHistory[nextIndex]);
+    setBrowserDraft(browserHistory[nextIndex]);
+    setBrowserReloadKey((key) => key + 1);
+  }
+  async function copyBrowserUrl() {
+    try { await navigator.clipboard.writeText(browserUrl); setMessage("Browser address copied."); }
+    catch { setMessage("Clipboard access is unavailable in this browser context."); }
+  }
+
   function runWorkbenchCommand(command: string) {
     setActiveWorkbenchMenu(null);
     switch (command) {
@@ -419,7 +459,7 @@ export default function App() {
   );
 
   return (
-    <main className="ide-shell">
+    <main className={isIDEWindow ? "ide-shell ide-reference" : "ide-shell"}>
       {homeOpen ? <ODEIStudioHome
         onOpenWorkspace={() => setHomeOpen(false)}
         onStartChat={(prompt) => { setInitialPrompt(prompt); setHomeOpen(false); setChatOpen(true); }}
@@ -428,11 +468,11 @@ export default function App() {
         companionConnected={Boolean(token)}
       /> : <>
       <header className="ide-titlebar">
-        <div className="brand-lockup"><div className="brand-mark">O</div><div><b>ODEI STUDIO</b><small>Development workspace</small></div></div>
+        <div className="brand-lockup"><div className="brand-mark">◆</div><div><b>{isIDEWindow ? "OIPTECH Core" : "ODEI STUDIO"}</b><small>{isIDEWindow ? "Workspace" : "Development workspace"}</small></div></div>
         <div className="titlebar-project"><span className="status-dot" />{workspaceName}</div>
         <div className="titlebar-actions">
           <button className="toolbar-button" onClick={() => setHomeOpen(true)} aria-label="Open ODEI Studio Window">⌂ Home</button>
-          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>NEXUS <kbd>⌘ / Ctrl + I</kbd></button>
+          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>{isIDEWindow ? "Agents Window ↗" : <>NEXUS <kbd>⌘ / Ctrl + I</kbd></>}</button>
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
         </div>
@@ -498,9 +538,30 @@ export default function App() {
               <button className="tab-close" aria-label={`Close ${tab.path}`} onClick={() => closeTab(tab.path)}>×</button>
             </div>)}
             {tabs.length === 0 && <span className="no-tabs">No file open</span>}
+            <button role="tab" aria-selected={activeEditorView === "browser"} className={activeEditorView === "browser" ? "editor-tab browser-tab active" : "editor-tab browser-tab"} onClick={() => setActiveEditorView("browser")}>◎ Browser Tab</button>
+            <button type="button" className="editor-tab-action" aria-label="New browser tab" title="New browser tab" onClick={() => { setBrowserDraft("http://127.0.0.1:3003"); navigateBrowser("http://127.0.0.1:3003"); }}>＋</button>
+            <button type="button" className="editor-tab-action" aria-label="Browser tab options" title="Browser tab options" aria-expanded={browserMenuOpen} onClick={() => setBrowserMenuOpen((open) => !open)}>⋯</button>
+            {browserMenuOpen && <div className="browser-tab-menu" role="menu" aria-label="Browser tab options">
+              <button role="menuitem" onClick={() => { setBrowserMenuOpen(false); void copyBrowserUrl(); }}>Copy address</button>
+              <button role="menuitem" onClick={() => { setBrowserMenuOpen(false); window.open(browserUrl, "_blank", "noopener,noreferrer"); }}>Open in new tab</button>
+              <button role="menuitem" onClick={() => { setBrowserMenuOpen(false); setBrowserFavorite(false); setBrowserDraft("http://127.0.0.1:3003"); navigateBrowser("http://127.0.0.1:3003"); }}>Reset browser</button>
+            </div>
           </div>
           <div className="editor-surface">
-            {activeTab ? <MonacoEditor
+            {activeEditorView === "browser" ? <section className="embedded-browser" aria-label="Browser Tab">
+              <form className="browser-toolbar" onSubmit={(event) => { event.preventDefault(); navigateBrowser(); }}>
+                <button type="button" aria-label="Browser back" title="Back" disabled={browserHistoryIndex <= 0} onClick={() => moveBrowserHistory(-1)}>‹</button>
+                <button type="button" aria-label="Browser forward" title="Forward" disabled={browserHistoryIndex >= browserHistory.length - 1} onClick={() => moveBrowserHistory(1)}>›</button>
+                <button type="button" aria-label="Reload browser" title="Reload" onClick={() => setBrowserReloadKey((key) => key + 1)}>↻</button>
+                <button type="button" aria-label={browserFavorite ? "Remove browser favorite" : "Add browser favorite"} title="Favorite" onClick={() => setBrowserFavorite((value) => !value)}>{browserFavorite ? "★" : "☆"}</button>
+                <input aria-label="Browser address" value={browserDraft} onChange={(event) => setBrowserDraft(event.target.value)} />
+                <button type="submit" aria-label="Navigate browser" title="Go">↵</button>
+                <button type="button" aria-label="Open browser in new tab" title="Open in new tab" onClick={() => window.open(browserUrl, "_blank", "noopener,noreferrer")}>↗</button>
+                <button type="button" aria-label="Browser developer tools information" title="Developer tools" onClick={() => setBrowserToolsOpen((open) => !open)}>⌘</button>
+              </form>
+              {browserToolsOpen && <div className="browser-tools-note" role="status">Browser developer tools are provided by the host browser. Press F12 or Ctrl+Shift+I to inspect this tab.</div>}
+              <iframe key={browserReloadKey} title="Embedded browser preview" src={browserUrl} className="browser-frame" referrerPolicy="no-referrer" sandbox="allow-forms allow-scripts allow-popups" />
+            </section> : activeTab ? <MonacoEditor
               height="100%"
               path={activeTab.path}
               language={languageForPath(activeTab.path)}
@@ -518,7 +579,7 @@ export default function App() {
                 contextmenu: false,
                 domReadOnly: true,
               }}
-            /> : <div className="editor-welcome"><div className="editor-logo">O</div><h2>ODEI NEXUS Workspace</h2><p>Select a file from Explorer to inspect it in Monaco.</p><div className="shortcut-hint"><kbd>⌘ / Ctrl + I</kbd> Open NEXUS chat</div></div>}
+            /> : <div className="editor-welcome"><div className="editor-logo">O</div><h2>OIPTECH Core</h2><p>Select a file from Explorer or open the Browser Tab.</p><div className="shortcut-hint"><kbd>⌘ / Ctrl + I</kbd> Open NEXUS chat</div></div>}
           </div>
           <section className="bottom-panel">
             <div className="bottom-tabs">
