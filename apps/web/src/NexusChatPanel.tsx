@@ -1025,6 +1025,9 @@ export default function NexusChatPanel({
       setChatError("Messages are limited to 8,000 characters.");
       return;
     }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setSending(true);
     const requestedPaths = [...new Set([
       ...(attachActiveFile && activeFile ? [activeFile.path] : []),
       ...selectedContextPaths,
@@ -1039,9 +1042,12 @@ export default function NexusChatPanel({
             return readWorkspaceFile(workspaceContext.accessToken, workspaceContext.workspaceId, path);
           },
           activeFile,
+          controller.signal,
         );
       } catch (cause) {
-        setChatError(errorMessage(cause));
+        if (abortRef.current === controller) abortRef.current = null;
+        setSending(false);
+        if (!controller.signal.aborted) setChatError(errorMessage(cause));
         return;
       }
     }
@@ -1053,11 +1059,8 @@ export default function NexusChatPanel({
     setDraft("");
     setConsent(false);
     setChatError("");
-    setSending(true);
     const isInspection = useAttachedTools && excerpt.length > 0;
     setInspectionRunning(isInspection);
-    const controller = new AbortController();
-    abortRef.current = controller;
     try {
       let activeConversationId = conversationId;
       if (!activeConversationId) {
