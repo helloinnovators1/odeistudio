@@ -1,18 +1,20 @@
 # Production and Deployment Readiness
 
 **Assessment date:** 2026-11-23  
-**Assessed main commit:** `bad8b29b8e5f6fe6010824ee6417ff4d24724453`  
-**Decision:** **NO-GO for production deployment.** The repository has a clean post-merge CI/security result, but external infrastructure, identity, security operations, browser acceptance and deployment controls have not been demonstrated. This document is a release gate, not a claim that those external steps have occurred.
+**Assessed main commit:** `fda728fd0fd2b1c69cbb6024dda3e99796420424`  
+**Decision:** **NO-GO for production deployment.** The repository now has deployable web/API scaffolding and passing container/security checks, but production identity, database, secret management, worker isolation, provider routing, staging acceptance, and operational recovery have not been demonstrated. This is a release gate, not a claim that external deployment has occurred.
 
-## Verified repository evidence
+## Verified repository and provider evidence
 
-- PR [#74](https://github.com/helloinnovators1/odeistudio/pull/74) is merged; its squash merge is the assessed main commit above.
-- Post-merge API CI [45111357797](https://github.com/helloinnovators1/odeistudio/actions/runs/45111357797): web, MongoDB integration, and Ubuntu/Windows Python 3.10/3.12 jobs all completed successfully.
-- Post-merge Security Scanning [45111357731](https://github.com/helloinnovators1/odeistudio/actions/runs/45111357731): Python dependency audit, web dependency audit, secret scanning and CodeQL completed successfully.
-- API readiness checks MongoDB ping and transaction-capable topology. A replica set or sharded cluster is required; a standalone server correctly fails readiness.
-- MAC environment governance, revision lifecycle, deployment ledger/worker foundation and MAD incident/audit work from PR #74 are integrated. The code provides allowlisted factory hooks; this is not proof of a real cloud provider or external secret-manager adapter.
-- No production deployment, production smoke test, staging acceptance, target-device acceptance, backup restoration, or rollback drill is recorded by this assessment.
-
+- PR [#74](https://github.com/helloinnovators1/odeistudio/pull/74) is merged with MAC/MAD governance and security remediation.
+- PR [#76](https://github.com/helloinnovators1/odeistudio/pull/76) is merged with the provider matrix and evidence-based production readiness gates.
+- PR [#80](https://github.com/helloinnovators1/odeistudio/pull/80) is merged at the assessed main commit. It adds a non-root API container, production HTTPX dependency, Vercel/Vite configuration, `VITE_BASE_PATH` support and container smoke CI.
+- Main-commit Security Scanning [45114080182](https://github.com/helloinnovators1/odeistudio/actions/runs/45114080182) passed all four jobs. Main-commit API Container Build [45114080131](https://github.com/helloinnovators1/odeistudio/actions/runs/45114080131) passed.
+- PR #80's API CI [45113905853](https://github.com/helloinnovators1/odeistudio/actions/runs/45113905853) exposed a Vite TypeScript error from direct `process.env` use. Follow-up PR [#81](https://github.com/helloinnovators1/odeistudio/pull/81) replaces this with Vite `loadEnv` and tests both root and `/odeistudio/` builds. Its code-fix commit API CI [45114336289](https://github.com/helloinnovators1/odeistudio/actions/runs/45114336289) and Security Scanning [45114336349](https://github.com/helloinnovators1/odeistudio/actions/runs/45114336349) passed all jobs; a subsequent documentation-only refresh is being rechecked. PR #81 is still open and its changes are not yet in main.
+- The container runs as UID/GID 10001, with a read-only filesystem, dropped capabilities, bounded resources, successful liveness and fail-closed readiness when MongoDB is absent. This proves container behavior, not production readiness.
+- The connected Vercel team currently has an existing `zurios` project linked to `openpayglobal/zurios`, not this ODEI Studio repository. `zurios.vercel.app` is verified, but the project has no custom route rules and no ODEI Studio project is linked. The project has SSO protection enabled for Vercel-hosted domains. The `/odeistudio/` Vite base-path setting alone does not create the required cross-project route.
+- The existing ZURIOS Vercel project has preview-only demo variables, including a browser-visible demo-password variable. Treat such `VITE_*` values as public client data; never reuse them as secrets or promote them to ODEI production.
+- No ODEI Studio production deployment, production ODID registration, production MongoDB topology, managed secret store, hardened worker fleet, staging acceptance, backup restoration, target-device acceptance or rollback drill is evidenced.
 
 ## Provider landscape
 

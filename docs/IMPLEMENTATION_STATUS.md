@@ -4,12 +4,13 @@
 
 This snapshot supersedes older dated snapshots retained below. It distinguishes verified repository state from external provider acceptance and production deployment.
 
-**Verified main:** `bad8b29b8e5f6fe6010824ee6417ff4d24724453`.  
-**Merged:** [PR #74](https://github.com/helloinnovators1/odeistudio/pull/74) (MAC/MAD environment governance, deployment worker foundation and security remediation) merged on 2026-11-23. It was merged at the user's explicit direction without an independent approving review; this is not an accepted independent security review.  
-**Post-merge API CI:** [45111357797](https://github.com/helloinnovators1/odeistudio/actions/runs/45111357797), all six jobs passed (web, MongoDB integration, Ubuntu/Windows Python 3.10/3.12).  
-**Post-merge Security Scanning:** [45111357731](https://github.com/helloinnovators1/odeistudio/actions/runs/45111357731), all four jobs passed (Python dependency audit, web dependency audit, secret scanning, CodeQL).  
-**Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection/review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated browser E2E/accessibility/visual regression).  
-**Production decision: NO-GO.** No production deployment, staging acceptance, production provider account verification, backup restoration, target Windows device acceptance or rollback drill is evidenced.
+**Verified main:** `fda728fd0fd2b1c69cbb6024dda3e99796420424`.  
+**Merged:** [PR #74](https://github.com/helloinnovators1/odeistudio/pull/74) (MAC/MAD governance and security remediation), [PR #76](https://github.com/helloinnovators1/odeistudio/pull/76) (provider readiness matrix and production gates), and [PR #80](https://github.com/helloinnovators1/odeistudio/pull/80) (API container, production HTTPX dependency, Vercel configuration and subpath support).  
+**Main API CI:** [45114080192](https://github.com/helloinnovators1/odeistudio/actions/runs/45114080192) failed on the Vite config's Node `process` typing. [PR #81](https://github.com/helloinnovators1/odeistudio/pull/81) fixes this with Vite `loadEnv`; its code-fix commit API CI [45114336289](https://github.com/helloinnovators1/odeistudio/actions/runs/45114336289) and Security Scanning [45114336349](https://github.com/helloinnovators1/odeistudio/actions/runs/45114336349) passed; a subsequent documentation-only refresh is being rechecked. PR #81 remains open pending review/merge.  
+**Container:** main API Container Build [45114080131](https://github.com/helloinnovators1/odeistudio/actions/runs/45114080131) passed, including non-root/read-only runtime and fail-closed readiness smoke checks.  
+**Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection/review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (complete authenticated browser E2E/accessibility/visual regression).  
+**Vercel account evidence:** Existing `zurios` project is linked to the separate `openpayglobal/zurios` repository; no ODEI Studio project or `/odeistudio/` route is configured. The Vercel-hosted domain is SSO-protected. No ODEI production deployment or production environment variables were verified.  
+**Production decision: NO-GO.** No production deployment, staging acceptance, production ODID/MongoDB/secrets, hardened worker fleet, backup restore, target Windows device acceptance or rollback drill is evidenced.
 
 | Workstream | Verified in main | Remaining production / acceptance gates |
 |---|---|---|
