@@ -181,7 +181,7 @@ class WorkspaceHandleRegistry:
             not isinstance(query, str)
             or not query.strip()
             or len(query) > MAX_SEARCH_QUERY_CHARS
-            or "\\x00" in query
+            or chr(0) in query
         ):
             raise ValueError("Search query must contain 1–200 non-NUL characters")
         if not isinstance(max_results, int) or not 1 <= max_results <= MAX_SEARCH_RESULTS:
