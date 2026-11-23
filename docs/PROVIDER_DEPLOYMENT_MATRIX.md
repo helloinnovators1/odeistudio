@@ -1,8 +1,8 @@
 # Multi-provider Hosting, Domain and Infrastructure Deployment Matrix
 
 **Assessment date:** 2026-11-23  
-**Code baseline:** `bad8b29b8e5f6fe6010824ee6417ff4d24724453`  
-**Decision:** provider-neutral deployment design documented; no external provider account or production deployment is verified.
+**Code baseline:** `1fdaaa2405682ad7839773e3aecbbc0f60349de8`  
+**Decision:** ODEI frontend deployed on Vercel at `https://zurios.vercel.app/odeistudio`; API, database, workers, identity, secrets, observability and disaster recovery remain unprovisioned or unaccepted.
 
 This document covers the full hosting chain, not just the database. A registrar, DNS operator, frontend host, API host, worker host, database, object store, secret manager and monitoring vendor are different roles. One company may sell several of them, but each role must be configured and tested independently.
 
@@ -13,7 +13,7 @@ This document covers the full hosting chain, not just the database. A registrar,
 | Source and CI | Source of truth, review, build, tests, scans, artifact provenance | GitHub repository and GitHub Actions | CI/security workflows verified; branch protection is not configured |
 | Domain registrar | Domain ownership, renewal, transfer lock, registrar MFA | Namecheap, Bluehost (correct spelling), Cloudflare Registrar, other ICANN-accredited registrar | Account/domain ownership, renewal and MFA not verified |
 | Authoritative DNS | DNS zones, records, DNSSEC, CAA, health-based changes if supported | Namecheap DNS, Bluehost DNS, Cloudflare DNS, Route 53, other managed DNS | No production zone or records verified |
-| Frontend hosting | Static/edge React web build, preview deployments, custom domain/TLS | Vercel is a candidate for `apps/web`; alternatives include Cloudflare Pages, Netlify, static hosting on object storage/CDN | No Vercel project, domain, environment or deployment verified |
+| Frontend hosting | Static/edge React web build, preview deployments, custom domain/TLS | Vercel project `odeistudio` serves `https://zurios.vercel.app/odeistudio`; separate Zuri OS root project is preserved | Deployed and HTTP-smoke-verified; production frontend configuration limited to VITE_BASE_PATH |
 | API hosting | Long-running HTTPS FastAPI service, readiness/liveness, graceful shutdown, autoscaling | Render, Fly.io, Railway, DigitalOcean App Platform, AWS ECS/Fargate, Google Cloud Run, Azure Container Apps, or a properly operated VPS | No production API host selected or provisioned |
 | Execution workers | Isolated long-running worker pool for untrusted code; separate from public API | Dedicated hardened VMs, Kubernetes nodes, ECS tasks, or equivalent; gVisor/Kata/microVM isolation | No production worker fleet accepted |
 | MAC deployment worker | Privileged, narrowly scoped deployment control plane worker | Dedicated isolated service with separate identity, queue and provider-specific credentials | Worker foundation exists; production provider adapters and fleet unverified |

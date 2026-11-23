@@ -1,10 +1,10 @@
 # Ecosystem integration and release gates
 
 **Reviewed:** 2026-11-23  
-**Verified main:** `7178564cf6bc0db4d8e642ca313f13f85def6d2e`.  
-**Merged integration:** PRs #49, #52, #53, #56, #67, #74, #76, #80, #81, #83 and #85. This includes NEXUS/MAC/MAD governance, dependency and browser smoke-test integration, API container/Vercel subpath scaffolding, production-readiness/host-routing documentation and explicit bounded multi-file chat context.  
+**Verified main baseline:** `1fdaaa2405682ad7839773e3aecbbc0f60349de8` (PR #95 merge).  
+**Merged integration:** PRs #49, #52, #53, #56, #67, #74, #76, #80, #81, #83, #85, #94 and #95. This includes NEXUS/MAC/MAD governance, dependency and browser smoke-test integration, API container/Vercel subpath scaffolding, production-readiness/host-routing documentation and explicit bounded multi-file chat context.  
 **Post-merge verification:** API CI [45119049000](https://github.com/helloinnovators1/odeistudio/actions/runs/45119049000) passed all six jobs and Security Scanning [45119048998](https://github.com/helloinnovators1/odeistudio/actions/runs/45119048998) passed all four jobs on the PR #85 merge commit. PR #85 exact-head API CI and Security Scanning passed before merge.  
-**Production decision: NO-GO.** No ODEI production deployment, ODID staging acceptance, production database/secrets, hardened worker fleet, backup restore, target Windows device acceptance, or monitored rollback drill is evidenced.  
+**Production decision: NO-GO.** ODEI's frontend is deployed at `https://zurios.vercel.app/odeistudio`; the dedicated API, ODID staging acceptance, production database/secrets, hardened worker fleet, backup restore, target Windows device acceptance, and monitored rollback drill are not evidenced.  
 **Purpose:** one dependency-aware acceptance register for execution, NEXUS, ODID, MAC, MAD, Windows, browser and hosting work. It separates repository implementation from external provider and device acceptance.
 
 ## Current verified integration state
@@ -16,8 +16,8 @@
 - Multi-file proposal records do not imply multi-file local application. Durable transaction journaling, rollback and crash recovery remain open.
 - Task approval is not execution. The approved-profile worker/sandbox vertical slice exists, but the full model-controlled tool loop, integrated test-and-repair cycle and autonomous agent orchestration are not complete.
 - The current repository backlog tracks repository indexing (#86), multi-file transactional apply (#87), governed tool loop and verification/repair (#88), parallel agents/worktrees (#89), and browser/MCP/background automation (#90).
-- Issue #63 tracks main branch protection and independent review; #64 tracks authenticated browser E2E/accessibility/visual regression; #84 tracks Vercel project and host routing access.
-- The connected Vercel team currently has only projects linked to `openpayglobal/zurios`; there is no ODEI project and the existing Zurios project/SSO/routing must not be overwritten. Vercel team write/admin access to `helloinnovators1/odeistudio` and host-project admin access are external prerequisites.
+- Issue #63 tracks main branch protection and independent review; #64 tracks authenticated browser E2E/accessibility/visual regression. Frontend hosting and host routing are now configured; the ODEI API and production services remain external gates.
+- The connected Vercel team now has a separate `odeistudio` project linked to `helloinnovators1/odeistudio`, and the `/odeistudio` host rewrites are live. The existing Zuri OS root project and SSO/routing must not be overwritten. The ODEI frontend has only `VITE_BASE_PATH`; no API/ODID public configuration is present. PR #95 prevents `/api/*` from masquerading as SPA HTML.
 - Real ODID issuer/client/scopes/audience/JWKS/CORS, production MongoDB/KMS/secrets, concrete provider adapters, hardened hostile-code isolation, signed Windows installer/device acceptance, staging and rollback remain external gates.
 
 This document records repository and CI evidence separately from external acceptance. A green workflow proves only that the exact tested commit passed its jobs; it does not prove merge, deployment, live identity integration or production readiness. Detailed historical PR scope descriptions and the original execution acceptance checklists follow. The current authoritative workstream summary is [Implementation Status](IMPLEMENTATION_STATUS.md), and the current NEXUS target architecture is [NEXUS Agent Workspace Implementation](NEXUS_AGENT_WORKSPACE_IMPLEMENTATION.md).
