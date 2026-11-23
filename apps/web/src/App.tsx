@@ -373,7 +373,37 @@ export default function App() {
     });
   }
 
-  function runWorkbenchCommand(command: string) {\n    setActiveWorkbenchMenu(null);\n    switch (command) {\n      case "open-workspace": setMessage("Choose a workspace from Explorer after connecting the local companion."); document.getElementById("workspace-select")?.focus(); break;\n      case "close-editor": if (activePath) closeTab(activePath); else setMessage("There is no open editor tab to close."); break;\n      case "search": document.getElementById("file-filter")?.focus(); break;\n      case "source-control": setMessage("Source Control is not connected. Connect a Git provider before using repository operations."); break;\n      case "explorer": document.querySelector<HTMLElement>(".explorer-pane")?.focus(); break;\n      case "agents": setChatOpen(true); break;\n      case "settings": setSettingsOpen(true); break;\n      case "terminal": setBottomPanel("terminal"); break;\n      case "output": setBottomPanel("output"); break;\n      case "problems": setBottomPanel("problems"); break;\n      case "quick-open": document.getElementById("file-filter")?.focus(); break;\n      case "run": setMessage("Run is unavailable until a trusted, isolated execution service is configured."); setBottomPanel("output"); break;\n      case "home": setHomeOpen(true); break;\n      case "help": setMessage("Shortcuts: Ctrl/⌘+I toggles NEXUS; Ctrl/⌘+S reports read-only status. Use the Explorer filter to find files."); break;\n    }\n  }\n  const workbenchMenus: Record<string, Array<{label:string; command:string}>> = {\n    File:[{label:"Open Workspace",command:"open-workspace"},{label:"Close Active Editor",command:"close-editor"},{label:"Home",command:"home"}],\n    Edit:[{label:"Find in Workspace",command:"search"},{label:"Settings",command:"settings"}],\n    Selection:[{label:"Focus File Filter",command:"quick-open"}],\n    View:[{label:"Explorer",command:"explorer"},{label:"NEXUS Chat",command:"agents"},{label:"Output",command:"output"},{label:"Problems",command:"problems"},{label:"Terminal",command:"terminal"}],\n    Go:[{label:"Quick Open",command:"quick-open"}],\n    Run:[{label:"Run Task",command:"run"}],\n    Terminal:[{label:"Show Terminal Panel",command:"terminal"}],\n    Help:[{label:"Keyboard Shortcuts",command:"help"}],\n  };\n\n  function updateChatSide(side: ChatPanelSide) {
+  function runWorkbenchCommand(command: string) {
+    setActiveWorkbenchMenu(null);
+    switch (command) {
+      case "open-workspace": setMessage("Choose a workspace from Explorer after connecting the local companion."); document.getElementById("workspace-select")?.focus(); break;
+      case "close-editor": if (activePath) closeTab(activePath); else setMessage("There is no open editor tab to close."); break;
+      case "search": document.getElementById("file-filter")?.focus(); break;
+      case "source-control": setMessage("Source Control is not connected. Connect a Git provider before using repository operations."); break;
+      case "explorer": document.querySelector<HTMLElement>(".explorer-pane")?.focus(); break;
+      case "agents": setChatOpen(true); break;
+      case "settings": setSettingsOpen(true); break;
+      case "terminal": setBottomPanel("terminal"); break;
+      case "output": setBottomPanel("output"); break;
+      case "problems": setBottomPanel("problems"); break;
+      case "quick-open": document.getElementById("file-filter")?.focus(); break;
+      case "run": setMessage("Run is unavailable until a trusted, isolated execution service is configured."); setBottomPanel("output"); break;
+      case "home": setHomeOpen(true); break;
+      case "help": setMessage("Shortcuts: Ctrl/⌘+I toggles NEXUS; Ctrl/⌘+S reports read-only status. Use the Explorer filter to find files."); break;
+    }
+  }
+  const workbenchMenus: Record<string, Array<{label:string; command:string}>> = {
+    File:[{label:"Open Workspace",command:"open-workspace"},{label:"Close Active Editor",command:"close-editor"},{label:"Home",command:"home"}],
+    Edit:[{label:"Find in Workspace",command:"search"},{label:"Settings",command:"settings"}],
+    Selection:[{label:"Focus File Filter",command:"quick-open"}],
+    View:[{label:"Explorer",command:"explorer"},{label:"NEXUS Chat",command:"agents"},{label:"Output",command:"output"},{label:"Problems",command:"problems"},{label:"Terminal",command:"terminal"}],
+    Go:[{label:"Quick Open",command:"quick-open"}],
+    Run:[{label:"Run Task",command:"run"}],
+    Terminal:[{label:"Show Terminal Panel",command:"terminal"}],
+    Help:[{label:"Keyboard Shortcuts",command:"help"}],
+  };
+
+  function updateChatSide(side: ChatPanelSide) {
     setChatSide(side);
     writeChatPanelSide(side);
   }
