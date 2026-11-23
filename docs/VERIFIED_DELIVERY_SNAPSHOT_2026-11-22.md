@@ -12,7 +12,7 @@ This snapshot records the repository state at the current-main MAC/MAD integrati
   - [#71](https://github.com/helloinnovators1/odeistudio/pull/71): stale project-discovery response guard and unit tests.
   - [#72](https://github.com/helloinnovators1/odeistudio/pull/72): npm lockfile, pinned npm toolchain and deterministic `npm ci` CI installs.
   - [#73](https://github.com/helloinnovators1/odeistudio/pull/73): documentation synchronization after PR #72.
-- [PR #74](https://github.com/helloinnovators1/odeistudio/pull/74) is open and ready for independent review. It replaces the conflicted PR #66 branch and is based on current main. Latest merge-synchronized head: `e2d4e106decfde1916defea8b93cbb509d9743d6`. The immediately preceding code-equivalent head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a` passed both workflows; the current head is rerunning them.
+- [PR #74](https://github.com/helloinnovators1/odeistudio/pull/74) is open and ready for independent review. It replaces the conflicted PR #66 branch and is based on current main. Latest merge-synchronized branch tip: see PR #74 Checks for the exact SHA. The immediately preceding code-equivalent head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a` passed both workflows; the current branch tip is rerunning them; see the PR Checks tab for its exact SHA.
 - [PR #66](https://github.com/helloinnovators1/odeistudio/pull/66) is closed as superseded by #74, not merged.
 - Open issues: [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (branch protection and independent review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated E2E, accessibility and visual regression). [Issue #62](https://github.com/helloinnovators1/odeistudio/issues/62) is closed after PR #72 merged.
 
@@ -47,7 +47,7 @@ At the preceding code-equivalent head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a`
 
 - Security Scanning passed all four jobs: CodeQL, Python dependency audit, web dependency audit and secret scanning.
 - API CI had passed Ubuntu Python 3.10/3.12, Windows Python 3.12, MongoDB replica-set transaction integration and web unit tests/build/Playwright.
-- API CI passed all six jobs, including the Windows Python 3.10/3.12 matrix. The latest merge-synchronized head `e2d4e106decfde1916defea8b93cbb509d9743d6` is rerunning API CI and Security Scanning.
+- API CI passed all six jobs, including the Windows Python 3.10/3.12 matrix. The latest merge-synchronized branch tip is rerunning API CI and Security Scanning; see the PR Checks tab for the exact SHA.
 - GitHub reports PR #74 mergeable against current main. It is not merged and has no independent security approval.
 
 ## Open engineering blockers
