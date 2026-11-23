@@ -1,7 +1,7 @@
 # NEXUS Agent Workspace — Implementation and Acceptance Plan
 
 **Reviewed:** 2026-11-23  
-**Baseline:** `main` at `45d968d8f4af82ec2d9520da37ded2485e21f87e`  
+**Baseline:** `main` at `7178564cf6bc0db4d8e642ca313f13f85def6d2e`  
 **Scope:** NEXUS chat, repository context, agent tool execution, editing, verification, orchestration and operational acceptance.
 
 This document separates shipped code from a proposed target architecture. A passing test proves only the tested behavior on the tested commit; it does not prove real ODID integration, production deployment or hostile-code isolation.
@@ -13,6 +13,7 @@ The repository currently includes:
 - Server-authorized organization and project discovery.
 - Consent-gated project chat, streaming and tenant/owner-scoped persisted conversations.
 - Bounded inspection tools over explicitly attached excerpts, secret redaction and review-only patch proposals.
+- Merged PR #85 adds an explicit companion file picker for up to five files, unsaved active-buffer precedence, credential/private-key path exclusions, strict per-file/aggregate budgets and abortable local reads.
 - Durable task planning and owner approval; approval is not execution.
 - One-file signed, challenge-bound local companion application.
 - Approved-profile workspace snapshot execution, durable run/event/lease state, worker integration, cancellation, bounded artifacts and project history.
@@ -26,16 +27,16 @@ Current hard boundaries:
 - ODID issuer/client/audience/scopes/JWKS/CORS and production provider infrastructure require real environment configuration and staging acceptance.
 - MAC/MAD code and CI are not proof of production deployment or provider integration.
 
-## 2. Increment delivered by the workspace-context branch
+## 2. Merged workspace-context increment (PR #85)
 
-The current implementation branch adds an explicit context picker:
+Main now includes an explicit context picker:
 - User selects individual files from the paired local companion's file listing.
 - No file is read merely because it exists in the workspace.
 - At most five files are selected.
 - Each excerpt is limited to 8,000 characters and aggregate path/content to 40,000 characters.
 - The current unsaved editor buffer takes precedence over a disk read for the active file.
-- Unsafe relative paths, case-insensitive duplicate paths and oversized context are rejected.
-- Context loading checks cancellation before and after each read.
+- Unsafe relative paths, case-insensitive duplicate paths, credential/private-key paths and oversized context are rejected.
+- Context loading propagates cancellation to the companion fetch and checks it before and after each read.
 - Selected paths are reset when the companion workspace, organization, project or identity changes; the active-file attachment and inspection toggle reset when the editor buffer changes.
 - Cloud transmission still requires the existing explicit consent control.
 - Read-only inspection and review-only proposal semantics remain unchanged.

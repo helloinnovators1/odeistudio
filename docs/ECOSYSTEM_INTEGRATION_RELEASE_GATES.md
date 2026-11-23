@@ -1,18 +1,18 @@
 # Ecosystem integration and release gates
 
 **Reviewed:** 2026-11-23  
-**Verified main:** `45d968d8f4af82ec2d9520da37ded2485e21f87e`.  
-**Merged integration:** PRs #49, #52, #53, #56, #67, #74, #76, #80, #81 and #83. This includes NEXUS/MAC/MAD governance, dependency and browser smoke-test integration, API container/Vercel subpath scaffolding and production-readiness/host-routing documentation.  
-**Open NEXUS increment:** [PR #85](https://github.com/helloinnovators1/odeistudio/pull/85) is a draft, unmerged bounded multi-file context picker. Exact-head API CI and Security Scanning are being verified.  
+**Verified main:** `7178564cf6bc0db4d8e642ca313f13f85def6d2e`.  
+**Merged integration:** PRs #49, #52, #53, #56, #67, #74, #76, #80, #81, #83 and #85. This includes NEXUS/MAC/MAD governance, dependency and browser smoke-test integration, API container/Vercel subpath scaffolding, production-readiness/host-routing documentation and explicit bounded multi-file chat context.  
+**Post-merge verification:** API CI [45119049000](https://github.com/helloinnovators1/odeistudio/actions/runs/45119049000) passed all six jobs and Security Scanning [45119048998](https://github.com/helloinnovators1/odeistudio/actions/runs/45119048998) passed all four jobs on the PR #85 merge commit. PR #85 exact-head API CI and Security Scanning passed before merge.  
 **Production decision: NO-GO.** No ODEI production deployment, ODID staging acceptance, production database/secrets, hardened worker fleet, backup restore, target Windows device acceptance, or monitored rollback drill is evidenced.  
 **Purpose:** one dependency-aware acceptance register for execution, NEXUS, ODID, MAC, MAD, Windows, browser and hosting work. It separates repository implementation from external provider and device acceptance.
 
 ## Current verified integration state
 
 - MAC/MAD governance was integrated through merged PR #74; do not refer to it as an open integration candidate.
-- PR #81's Vite TypeScript/subpath build fix is merged. Mainline API CI passed on its merge commit; current mainline Security Scanning passed. PR #83 reconciles production-readiness and host-routing documentation and is merged.
+- PR #81's Vite TypeScript/subpath build fix is merged. PR #83 reconciles production-readiness and host-routing documentation and is merged.
+- PR #85 is merged. The chat panel now supports explicit selection of up to five files from the paired companion, unsaved active-buffer precedence, sensitive-path exclusions, bounded per-file/aggregate context and abortable companion reads. This is not whole-repository indexing.
 - Main includes ODID PKCE browser foundations, tenant/project-scoped chat/history, SSE streaming/cancellation, bounded excerpt inspection, task planning/approval, patch proposals, single-file companion apply, and the separate approved-profile execution vertical slice.
-- NEXUS context inspection remains bounded to explicitly attached excerpts. PR #85 proposes up to five explicitly selected companion files with size/path limits and sensitive-path exclusions; it is not yet merged.
 - Multi-file proposal records do not imply multi-file local application. Durable transaction journaling, rollback and crash recovery remain open.
 - Task approval is not execution. The approved-profile worker/sandbox vertical slice exists, but the full model-controlled tool loop, integrated test-and-repair cycle and autonomous agent orchestration are not complete.
 - The current repository backlog tracks repository indexing (#86), multi-file transactional apply (#87), governed tool loop and verification/repair (#88), parallel agents/worktrees (#89), and browser/MCP/background automation (#90).
