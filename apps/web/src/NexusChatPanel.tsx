@@ -38,7 +38,7 @@ import {
 } from "./nexus-patch-proposals";
 import { getMadExecutionMetrics, listMadIncidents, transitionMadIncident, type MadIncident, type MadMetrics } from "./mad-operations";
 import { RequestGeneration } from "./request-generation";
-import { loadNexusWorkspaceExcerpts } from "./nexus-context";
+import { isNexusContextPathAllowed, loadNexusWorkspaceExcerpts } from "./nexus-context";
 import { approveMacEnvironment, createMacEnvironmentDraft, getMacEnvironment, promoteMacEnvironment, rollbackMacEnvironment, submitMacEnvironment, updateMacEnvironmentDraft, type MacEnvironmentRecord } from "./mac-environments";
 import "./nexus-chat-panel.css";
 
@@ -1147,6 +1147,9 @@ export default function NexusChatPanel({
     ...(attachActiveFile && activeFile ? [activeFile.path] : []),
     ...selectedContextPaths,
   ]).size;
+  const availableContextFiles = (workspaceContext?.files ?? [])
+    .filter((file) => isNexusContextPathAllowed(file.path))
+    .slice(0, 100);
 
   return (
     <aside className={`nexus-pane${isOpen ? "" : " nexus-pane-hidden"}`} aria-label="NEXUS AI chat panel">
@@ -1623,15 +1626,15 @@ export default function NexusChatPanel({
           <>
             {activeFile && (
               <label className="nexus-attach-toggle">
-                <input type="checkbox" checked={attachActiveFile} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
-                Attach active file excerpt: {activeFile.path}
+                <input type="checkbox" checked={attachActiveFile} disabled={!isNexusContextPathAllowed(activeFile.path)} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
+                Attach active file excerpt: {activeFile.path}{!isNexusContextPathAllowed(activeFile.path) ? " · excluded from AI context for security" : ""}
               </label>
             )}
-            {workspaceContext && workspaceContext.files.length > 0 && (
+            {workspaceContext && availableContextFiles.length > 0 && (
               <details className="nexus-context-picker">
                 <summary>Select workspace files to attach ({selectedContextCount}/5)</summary>
                 <p className="nexus-muted">Only checked files are read and sent. Hidden files and the rest of the workspace are not included automatically.</p>
-                {workspaceContext.files.slice(0, 100).map((file) => (
+                {availableContextFiles.map((file) => (
                   <label className="nexus-attach-toggle" key={file.path}>
                     <input type="checkbox" checked={selectedContextPaths.includes(file.path)}
                       disabled={!selectedContextPaths.includes(file.path) && selectedContextCount >= 5}
@@ -1644,7 +1647,7 @@ export default function NexusChatPanel({
                     {file.path} <span className="nexus-muted">({file.size.toLocaleString()} bytes)</span>
                   </label>
                 ))}
-                {workspaceContext.files.length > 100 && <p className="nexus-muted">Showing the first 100 workspace entries. Narrow the workspace in the editor to select other files.</p>}
+                {workspaceContext.files.filter((file) => isNexusContextPathAllowed(file.path)).length > 100 && <p className="nexus-muted">Showing the first 100 workspace entries. Narrow the workspace in the editor to select other files.</p>}
               </details>
             )}
             {selectedContextCount > 0 && (
