@@ -3,7 +3,7 @@ export interface NexusContextFile {
   content: string;
 }
 
-export type NexusContextReader = (path: string) => Promise<string>;
+export type NexusContextReader = (path: string, signal?: AbortSignal) => Promise<string>;
 
 export const MAX_NEXUS_CONTEXT_FILES = 5;
 export const MAX_NEXUS_CONTEXT_FILE_CHARS = 8_000;
@@ -48,7 +48,7 @@ export async function loadNexusWorkspaceExcerpts(
   let total = 0;
   for (const path of normalized) {
     if (signal?.aborted) throw new DOMException("Context loading was cancelled.", "AbortError");
-    const content = activeFile?.path === path ? activeFile.content : await readFile(path);
+    const content = activeFile?.path === path ? activeFile.content : await readFile(path, signal);
     if (signal?.aborted) throw new DOMException("Context loading was cancelled.", "AbortError");
     if (typeof content !== "string" || content.length > MAX_NEXUS_CONTEXT_FILE_CHARS) {
       throw new TypeError(`Selected file ${path} exceeds the 8,000-character context limit.`);
