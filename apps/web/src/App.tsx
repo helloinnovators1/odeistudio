@@ -552,7 +552,7 @@ export default function App() {
               <button role="menuitem" onClick={() => { setBrowserMenuOpen(false); void copyBrowserUrl(); }}>Copy address</button>
               <button role="menuitem" onClick={() => { setBrowserMenuOpen(false); window.open(browserUrl, "_blank", "noopener,noreferrer"); }}>Open in new tab</button>
               <button role="menuitem" onClick={() => { setBrowserMenuOpen(false); setBrowserFavorite(false); setBrowserDraft("http://127.0.0.1:3003"); navigateBrowser("http://127.0.0.1:3003"); }}>Reset browser</button>
-            </div>
+            </div>}
           </div>
           <div className="editor-surface">
             {activeEditorView === "browser" ? <section className="embedded-browser" aria-label="Browser Tab">
