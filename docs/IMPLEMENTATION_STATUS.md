@@ -1,5 +1,56 @@
 # Implementation Status
 
+## Authoritative repository snapshot — 2026-11-23
+
+This snapshot supersedes older dated snapshots retained below. It distinguishes verified repository state from external provider acceptance and production deployment.
+
+**Verified main:** `bad8b29b8e5f6fe6010824ee6417ff4d24724453`.  
+**Merged:** [PR #74](https://github.com/helloinnovators1/odeistudio/pull/74) (MAC/MAD environment governance, deployment worker foundation and security remediation) merged on 2026-11-23. It was merged at the user's explicit direction without an independent approving review; this is not an accepted independent security review.  
+**Post-merge API CI:** [45111357797](https://github.com/helloinnovators1/odeistudio/actions/runs/45111357797), all six jobs passed (web, MongoDB integration, Ubuntu/Windows Python 3.10/3.12).  
+**Post-merge Security Scanning:** [45111357731](https://github.com/helloinnovators1/odeistudio/actions/runs/45111357731), all four jobs passed (Python dependency audit, web dependency audit, secret scanning, CodeQL).  
+**Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection/review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated browser E2E/accessibility/visual regression).  
+**Production decision: NO-GO.** No production deployment, staging acceptance, production provider account verification, backup restoration, target Windows device acceptance or rollback drill is evidenced.
+
+| Workstream | Verified in main | Remaining production / acceptance gates |
+|---|---|---|
+| NEXUS identity/chat | PKCE browser foundation, token lifecycle, server-authorized org/project selection, consent-gated chat, SSE stream/cancel and tenant-scoped conversations. | Real ODID issuer/client/callback/scopes/audience/JWKS; tenant-isolation staging; complete audit coverage. |
+| Inspection/proposals | Bounded attached-excerpt inspection, redaction, persisted proposals, owner decisions and signed one-use capability for single-file local apply. | Multi-file transactional apply, journal/rollback/crash recovery, complete audit and authenticated browser acceptance. |
+| Tasks/execution | Durable tasks, snapshots, run/event/lease persistence, worker/sandbox integration, cancellation, artifacts/history foundations. | Dedicated hardened worker fleet, hostile-code isolation, immutable images, restricted egress, quotas and failure/recovery drills. |
+| Local companion | Loopback-only companion, pairing, bounded read-only access and signed challenge-bound single-file apply. | Signed installer/update, Windows 10 build 18362.1256 device acceptance, identity binding and multi-file rollback/recovery. |
+| MAC/MAD | MAC RBAC/environment revision governance and deployment ledger/worker foundation; MAD telemetry/incident operations. | Real provider/secret-manager adapters, staging migration/rollback, reconciliation, database-enforced append-only audit and complete audit coverage. |
+| Browser QA | Playwright/Chromium CI and shell/responsive baseline. | Authenticated user journeys, axe/equivalent, keyboard/focus/dialog tests and deterministic visual baselines (#64). |
+| Repository governance | CI/security workflows. | Main protection, independent review, required checks, stale-review dismissal, conversation resolution and force/direct-push restrictions (#63). |
+| Hosting / domains / data | MongoDB transaction-capable readiness requirement; application config and CI foundations. | Choose and provision registrar/DNS, frontend host, API host, worker host, production MongoDB, object storage, KMS/secrets, identity, email (if used), monitoring and WAF. Verify actual Namecheap/Bluehost/Vercel or alternative accounts; no provider account is assumed. |
+| Operations / release | CI and security checks pass on the merged commit. | Staging, immutable artifacts/SBOM, backups/PITR and restore, observability/on-call, incident drills, canary, smoke tests and tested rollback. |
+| Product breadth | NEXUS and workspace foundations. | Full Agents Window/CLI/background-agent orchestration and complete multi-agent policy lifecycle are not delivered. |
+
+## Current release blockers
+
+1. Production ODID issuer/client/audience/JWKS and tenant/RBAC acceptance are not verified.
+2. Production MongoDB replica-set/sharded topology, private connectivity, least-privilege roles, backup/PITR and restore drill are not verified.
+3. A database credential was disclosed in earlier project setup material. Treat it as compromised until rotated and revoked at the source; rotation evidence is unavailable.
+4. Concrete cloud deployment-provider and external secret-manager adapters have not been accepted in a real account.
+5. Dedicated hardened execution workers and hostile-code isolation acceptance are outstanding.
+6. Authenticated browser E2E/accessibility/visual regression and physical Windows target-device acceptance are outstanding.
+7. Main branch protection is not configured; PR #74 did not have independent approving review.
+8. DNS/domain, frontend/API hosting, TLS, WAF, object storage, monitoring, email and incident operations are not verified.
+9. No staging or production deployment, migration acceptance, backup restoration, canary, smoke test or rollback drill is recorded.
+
+## Current tracking
+
+- [Issue #63 — protect main with required reviews and CI/security checks](https://github.com/helloinnovators1/odeistudio/issues/63)
+- [Issue #64 — authenticated browser E2E, accessibility and visual regression](https://github.com/helloinnovators1/odeistudio/issues/64)
+- [Production and Deployment Readiness](PRODUCTION_READINESS.md)
+- [Multi-provider Hosting, Domain and Infrastructure Deployment Matrix](PROVIDER_DEPLOYMENT_MATRIX.md)
+- [Deployment and Environment Strategy](DEPLOYMENT.md)
+- [Security and Privacy baseline](SECURITY.md)
+
+The detailed dated implementation history, historical phase checklists and prior acceptance notes are preserved below. They are historical evidence and do not override the current snapshot above. A test/check is evidence for its exact commit only; it is not proof of external infrastructure acceptance.
+
+---
+
+## Historical implementation snapshots and phase records
+
 ## Authoritative repository snapshot — 2026-11-23 (PR #74 review candidate)
 
 This snapshot distinguishes mainline code from unmerged candidate work, CI evidence, independent review, external acceptance and production deployment.

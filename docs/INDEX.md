@@ -8,6 +8,8 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Implementation status](IMPLEMENTATION_STATUS.md) — verified work, unverified items and next steps.
 - [Verified delivery snapshot — 2026-11-22](VERIFIED_DELIVERY_SNAPSHOT_2026-11-22.md) — current merged capabilities, CI evidence, safety boundaries and operational blockers.
 - [Implementation roadmap](ROADMAP.md) — phased delivery, dependencies and acceptance gates.
+- [Production and Deployment Readiness](PRODUCTION_READINESS.md) — production go/no-go gates, configuration inventory, staging/rollback and operational acceptance.
+- [Multi-provider Hosting, Domain and Infrastructure Deployment Matrix](PROVIDER_DEPLOYMENT_MATRIX.md) — Namecheap/Bluehost registrar and DNS, Vercel frontend, API/worker hosting, MongoDB, storage, secrets, identity and provider cutover.
 - [Engineering standards](ENGINEERING_STANDARDS.md) — code quality, API, testing and contribution rules.
 - [Security and privacy](SECURITY.md) — threat model, secrets, isolation, identity and incident handling.
 - [Identity integration contract](IDENTITY_INTEGRATION.md) — verified upstream ODID maturity, RFC 9068 access-token profile, required issuer contract and RBAC gates.
