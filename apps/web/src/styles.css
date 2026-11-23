@@ -96,3 +96,6 @@
 .ide-reference .editor-tabs{height:36px;flex-basis:36px;position:relative}
 .ide-reference .ide-maximized{height:100dvh}
 .ide-reference .browser-tab-menu{top:36px}
+
+.ide-reference{position:relative}
+.ide-reference .titlebar-actions button[aria-label="Open ODEI Studio Window"]{display:none}

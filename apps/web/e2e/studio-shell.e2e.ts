@@ -178,7 +178,7 @@ test("reference IDE browser tab supports navigation, history, reload and externa
   await expect(page.locator(".browser-frame")).toHaveAttribute("src", "https://example.com/");
   await expect(page.getByRole("button", { name: "Browser back" })).toBeEnabled();
   await page.getByRole("button", { name: "Browser back" }).click();
-  await expect(page.locator(".browser-frame")).toHaveAttribute("src", "http://127.0.0.1:3003/");
+  await expect(page.locator(".browser-frame")).toHaveAttribute("src", "http://127.0.0.1:3003");
   await page.getByRole("button", { name: "Reload browser" }).click();
   await page.getByRole("button", { name: "Browser developer tools information" }).click();
   await expect(page.getByRole("status")).toContainText("Press F12");
