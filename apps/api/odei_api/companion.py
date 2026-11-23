@@ -57,6 +57,12 @@ class PairRequest(BaseModel):
     code: str = Field(min_length=1, max_length=128)
 
 
+class WorkspaceSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: StrictStr = Field(min_length=1, max_length=200)
+
+
 class PatchProposalRequest(BaseModel):
     """Bounded text changes for a read-only, live-workspace diff preview."""
 
@@ -501,6 +507,25 @@ def create_companion_app(
         return {"workspace_id": workspace_id, "files": [
             {"path": item.path, "size": item.size} for item in files
         ]}
+
+    @app.post("/v1/workspaces/{workspace_id}/search")
+    async def search_workspace_files(
+        workspace_id: str, payload: WorkspaceSearchRequest, request: Request
+    ):
+        require_bearer(request)
+        require_selected_workspace(workspace_id)
+        try:
+            result = await run_in_threadpool(
+                registry.search_text, workspace_id, payload.query
+            )
+        except WorkspaceNotFound as exc:
+            raise HTTPException(status_code=404, detail="The selected workspace is no longer available") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Workspace search query is invalid") from exc
+        return {
+            "workspace_id": workspace_id,
+            **result,
+        }
 
     @app.get("/v1/workspaces/{workspace_id}/file")
     async def read_workspace_file(
