@@ -1055,7 +1055,7 @@ def test_companion_search_requires_pairing_and_valid_bounded_query(tmp_path) -> 
         headers = _paired_headers(client, code)
         workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
         unauthorized = client.post(
-            f"/v1/workspaces/{workspace_id}/search", json={"query": "NEXUS"}
+            f"/v1/workspaces/{workspace_id}/search", headers={"Origin": ORIGIN}, json={"query": "NEXUS"}
         )
         assert unauthorized.status_code == 401
         invalid = client.post(
