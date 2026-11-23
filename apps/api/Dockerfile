@@ -12,7 +12,7 @@ RUN groupadd --system --gid 10001 odei \
     && useradd --system --uid 10001 --gid odei --home-dir /nonexistent \
        --shell /usr/sbin/nologin odei
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml ./
 COPY odei_api ./odei_api
 
 RUN python -m pip install --no-cache-dir .
