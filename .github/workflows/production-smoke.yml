@@ -1,0 +1,31 @@
+name: Production Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Public ODEI host base URL
+        required: false
+        default: https://zurios.vercel.app
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: odei-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Public frontend and routing acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: ${{ inputs.base_url || 'https://zurios.vercel.app' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Verify deployed application and routing
+        run: bash scripts/smoke-production.sh
