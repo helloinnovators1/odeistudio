@@ -1626,7 +1626,7 @@ export default function NexusChatPanel({
           <>
             {activeFile && (
               <label className="nexus-attach-toggle">
-                <input type="checkbox" checked={attachActiveFile} disabled={!isNexusContextPathAllowed(activeFile.path)} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
+                <input type="checkbox" checked={attachActiveFile} disabled={!isNexusContextPathAllowed(activeFile.path) || (!attachActiveFile && selectedContextCount >= 5 && !selectedContextPaths.includes(activeFile.path))} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
                 Attach active file excerpt: {activeFile.path}{!isNexusContextPathAllowed(activeFile.path) ? " · excluded from AI context for security" : ""}
               </label>
             )}
