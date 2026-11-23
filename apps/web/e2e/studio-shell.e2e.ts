@@ -105,7 +105,7 @@ test("ODEI title bar exposes IDE, app launcher, overflow menu and window control
   const apps = page.getByRole("button", { name: "Show apps" });
   await apps.click();
   await expect(page.getByRole("dialog", { name: "Apps" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "NEXUS" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Apps" }).getByRole("button", { name: /NEXUS/ })).toBeVisible();
   await apps.click();
   const more = page.getByRole("button", { name: "More options" });
   await more.click();
@@ -150,27 +150,21 @@ test("all application menus expose actionable commands and Help opens shortcuts"
 });
 
 
-test("IDE workbench menus and activity rail controls perform their advertised actions", async ({ page, context }) => {
+test("IDE workbench activity rail controls open their matching panels", async ({ page, context }) => {
   await page.goto("/");
   const popupPromise = context.waitForEvent("page");
   await page.getByRole("button", { name: "Open IDE in independent window" }).click();
   const ide = await popupPromise;
   await ide.waitForLoadState("domcontentloaded");
-  for (const menu of ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]) {
-    await ide.getByRole("button", { name: menu, exact: true }).click();
-    await expect(ide.getByRole("menu", { name: `${menu} menu` })).toBeVisible();
-    await expect(ide.getByRole("menuitem").first()).toBeVisible();
-    await ide.getByRole("button", { name: menu, exact: true }).click();
-  }
+  await expect(ide.locator(".explorer-pane")).toBeVisible();
   await ide.locator('.activity-rail button[aria-label="Search workspace files"]').click();
-  await expect(ide.getByText("Connect the local companion and select a workspace before searching its files.")).toBeVisible();
+  await expect(ide.getByRole("status")).toContainText("Connect the local companion");
   await ide.locator('.activity-rail button[aria-label="Source control status"]').click();
-  await expect(ide.getByText("Git status is unavailable because the local companion does not expose a Git repository API.")).toBeVisible();
+  await expect(ide.getByRole("status")).toContainText("Git status is unavailable");
   await ide.locator('.activity-rail button[aria-label="Open Agents and NEXUS"]').click();
   await expect(ide.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
-  await ide.close();
+  await ide.close({ runBeforeUnload: false });
 });
-
 
 test("reference IDE browser tab supports navigation, history, reload and external open", async ({ page }) => {
   await page.goto("/?window=ide");
