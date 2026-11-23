@@ -47,6 +47,7 @@ interface Props {
   isOpen?: boolean;
   activeFile?: { path: string; content: string } | null;
   workspaceContext?: { accessToken: string; workspaceId: string; files: CompanionFile[] } | null;
+  initialPrompt?: string;
 }
 
 interface TranscriptMessage extends NexusChatMessage {
@@ -87,7 +88,7 @@ function newMessageId(): string {
 }
 
 export default function NexusChatPanel({
-  onClose, isOpen = true, activeFile = null, workspaceContext = null,
+  onClose, isOpen = true, activeFile = null, workspaceContext = null, initialPrompt = "",
 }: Props) {
   const config = useMemo(environmentConfig, []);
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
@@ -107,7 +108,8 @@ export default function NexusChatPanel({
   const [conversations, setConversations] = useState<NexusConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState("");
   const [conversationBusy, setConversationBusy] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialPrompt);
+  useEffect(() => { if (initialPrompt) setDraft(initialPrompt); }, [initialPrompt]);
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
   const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
