@@ -115,13 +115,63 @@ handle("odei:window:toggle-maximize", () => {
 handle("odei:window:close", () => { mainWindow.close(); return true; });
 handle("odei:window:state", () => ({ minimized: mainWindow.isMinimized(), maximized: mainWindow.isMaximized(), focused: mainWindow.isFocused() }));
 
+function listWorkspaceFiles(root) {
+  const ignored = new Set([".git", "node_modules", ".next", "dist", "build", "coverage", ".turbo", ".venv", "__pycache__"]);
+  const files = [];
+  const pending = [""];
+  let totalBytes = 0;
+  while (pending.length && files.length < 5000 && totalBytes < 50 * 1024 * 1024) {
+    const relative = pending.pop();
+    const absolute = path.join(root, relative);
+    const entries = fs.readdirSync(absolute, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (ignored.has(entry.name) || entry.isSymbolicLink()) continue;
+      const childRelative = relative ? path.join(relative, entry.name) : entry.name;
+      if (entry.isDirectory()) pending.push(childRelative);
+      else if (entry.isFile()) {
+        const size = fs.statSync(path.join(root, childRelative)).size;
+        if (size > 2 * 1024 * 1024) continue;
+        files.push({ path: childRelative.split(path.sep).join("/"), size });
+        totalBytes += size;
+        if (files.length >= 5000 || totalBytes >= 50 * 1024 * 1024) break;
+      }
+    }
+  }
+  return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+function safeWorkspaceFile(relativePath) {
+  const root = requireWorkspace();
+  if (typeof relativePath !== "string" || !relativePath || relativePath.includes(String.fromCharCode(0)) || path.isAbsolute(relativePath)) {
+    throw new Error("Invalid workspace-relative file path");
+  }
+  const parts = relativePath.split(String.fromCharCode(92)).join("/").split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) throw new Error("Path traversal is not allowed");
+  let current = root;
+  for (const part of parts) {
+    current = path.join(current, part);
+    const stat = fs.lstatSync(current);
+    if (stat.isSymbolicLink()) throw new Error("Symbolic links are not opened by the workspace explorer");
+  }
+  const resolved = fs.realpathSync(current);
+  if (!resolved.startsWith(root + path.sep) || !fs.statSync(resolved).isFile()) throw new Error("Selected path is not a regular workspace file");
+  return resolved;
+}
 handle("odei:workspace:select", async () => {
   const result = await dialog.showOpenDialog(mainWindow, { title: "Open ODEI workspace", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || !result.filePaths[0]) return null;
   selectedWorkspace = fs.realpathSync(result.filePaths[0]);
   return { name: path.basename(selectedWorkspace), path: selectedWorkspace };
 });
-handle("odei:workspace:current", () => selectedWorkspace ? ({ name: path.basename(selectedWorkspace), path: selectedWorkspace }) : null);
+handle("odei:workspace:current", () => selectedWorkspace ? ({ name: path.basename(selectedWorkspace) }) : null);
+handle("odei:workspace:files", () => listWorkspaceFiles(requireWorkspace()));
+handle("odei:workspace:read-file", (relativePath) => {
+  const filePath = safeWorkspaceFile(relativePath);
+  const stat = fs.statSync(filePath);
+  if (stat.size > 1024 * 1024) throw new Error("Files larger than 1 MB are not opened in the text editor");
+  const content = fs.readFileSync(filePath);
+  if (content.includes(0)) throw new Error("Binary files cannot be opened in the text editor");
+  return content.toString("utf8");
+});
 
 handle("odei:git:status", async () => {
   const root = (await git(["rev-parse", "--show-toplevel"])).trim();

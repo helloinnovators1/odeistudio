@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("odeiDesktop", Object.freeze({
   workspace: Object.freeze({
     select: () => ipcRenderer.invoke("odei:workspace:select"),
     current: () => ipcRenderer.invoke("odei:workspace:current"),
+    files: () => ipcRenderer.invoke("odei:workspace:files"),
+    readFile: (relativePath) => ipcRenderer.invoke("odei:workspace:read-file", relativePath),
   }),
   git: Object.freeze({
     status: () => ipcRenderer.invoke("odei:git:status"),

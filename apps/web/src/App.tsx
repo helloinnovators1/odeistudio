@@ -54,6 +54,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [workspaces, setWorkspaces] = useState<CompanionWorkspace[]>([]);
+  const [nativeWorkspaceName, setNativeWorkspaceName] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [files, setFiles] = useState<CompanionFile[]>([]);
   const [fileQuery, setFileQuery] = useState("");
@@ -234,7 +235,7 @@ export default function App() {
     () => tabs.find((tab) => tab.path === activePath) ?? null,
     [tabs, activePath],
   );
-  const workspaceName = workspaces.find((item) => item.workspace_id === workspace)?.name ?? "No folder open";
+  const workspaceName = nativeWorkspaceName || workspaces.find((item) => item.workspace_id === workspace)?.name || "No folder open";
   const visibleFiles = useMemo(() => filterWorkspaceFiles(files, fileQuery), [files, fileQuery]);
   const workspaceTree = useMemo(() => buildWorkspaceTree(visibleFiles), [visibleFiles]);
 
@@ -317,7 +318,7 @@ export default function App() {
   }
 
   async function chooseFile(file: CompanionFile) {
-    if (!token || !workspace) return;
+    if ((!token || !workspace) && !window.odeiDesktop) return;
     const existing = tabs.find((tab) => tab.path === file.path);
     if (existing) {
       setActivePath(file.path);
@@ -327,7 +328,9 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const content = await readWorkspaceFile(token, workspace, file.path);
+      const content = window.odeiDesktop
+        ? await window.odeiDesktop.workspace.readFile(file.path)
+        : token && workspace ? await readWorkspaceFile(token, workspace, file.path) : "";
       setTabs((current) => [...current, { path: file.path, content }]);
       setActivePath(file.path);
       setActiveEditorView("editor");
@@ -496,7 +499,7 @@ export default function App() {
     }
   }
 
-  async function selectNativeRepository() {
+  async function selectNativeWorkspace() {
     if (!window.odeiDesktop) {
       setNativeGitError("Open ODEI Studio Desktop to select a local repository.");
       return;
@@ -504,12 +507,21 @@ export default function App() {
     try {
       const selected = await window.odeiDesktop.workspace.select();
       if (!selected) return;
-      setMessage(`Selected local folder: ${selected.name}. Loading Git status…`);
+      const nativeFiles = await window.odeiDesktop.workspace.files();
+      setNativeWorkspaceName(selected.name);
+      setFiles(nativeFiles);
+      setWorkspace("native-desktop");
+      setFileQuery("");
+      setTabs([]);
+      setActivePath("");
+      setCollapsedFolders(new Set());
+      setMessage("Opened " + selected.name + ". " + nativeFiles.length + " files indexed in the local Explorer.");
       await refreshNativeGit();
     } catch (cause) {
       setNativeGitError(cause instanceof Error ? cause.message : "Folder selection failed.");
     }
   }
+  async function selectNativeRepository() { await selectNativeWorkspace(); }
 
   async function updateNativeGitPath(path: string, action: "stage" | "unstage") {
     if (!window.odeiDesktop) return;
@@ -582,7 +594,7 @@ export default function App() {
   function runWorkbenchCommand(command: string) {
     setActiveWorkbenchMenu(null);
     switch (command) {
-      case "open-workspace": if (!token) { setMessage("Connect the local companion, then select a folder you explicitly choose."); document.querySelector<HTMLButtonElement>(".connect-actions .primary-button")?.click(); document.getElementById("pairing-code")?.focus(); } else { document.getElementById("workspace-select")?.focus(); } break;
+      case "open-workspace": if (window.odeiDesktop) { void selectNativeWorkspace(); } else if (!token) { setMessage("Connect the local companion, then select a folder you explicitly choose."); document.querySelector<HTMLButtonElement>(".connect-actions .primary-button")?.click(); document.getElementById("pairing-code")?.focus(); } else { document.getElementById("workspace-select")?.focus(); } break;
       case "close-editor": if (activePath) closeTab(activePath); else setMessage("There is no open editor tab to close."); break;
       case "search": setIdeSidebarView("search"); if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching its files."); break;
       case "source-control": setIdeSidebarView("source-control"); setMessage("Git status is unavailable because the local companion does not expose a Git repository API."); break;
