@@ -1,6 +1,6 @@
 # Deployment Artifacts and Provider Setup
 
-**Status:** deployment scaffolding is implemented; no provider account, domain, environment, or live deployment is configured by this repository change.
+**Status:** the ODEI Studio frontend is deployed to Vercel and served at `https://zurios.vercel.app/odeistudio` through live host-project rewrites. Backend identity, database, secret, worker and operational production gates remain open.
 
 ## Web frontend — Vercel
 
@@ -30,7 +30,7 @@ Do not guess the API URL path or ODID values. Confirm them against the deployed 
 
 ### Required host routing for `https://zurios.vercel.app/odeistudio`
 
-The ODEI frontend is a separate Vite project mounted below the existing Zurios domain. Build the ODEI project with `VITE_BASE_PATH=/odeistudio/`. After the ODEI project has a real production deployment URL, the administrator of the existing `zurios` host project must add external rewrites before any catch-all route. Replace `<ODEI-PROJECT-DEPLOYMENT>` below with the verified deployment origin; do not deploy this example with the placeholder:
+The ODEI frontend is a separate Vite project mounted below the existing Zurios domain. The live ODEI project is `odeistudio` (root `apps/web`, Vite, Node.js `22.x`) with `VITE_BASE_PATH=/odeistudio/`; its production origin is `https://odeistudio.vercel.app`. The existing `zurios` host project has already promoted and verified the two external rewrite rules below in equivalent regex form. The following `vercel.json` example is a reference for the same routing intent only; its placeholder must never be deployed:
 
 ```json
 {
@@ -43,7 +43,7 @@ The ODEI frontend is a separate Vite project mounted below the existing Zurios d
 
 The host rewrite intentionally strips the public `/odeistudio` prefix when forwarding to the ODEI deployment root. Vite-generated browser asset URLs retain `/odeistudio/`, so subsequent asset requests pass through the same host rewrite and arrive at the upstream deployment's root-level `/assets/...` paths. Keep these specific rules ahead of the Zurios application's SPA fallback/catch-all. Preserve the existing root application, domain ownership, authentication/SSO and unrelated routes. Verify the root route, nested client-side routes, JS/CSS/assets, API calls, ODID callback and refresh/deep-link behavior on a preview before production promotion.
 
-This is a host-project administrator action, not a change that can be completed from the ODEI repository alone. Do not claim the requested URL is live until the separate ODEI project exists, the host rewrite is active, and end-to-end checks pass.
+Live Vercel routing is managed on the existing host project and is intentionally separate from this repository's Vite build config. Do not replace the active host rules with the placeholder example. HTTP smoke checks currently return 200 for the Zuri OS root, ODEI root, `/odeistudio/nexus`, and the built JS/CSS assets; authenticated browser journeys and backend integration acceptance remain outstanding.
 
 ## API container — provider-neutral OCI image
 
