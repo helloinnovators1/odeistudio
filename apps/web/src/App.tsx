@@ -71,6 +71,7 @@ export default function App() {
   const [chatSide, setChatSide] = useState<ChatPanelSide>(() => readChatPanelSide());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
+  const [activeWorkbenchMenu, setActiveWorkbenchMenu] = useState<string | null>(null);
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
   const [patchDraft, setPatchDraft] = useState("");
   const [patchDiff, setPatchDiff] = useState<string | null>(null);
@@ -372,7 +373,7 @@ export default function App() {
     });
   }
 
-  function updateChatSide(side: ChatPanelSide) {
+  function runWorkbenchCommand(command: string) {\n    setActiveWorkbenchMenu(null);\n    switch (command) {\n      case "open-workspace": setMessage("Choose a workspace from Explorer after connecting the local companion."); document.getElementById("workspace-select")?.focus(); break;\n      case "close-editor": if (activePath) closeTab(activePath); else setMessage("There is no open editor tab to close."); break;\n      case "search": document.getElementById("file-filter")?.focus(); break;\n      case "source-control": setMessage("Source Control is not connected. Connect a Git provider before using repository operations."); break;\n      case "explorer": document.querySelector<HTMLElement>(".explorer-pane")?.focus(); break;\n      case "agents": setChatOpen(true); break;\n      case "settings": setSettingsOpen(true); break;\n      case "terminal": setBottomPanel("terminal"); break;\n      case "output": setBottomPanel("output"); break;\n      case "problems": setBottomPanel("problems"); break;\n      case "quick-open": document.getElementById("file-filter")?.focus(); break;\n      case "run": setMessage("Run is unavailable until a trusted, isolated execution service is configured."); setBottomPanel("output"); break;\n      case "home": setHomeOpen(true); break;\n      case "help": setMessage("Shortcuts: Ctrl/⌘+I toggles NEXUS; Ctrl/⌘+S reports read-only status. Use the Explorer filter to find files."); break;\n    }\n  }\n  const workbenchMenus: Record<string, Array<{label:string; command:string}>> = {\n    File:[{label:"Open Workspace",command:"open-workspace"},{label:"Close Active Editor",command:"close-editor"},{label:"Home",command:"home"}],\n    Edit:[{label:"Find in Workspace",command:"search"},{label:"Settings",command:"settings"}],\n    Selection:[{label:"Focus File Filter",command:"quick-open"}],\n    View:[{label:"Explorer",command:"explorer"},{label:"NEXUS Chat",command:"agents"},{label:"Output",command:"output"},{label:"Problems",command:"problems"},{label:"Terminal",command:"terminal"}],\n    Go:[{label:"Quick Open",command:"quick-open"}],\n    Run:[{label:"Run Task",command:"run"}],\n    Terminal:[{label:"Show Terminal Panel",command:"terminal"}],\n    Help:[{label:"Keyboard Shortcuts",command:"help"}],\n  };\n\n  function updateChatSide(side: ChatPanelSide) {
     setChatSide(side);
     writeChatPanelSide(side);
   }

@@ -15,3 +15,5 @@
 .patch-diff-wrap{margin-top:14px;border:1px solid #394452;border-radius:6px;overflow:hidden}
 .patch-diff-wrap>strong{display:block;padding:8px 10px;background:#202833;color:#b9c4d1;font-size:9px;letter-spacing:.1em}
 .patch-diff{max-height:300px;overflow:auto;margin:0;padding:12px;background:#0d1219;color:#dce2e9;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+
+.ide-menubar{position:relative}.ide-menu-items{display:flex;align-items:center;gap:2px}.ide-menu-items button{padding:5px 8px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit}.ide-menu-items button:hover,.ide-menu-items button[aria-expanded=true]{background:#303a46;color:#fff}.ide-menu-popover{position:absolute;z-index:60;top:100%;left:8px;min-width:210px;padding:6px;border:1px solid #3a4652;border-radius:7px;background:#1b222c;box-shadow:0 18px 45px #0009}.ide-menu-popover button{display:block;width:100%;padding:9px 10px;border:0;border-radius:4px;background:transparent;color:#d5dee7;text-align:left;font:inherit}.ide-menu-popover button:hover{background:#2a3541}
