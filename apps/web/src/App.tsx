@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import NexusChatPanel from "./NexusChatPanel";
 import ODEIStudioHome from "./ODEIStudioHome";
@@ -89,6 +89,7 @@ export default function App() {
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [browserFavorite, setBrowserFavorite] = useState(false);
   const [browserToolsOpen, setBrowserToolsOpen] = useState(false);
+  const [nativeBrowserState, setNativeBrowserState] = useState<{ url: string; canGoBack: boolean; canGoForward: boolean; loading: boolean } | null>(null);
   const [ideMinimized, setIdeMinimized] = useState(false);
   const [ideMaximized, setIdeMaximized] = useState(false);
   const [ideSidebarView, setIdeSidebarView] = useState<"explorer" | "search" | "source-control" | "extensions">("explorer");
@@ -166,7 +167,9 @@ export default function App() {
     observer.observe(surface);
     window.addEventListener("resize", syncBounds);
     const unsubscribe = window.odeiDesktop.browser.onState((state) => {
-      if (disposed || !state.url || state.url === "about:blank") return;
+      if (disposed) return;
+      setNativeBrowserState(state);
+      if (!state.url || state.url === "about:blank") return;
       setBrowserUrl(state.url);
       setBrowserDraft(state.url);
     });
@@ -220,7 +223,7 @@ export default function App() {
     };
   }, [isIDEWindow, bottomPanel]);
 
-  async function sendTerminalInput(event: React.FormEvent<HTMLFormElement>) {
+  async function sendTerminalInput(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!terminalSessionId || !window.odeiDesktop) return;
     try {
@@ -578,6 +581,10 @@ export default function App() {
     setActiveEditorView("browser");
   }
   function moveBrowserHistory(delta: number) {
+    if (window.odeiDesktop?.browser) {
+      void (delta < 0 ? window.odeiDesktop.browser.back() : window.odeiDesktop.browser.forward());
+      return;
+    }
     const nextIndex = browserHistoryIndex + delta;
     if (nextIndex < 0 || nextIndex >= browserHistory.length) return;
     setBrowserHistoryIndex(nextIndex);
@@ -759,8 +766,8 @@ export default function App() {
           <div className="editor-surface">
             {activeEditorView === "browser" ? <section className="embedded-browser" aria-label="Browser Tab">
               <form className="browser-toolbar" onSubmit={(event) => { event.preventDefault(); navigateBrowser(); }}>
-                <button type="button" aria-label="Browser back" title="Back" disabled={browserHistoryIndex <= 0} onClick={() => moveBrowserHistory(-1)}>‹</button>
-                <button type="button" aria-label="Browser forward" title="Forward" disabled={browserHistoryIndex >= browserHistory.length - 1} onClick={() => moveBrowserHistory(1)}>›</button>
+                <button type="button" aria-label="Browser back" title="Back" disabled={nativeBrowserState ? !nativeBrowserState.canGoBack : browserHistoryIndex <= 0} onClick={() => moveBrowserHistory(-1)}>‹</button>
+                <button type="button" aria-label="Browser forward" title="Forward" disabled={nativeBrowserState ? !nativeBrowserState.canGoForward : browserHistoryIndex >= browserHistory.length - 1} onClick={() => moveBrowserHistory(1)}>›</button>
                 <button type="button" aria-label="Reload browser" title="Reload" onClick={reloadBrowser}>↻</button>
                 <button type="button" aria-label={browserFavorite ? "Remove browser favorite" : "Add browser favorite"} title="Favorite" onClick={() => setBrowserFavorite((value) => !value)}>{browserFavorite ? "★" : "☆"}</button>
                 <input aria-label="Browser address" value={browserDraft} onChange={(event) => setBrowserDraft(event.target.value)} />
