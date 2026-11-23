@@ -3,7 +3,7 @@
 **Reviewed:** 2026-11-23  
 **Verified main:** `7178564cf6bc0db4d8e642ca313f13f85def6d2e`.  
 **Merged integration:** PRs #49, #52, #53, #56, #67, #74, #76, #80, #81, #83 and #85. This includes NEXUS/MAC/MAD governance, dependency and browser smoke-test integration, API container/Vercel subpath scaffolding, production-readiness/host-routing documentation and explicit bounded multi-file chat context.  
-**Post-merge verification:** API CI [45119049000](https://github.com/helloinnovators1/odeistudio/actions/runs/45119049000) and Security Scanning [45119048998](https://github.com/helloinnovators1/odeistudio/actions/runs/45119048998) are running on the PR #85 merge commit. PR #85 exact-head API CI and Security Scanning passed before merge.  
+**Post-merge verification:** API CI [45119049000](https://github.com/helloinnovators1/odeistudio/actions/runs/45119049000) passed all six jobs and Security Scanning [45119048998](https://github.com/helloinnovators1/odeistudio/actions/runs/45119048998) passed all four jobs on the PR #85 merge commit. PR #85 exact-head API CI and Security Scanning passed before merge.  
 **Production decision: NO-GO.** No ODEI production deployment, ODID staging acceptance, production database/secrets, hardened worker fleet, backup restore, target Windows device acceptance, or monitored rollback drill is evidenced.  
 **Purpose:** one dependency-aware acceptance register for execution, NEXUS, ODID, MAC, MAD, Windows, browser and hosting work. It separates repository implementation from external provider and device acceptance.
 
