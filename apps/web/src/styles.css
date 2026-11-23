@@ -125,3 +125,13 @@
 .ide-reference .bottom-panel{height:104px;flex-basis:104px}
 @media(max-width:900px){.ide-reference .ide-menubar{right:320px;left:36px}.ide-reference .brand-lockup b{display:none}}
 @media(max-width:650px){.ide-reference .ide-menubar{position:relative;left:auto;right:auto;top:auto;height:32px;min-height:32px;flex-basis:32px;overflow-x:auto;background:#f6f7f8;border-bottom:1px solid #d8dade}.ide-reference .ide-titlebar{flex:0 0 38px}.ide-reference .brand-lockup b{display:none}}
+
+.ide-reference .ide-source-control{padding:10px 12px;min-width:0}
+.ide-reference .ide-source-heading{display:flex;align-items:center;justify-content:space-between}
+.ide-reference .ide-source-heading button,.ide-reference .ide-git-file button{border:0;background:transparent;color:inherit}
+.ide-reference .ide-git-file{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid #e5e7e9;padding:4px 0}
+.ide-reference .ide-git-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;flex:1}
+.ide-reference .ide-git-commit-label{display:block;margin-top:12px;font-size:9px;letter-spacing:.08em}
+.ide-reference .ide-source-control textarea{width:100%;margin:5px 0;padding:6px;border:1px solid #cbd1d7;background:#fff;color:#424b54;resize:vertical}
+.ide-reference .ide-git-diff{max-height:180px;overflow:auto;white-space:pre-wrap;background:#f4f5f6;border:1px solid #e0e2e5;padding:6px;font-size:10px}
+.ide-reference .native-browser-surface{background:#fff}

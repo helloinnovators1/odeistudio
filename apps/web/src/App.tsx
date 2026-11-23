@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import NexusChatPanel from "./NexusChatPanel";
 import ODEIStudioHome from "./ODEIStudioHome";
@@ -91,6 +91,11 @@ export default function App() {
   const [ideMinimized, setIdeMinimized] = useState(false);
   const [ideMaximized, setIdeMaximized] = useState(false);
   const [ideSidebarView, setIdeSidebarView] = useState<"explorer" | "search" | "source-control" | "extensions">("explorer");
+  const [nativeGitStatus, setNativeGitStatus] = useState<{ branch: string; clean: boolean; files: Array<{ index: string; worktree: string; path: string; staged: boolean; unstaged: boolean; untracked: boolean }> } | null>(null);
+  const [nativeGitDiff, setNativeGitDiff] = useState<{ unstaged: string; staged: string } | null>(null);
+  const [nativeGitError, setNativeGitError] = useState("");
+  const [nativeCommitMessage, setNativeCommitMessage] = useState("");
+  const browserSurfaceRef = useRef<HTMLDivElement | null>(null);
 
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
   const [patchDraft, setPatchDraft] = useState("");
@@ -143,6 +148,40 @@ export default function App() {
       if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, [patchDialogOpen, settingsOpen]);
+
+  useEffect(() => {
+    if (!isIDEWindow || activeEditorView !== "browser" || !window.odeiDesktop?.browser || !browserSurfaceRef.current) return;
+    const surface = browserSurfaceRef.current;
+    let disposed = false;
+    const syncBounds = () => {
+      const rect = surface.getBoundingClientRect();
+      void window.odeiDesktop?.browser.setBounds({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+    };
+    const observer = new ResizeObserver(syncBounds);
+    observer.observe(surface);
+    window.addEventListener("resize", syncBounds);
+    const unsubscribe = window.odeiDesktop.browser.onState((state) => {
+      if (disposed || !state.url || state.url === "about:blank") return;
+      setBrowserUrl(state.url);
+      setBrowserDraft(state.url);
+    });
+    void window.odeiDesktop.browser.create().then(() => {
+      if (disposed) return;
+      syncBounds();
+      return window.odeiDesktop?.browser.navigate(browserUrl);
+    }).catch((cause) => setMessage(cause instanceof Error ? cause.message : "Native browser could not start."));
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      window.removeEventListener("resize", syncBounds);
+      unsubscribe();
+      void window.odeiDesktop?.browser.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    };
+  }, [isIDEWindow, activeEditorView]);
+
+  useEffect(() => {
+    if (ideSidebarView === "source-control" && window.odeiDesktop) void refreshNativeGit();
+  }, [ideSidebarView]);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.path === activePath) ?? null,
@@ -395,6 +434,71 @@ export default function App() {
     });
   }
 
+  async function refreshNativeGit() {
+    if (!window.odeiDesktop) {
+      setNativeGitError("Native Git is available in the ODEI desktop host. The browser-only app cannot access your local Git repository.");
+      return;
+    }
+    try {
+      const status = await window.odeiDesktop.git.status();
+      setNativeGitStatus(status);
+      setNativeGitError("");
+    } catch (cause) {
+      setNativeGitError(cause instanceof Error ? cause.message : "Git status could not be loaded.");
+      setNativeGitStatus(null);
+    }
+  }
+
+  async function selectNativeRepository() {
+    if (!window.odeiDesktop) {
+      setNativeGitError("Open ODEI Studio Desktop to select a local repository.");
+      return;
+    }
+    try {
+      const selected = await window.odeiDesktop.workspace.select();
+      if (!selected) return;
+      setMessage(`Selected local folder: ${selected.name}. Loading Git status…`);
+      await refreshNativeGit();
+    } catch (cause) {
+      setNativeGitError(cause instanceof Error ? cause.message : "Folder selection failed.");
+    }
+  }
+
+  async function updateNativeGitPath(path: string, action: "stage" | "unstage") {
+    if (!window.odeiDesktop) return;
+    try {
+      if (action === "stage") await window.odeiDesktop.git.stage([path]);
+      else await window.odeiDesktop.git.unstage([path]);
+      await refreshNativeGit();
+      setNativeGitDiff(null);
+    } catch (cause) {
+      setNativeGitError(cause instanceof Error ? cause.message : "Git operation failed.");
+    }
+  }
+
+  async function showNativeGitDiff(path: string) {
+    if (!window.odeiDesktop) return;
+    try {
+      setNativeGitDiff(await window.odeiDesktop.git.diff(path));
+      setNativeGitError("");
+    } catch (cause) {
+      setNativeGitError(cause instanceof Error ? cause.message : "Git diff failed.");
+    }
+  }
+
+  async function commitNativeGitChanges() {
+    if (!window.odeiDesktop) return;
+    try {
+      const result = await window.odeiDesktop.git.commit(nativeCommitMessage);
+      setNativeCommitMessage("");
+      setNativeGitDiff(null);
+      setMessage(`Committed ${result.commit.slice(0, 8)} · ${result.summary}`);
+      await refreshNativeGit();
+    } catch (cause) {
+      setNativeGitError(cause instanceof Error ? cause.message : "Git commit failed.");
+    }
+  }
+
   function navigateBrowser(nextValue = browserDraft) {
     const candidate = nextValue.trim();
     if (!candidate) return;
@@ -407,6 +511,7 @@ export default function App() {
     setBrowserHistory((items) => [...items.slice(0, browserHistoryIndex + 1), next]);
     setBrowserHistoryIndex((index) => index + 1);
     setBrowserReloadKey((key) => key + 1);
+    if (window.odeiDesktop?.browser) void window.odeiDesktop.browser.navigate(next).catch((cause) => setMessage(cause instanceof Error ? cause.message : "Native browser navigation failed."));
     setActiveEditorView("browser");
   }
   function moveBrowserHistory(delta: number) {
@@ -416,6 +521,11 @@ export default function App() {
     setBrowserUrl(browserHistory[nextIndex]);
     setBrowserDraft(browserHistory[nextIndex]);
     setBrowserReloadKey((key) => key + 1);
+    if (window.odeiDesktop?.browser) void (delta < 0 ? window.odeiDesktop.browser.back() : window.odeiDesktop.browser.forward());
+  }
+  function reloadBrowser() {
+    setBrowserReloadKey((key) => key + 1);
+    if (window.odeiDesktop?.browser) void window.odeiDesktop.browser.reload();
   }
   async function copyBrowserUrl() {
     try { await navigator.clipboard.writeText(browserUrl); setMessage("Browser address copied."); }
@@ -533,7 +643,19 @@ export default function App() {
             <button type="button" aria-label="Extensions view" title="Extensions" aria-pressed={ideSidebarView === "extensions"} onClick={() => setIdeSidebarView("extensions")}>▦</button><span />
             <button type="button" aria-label="Explorer view options" title="View options" onClick={() => setMessage("Explorer view options: filter selected workspace files, collapse folders, or refresh the selected folder.")}>⌄</button>
           </div>
-          {ideSidebarView === "source-control" ? <section className="ide-sidebar-message"><strong>SOURCE CONTROL</strong><p>Git status, staging and commits require a trusted local companion Git API. This companion session currently grants workspace read and approval-gated patch access only.</p><button type="button" onClick={() => setMessage("No Git operations were attempted. Connect a companion build that explicitly exposes repository-scoped Git permissions.")}>Check Git integration</button></section> : ideSidebarView === "extensions" ? <section className="ide-sidebar-message"><strong>EXTENSIONS</strong><p>Extensions are not installed into this browser workspace. The native desktop host must provide a signed extension manager.</p><button type="button" onClick={() => window.open("https://marketplace.visualstudio.com/vscode", "_blank", "noopener,noreferrer")}>Browse extension marketplace ↗</button></section> : <>
+          {ideSidebarView === "source-control" ? <section className="ide-sidebar-message ide-source-control">
+            <div className="ide-source-heading"><strong>SOURCE CONTROL</strong><button type="button" onClick={() => void refreshNativeGit()} aria-label="Refresh Git status">↻</button></div>
+            {window.odeiDesktop ? <>
+              <button type="button" onClick={() => void selectNativeRepository()}>Select local repository…</button>
+              {nativeGitStatus && <><p>Branch: <strong>{nativeGitStatus.branch}</strong></p><p>{nativeGitStatus.clean ? "Working tree clean" : `${nativeGitStatus.files.length} changed file(s)`}</p>
+                {nativeGitStatus.files.map((file) => <div className="ide-git-file" key={file.path}><button type="button" className="ide-git-file-name" onClick={() => void showNativeGitDiff(file.path)}>{file.untracked ? "?" : file.index !== " " ? file.index : file.worktree}{file.path}</button><button type="button" aria-label={file.staged ? `Unstage ${file.path}` : `Stage ${file.path}`} onClick={() => void updateNativeGitPath(file.path, file.staged ? "unstage" : "stage")}>{file.staged ? "−" : "+"}</button></div>)}
+                {nativeGitDiff && <pre className="ide-git-diff">{nativeGitDiff.staged}{nativeGitDiff.unstaged}</pre>}
+                <label className="ide-git-commit-label" htmlFor="ide-git-commit-message">COMMIT MESSAGE</label><textarea id="ide-git-commit-message" rows={2} maxLength={500} value={nativeCommitMessage} onChange={(event) => setNativeCommitMessage(event.target.value)} placeholder="Describe this change" />
+                <button type="button" disabled={!nativeCommitMessage.trim() || nativeGitStatus.clean} onClick={() => void commitNativeGitChanges()}>Commit staged changes</button>
+              </>}
+            </> : <><p>Actual Git status, staging, diffs and commits require the native ODEI desktop host. This browser session cannot access local repositories.</p><button type="button" onClick={() => setNativeGitError("Install and launch apps/desktop to enable native Git operations.")}>Check desktop Git integration</button></>}
+            {nativeGitError && <p role="alert">{nativeGitError}</p>}
+          </section> : ideSidebarView === "extensions" ? <section className="ide-sidebar-message"><strong>EXTENSIONS</strong><p>Extensions are not installed into this browser workspace. The native desktop host must provide a signed extension manager.</p><button type="button" onClick={() => window.open("https://marketplace.visualstudio.com/vscode", "_blank", "noopener,noreferrer")}>Browse extension marketplace ↗</button></section> : <>
           <div className="pane-heading"><strong>{isIDEWindow ? "OIPTECH CORE" : "EXPLORER"}</strong><div className="explorer-actions"><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span><button type="button" aria-label="Search files" title="Search files" onClick={() => { if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching files."); }}>⌕</button><button type="button" aria-label="Refresh Explorer" title="Refresh Explorer" onClick={() => { if (token && workspace) void chooseWorkspace(workspace); else setMessage("Connect the local companion to refresh the Explorer."); }}>↻</button><button type="button" aria-label="Collapse all folders" title="Collapse all folders" onClick={() => { const folders = collectFolderPaths(workspaceTree); setCollapsedFolders(new Set(folders)); setMessage(folders.length ? `Collapsed ${folders.length} Explorer folders.` : "There are no loaded folders to collapse."); }}>⌄</button></div></div>
           {!token && <div className="pane-empty">Connect the companion to see your selected folders.</div>}
           {token && <>
@@ -576,7 +698,7 @@ export default function App() {
               <form className="browser-toolbar" onSubmit={(event) => { event.preventDefault(); navigateBrowser(); }}>
                 <button type="button" aria-label="Browser back" title="Back" disabled={browserHistoryIndex <= 0} onClick={() => moveBrowserHistory(-1)}>‹</button>
                 <button type="button" aria-label="Browser forward" title="Forward" disabled={browserHistoryIndex >= browserHistory.length - 1} onClick={() => moveBrowserHistory(1)}>›</button>
-                <button type="button" aria-label="Reload browser" title="Reload" onClick={() => setBrowserReloadKey((key) => key + 1)}>↻</button>
+                <button type="button" aria-label="Reload browser" title="Reload" onClick={reloadBrowser}>↻</button>
                 <button type="button" aria-label={browserFavorite ? "Remove browser favorite" : "Add browser favorite"} title="Favorite" onClick={() => setBrowserFavorite((value) => !value)}>{browserFavorite ? "★" : "☆"}</button>
                 <input aria-label="Browser address" value={browserDraft} onChange={(event) => setBrowserDraft(event.target.value)} />
                 <button type="submit" aria-label="Navigate browser" title="Go">↵</button>
@@ -584,7 +706,7 @@ export default function App() {
                 <button type="button" aria-label="Browser developer tools information" title="Developer tools" onClick={() => setBrowserToolsOpen((open) => !open)}>⌘</button>
               </form>
               {browserToolsOpen && <div className="browser-tools-note" role="status">Browser developer tools are provided by the host browser. Press F12 or Ctrl+Shift+I to inspect this tab.</div>}
-              <iframe key={browserReloadKey} title="Embedded browser preview" src={browserUrl} className="browser-frame" referrerPolicy="no-referrer" sandbox="allow-forms allow-scripts allow-popups" />
+              {window.odeiDesktop?.browser ? <div ref={browserSurfaceRef} className="browser-frame native-browser-surface" aria-label="Native Chromium browser surface" /> : <iframe key={browserReloadKey} title="Embedded browser preview" src={browserUrl} className="browser-frame" referrerPolicy="no-referrer" sandbox="allow-forms allow-scripts allow-popups" />}
             </section> : activeTab ? <MonacoEditor
               height="100%"
               path={activeTab.path}
