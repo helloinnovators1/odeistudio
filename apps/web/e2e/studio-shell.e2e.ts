@@ -52,3 +52,37 @@ test("workspace and NEXUS remain within common narrow and desktop viewports", as
     expect(dimensions.document, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
   }
 });
+
+test("settings dialog manages keyboard focus and restores its opener", async ({ page }) => {
+  await page.goto("/");
+  const opener = page.getByRole("button", { name: "Open settings" });
+  await opener.focus();
+  await page.keyboard.press("Enter");
+
+  const dialog = page.getByRole("dialog", { name: "WORKSPACE SETTINGS" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "Left side" })).toBeFocused();
+
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "Close settings" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test("all enabled top-level controls expose accessible names", async ({ page }) => {
+  await page.goto("/");
+  const unnamed = await page.locator("button:not([disabled])").evaluateAll((buttons) =>
+    buttons.filter((button) => {
+      const element = button as HTMLButtonElement;
+      return !(
+        element.getAttribute("aria-label")?.trim() ||
+        element.getAttribute("aria-labelledby")?.trim() ||
+        element.innerText.trim() ||
+        element.getAttribute("title")?.trim()
+      );
+    }).length,
+  );
+  expect(unnamed).toBe(0);
+});
