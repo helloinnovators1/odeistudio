@@ -68,10 +68,11 @@ export default function App() {
     if (!patchDialogOpen && !settingsOpen) return;
     const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
     if (!dialog) return;
+    const activeDialog = dialog;
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+    const focusable = () => Array.from(activeDialog.querySelectorAll<HTMLElement>(
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     )).filter((element) => element.getAttribute("aria-hidden") !== "true");
     focusable()[0]?.focus();
@@ -87,12 +88,12 @@ export default function App() {
       const items = focusable();
       if (items.length === 0) {
         event.preventDefault();
-        dialog.focus();
+        activeDialog.focus();
         return;
       }
       const first = items[0];
       const last = items[items.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      if (event.shiftKey && (document.activeElement === first || !activeDialog.contains(document.activeElement))) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
