@@ -1246,6 +1246,9 @@ export default function NexusChatPanel({
               setTaskError("");
               executionGenerationRef.current += 1;
               setOrganizationId(event.target.value);
+              workspaceSearchAbortRef.current?.abort();
+              setWorkspaceSearchResults(null);
+              setWorkspaceSearchQuery("");
               setSelectedContextPaths([]);
               setAttachActiveFile(false);
               setUseAttachedTools(false);
@@ -1288,6 +1291,9 @@ export default function NexusChatPanel({
                 setTaskError("");
                 executionGenerationRef.current += 1;
                 setProjectId(event.target.value);
+                workspaceSearchAbortRef.current?.abort();
+                setWorkspaceSearchResults(null);
+                setWorkspaceSearchQuery("");
                 setSelectedContextPaths([]);
                 setAttachActiveFile(false);
                 setUseAttachedTools(false);
