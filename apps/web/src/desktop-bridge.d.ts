@@ -6,6 +6,7 @@ type ODEIBrowserState = { url: string; canGoBack: boolean; canGoForward: boolean
 declare global {
   interface Window {
     odeiDesktop?: {
+      settings: { get(): Promise<{ odidSignInEnabled: boolean }>; setODIDSignIn(enabled: boolean): Promise<{ odidSignInEnabled: boolean }> };
       window: { minimize(): Promise<boolean>; toggleMaximize(): Promise<boolean>; close(): Promise<boolean>; state(): Promise<{ minimized: boolean; maximized: boolean; focused: boolean }> };
       workspace: { select(): Promise<{ name: string } | null>; current(): Promise<{ name: string } | null>; files(): Promise<Array<{ path: string; size: number }>>; readFile(path: string): Promise<string> };
       git: { status(): Promise<ODEIGitStatus>; diff(path?: string): Promise<{ unstaged: string; staged: string }>; stage(paths: string[]): Promise<{ staged: string[] }>; unstage(paths: string[]): Promise<{ unstaged: string[] }>; commit(message: string): Promise<{ commit: string; summary: string }> };

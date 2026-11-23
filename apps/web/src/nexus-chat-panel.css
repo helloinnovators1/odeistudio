@@ -96,3 +96,5 @@
 .mac-history ol{display:grid;gap:5px;margin:7px 0;padding-left:18px}
 .mac-history li{overflow-wrap:anywhere}
 .nexus-context-picker{max-height:190px;overflow:auto;margin:0 0 9px;padding:7px 8px;border:1px solid #394656;border-radius:6px;background:#151c25}.nexus-context-picker summary{cursor:pointer;color:#c6d5e2;font-size:9px;font-weight:700}.nexus-context-picker>.nexus-muted{margin:6px 0}.nexus-context-picker .nexus-attach-toggle{padding:3px 0;overflow-wrap:anywhere}.nexus-context-picker .nexus-attach-toggle .nexus-muted{margin:0 0 0 auto;font-size:8px;white-space:nowrap}
+
+.nexus-desktop-auth-toggle{display:flex;align-items:flex-start;gap:9px;width:100%;padding:10px 11px;border:1px solid #465366;border-radius:7px;background:#151c26;color:#d7e0eb;text-align:left;font-size:10px;line-height:1.45}.nexus-desktop-auth-toggle input{margin:2px 0 0;accent-color:#9de5c1}.nexus-desktop-auth-toggle span{display:grid;gap:3px}.nexus-desktop-auth-toggle small{color:#9aa6b4;font-size:9px}

@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("odeiDesktop", Object.freeze({
+  settings: Object.freeze({
+    get: () => ipcRenderer.invoke("odei:settings:get"),
+    setODIDSignIn: (enabled) => ipcRenderer.invoke("odei:settings:set-odid-sign-in", enabled),
+  }),
   window: Object.freeze({
     minimize: () => ipcRenderer.invoke("odei:window:minimize"),
     toggleMaximize: () => ipcRenderer.invoke("odei:window:toggle-maximize"),

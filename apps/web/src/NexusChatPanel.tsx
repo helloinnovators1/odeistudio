@@ -91,6 +91,10 @@ export default function NexusChatPanel({
   onClose, isOpen = true, activeFile = null, workspaceContext = null, initialPrompt = "",
 }: Props) {
   const config = useMemo(environmentConfig, []);
+  const isDesktopHost = typeof window !== "undefined" && Boolean(window.odeiDesktop);
+  const [desktopAuthEnabled, setDesktopAuthEnabled] = useState(false);
+  const [desktopSettingsLoaded, setDesktopSettingsLoaded] = useState(!isDesktopHost);
+  const authAvailable = Boolean(config.auth) && (!isDesktopHost || (desktopSettingsLoaded && desktopAuthEnabled));
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -167,6 +171,25 @@ export default function NexusChatPanel({
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!isDesktopHost) return;
+    let active = true;
+    void window.odeiDesktop!.settings.get()
+      .then((settings) => {
+        if (!active) return;
+        setDesktopAuthEnabled(settings.odidSignInEnabled === true);
+        setDesktopSettingsLoaded(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDesktopAuthEnabled(false);
+        setDesktopSettingsLoaded(true);
+        setAuthError("Could not load the desktop ODID setting. Sign-in remains disabled.");
+      });
+    return () => { active = false; };
+  }, [isDesktopHost]);
+
+  useEffect(() => {
+    if (isDesktopHost && !desktopSettingsLoaded) return;
     if (callbackHandled.current) return;
     let redirect: URL;
     try {
@@ -177,9 +200,12 @@ export default function NexusChatPanel({
     if (window.location.origin !== redirect.origin || window.location.pathname !== redirect.pathname) return;
     if (!window.location.search) return;
     callbackHandled.current = true;
-    if (!config.auth) {
+    if (!authAvailable) {
       window.history.replaceState({}, document.title, redirect.pathname);
-      setAuthError("ODID callback received, but the complete public browser configuration is missing.");
+      clearODIDLoginTransaction();
+      setAuthError(isDesktopHost && !desktopAuthEnabled
+        ? "ODID sign-in is disabled in ODEI Studio desktop settings. Enable it to accept an identity callback."
+        : "ODID callback received, but the complete public browser configuration is missing.");
       return;
     }
     setAuthBusy(true);
@@ -195,7 +221,7 @@ export default function NexusChatPanel({
         window.history.replaceState({}, document.title, redirect.pathname);
         setAuthBusy(false);
       });
-  }, [config.auth]);
+  }, [config.auth, authAvailable, desktopSettingsLoaded, desktopAuthEnabled, isDesktopHost]);
 
   useEffect(() => {
     if (!access || !config.apiBaseUrl) return;
@@ -474,7 +500,7 @@ export default function NexusChatPanel({
   }, [workspaceContext?.workspaceId]);
 
   async function signIn() {
-    if (!config.auth) {
+    if (!authAvailable || (isDesktopHost && !desktopSettingsLoaded)) {
       setAuthError("ODID browser authentication is not configured. Set the required VITE_* environment values and register the exact redirect URI.");
       return;
     }
@@ -1169,6 +1195,29 @@ export default function NexusChatPanel({
           <div className="nexus-mark">N</div>
           <h2>Connect NEXUS</h2>
           <p>Authenticate with your organization identity provider. Access and optional refresh tokens stay in memory; neither is saved in browser storage.</p>
+          {isDesktopHost && (
+            <label className="nexus-desktop-auth-toggle">
+              <input type="checkbox" checked={desktopAuthEnabled} disabled={!desktopSettingsLoaded || authBusy}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  setAuthError("");
+                  void window.odeiDesktop!.settings.setODIDSignIn(enabled)
+                    .then((settings) => {
+                      setDesktopAuthEnabled(settings.odidSignInEnabled);
+                      if (!settings.odidSignInEnabled) {
+                        signOut();
+                        setAuthError("");
+                        setNotice("Desktop ODID sign-in is disabled. Existing in-memory identity and project state were cleared.");
+                      }
+                    })
+                    .catch(() => {
+                      setDesktopAuthEnabled(false);
+                      setAuthError("Could not save the desktop ODID setting. Sign-in remains disabled.");
+                    });
+                }} />
+              <span><strong>ODEI Studio desktop · ODID sign-in</strong><small>{!desktopSettingsLoaded ? "Loading secure desktop setting…" : desktopAuthEnabled ? "Enabled on this desktop" : "Disabled by default"}</small></span>
+            </label>
+          )}
           {config.missing.length > 0 && (
             <div className="nexus-config-warning" role="status">
               Authentication is safely disabled until these deployment settings are configured:
@@ -1176,7 +1225,7 @@ export default function NexusChatPanel({
             </div>
           )}
           {authError && <p className="nexus-error" role="alert">{authError}</p>}
-          <button className="primary-button" disabled={authBusy || !config.auth} onClick={() => void signIn()}>
+          <button className="primary-button" disabled={authBusy || !authAvailable || !desktopSettingsLoaded} onClick={() => void signIn()}>
             {authBusy ? "Connecting…" : "Sign in with ODID"}
           </button>
         </section>

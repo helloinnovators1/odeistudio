@@ -63,6 +63,29 @@ function validateGitPaths(paths) {
     return normalized;
   });
 }
+function readDesktopSettings() {
+  const file = path.join(app.getPath("userData"), "odei-settings.json");
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    return { odidSignInEnabled: parsed?.odidSignInEnabled === true };
+  } catch {
+    return { odidSignInEnabled: false };
+  }
+}
+function writeDesktopSettings(settings) {
+  if (!settings || typeof settings.odidSignInEnabled !== "boolean") {
+    throw new Error("ODID sign-in setting must be a boolean");
+  }
+  const directory = app.getPath("userData");
+  const file = path.join(directory, "odei-settings.json");
+  const temporary = file + ".tmp";
+  const contents = JSON.stringify({ odidSignInEnabled: settings.odidSignInEnabled }, null, 2) + "\n";
+  fs.writeFileSync(temporary, contents, { encoding: "utf8", mode: 0o600 });
+  try { fs.chmodSync(temporary, 0o600); } catch {}
+  fs.renameSync(temporary, file);
+  return { odidSignInEnabled: settings.odidSignInEnabled };
+}
+
 function publishBrowserState() {
   if (!browserView || !mainWindow) return;
   browserState = {
@@ -106,6 +129,12 @@ function createMainWindow() {
   });
   mainWindow.loadURL(APP_URL);
 }
+
+handle("odei:settings:get", () => readDesktopSettings());
+handle("odei:settings:set-odid-sign-in", (enabled) => {
+  if (typeof enabled !== "boolean") throw new Error("ODID sign-in setting must be a boolean");
+  return writeDesktopSettings({ ...readDesktopSettings(), odidSignInEnabled: enabled });
+});
 
 handle("odei:window:minimize", () => { mainWindow.minimize(); return true; });
 handle("odei:window:toggle-maximize", () => {
