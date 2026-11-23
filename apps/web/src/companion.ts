@@ -44,7 +44,7 @@ export async function searchWorkspaceFiles(
   }
   const response = await call<WorkspaceSearchResponse>(
     "/v1/workspaces/" + encodeURIComponent(workspaceId) + "/search",
-    { method: "POST", token, body: { query }, signal },
+    { method: "POST", token, body: { query: query.trim() }, signal },
   );
   const valid = response && response.workspace_id === workspaceId &&
     Array.isArray(response.results) && response.results.length <= 50 &&
