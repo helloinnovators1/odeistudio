@@ -54,6 +54,8 @@ export default function ODEIStudioHome({
     <section className="studio-home" aria-label="ODEI Studio Window">
       <header className="studio-home-menubar">
         <div className="studio-home-brand"><span className="studio-home-mark">O</span><strong>ODEI STUDIO</strong></div>
+        <nav aria-label="Application menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></nav>
+        <span className="studio-home-window-label">ODEI Studio Window</span>
         <div className="studio-home-tools">
           <button type="button" className="studio-ide-label" aria-label="IDE home" onClick={() => { setShowApps(false); setOverflowOpen(false); }}>IDE</button>
           <div className="studio-menu-anchor">
@@ -79,8 +81,6 @@ export default function ODEIStudioHome({
             </div>}
           </div>
         </div>
-        <nav aria-label="Application menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></nav>
-        <span className="studio-home-window-label">ODEI Studio Window</span>
         <div className="studio-window-controls" role="group" aria-label="ODEI Studio window controls">
           <button type="button" className="studio-window-control" aria-label="Minimize ODEI Studio" title="Minimize" onClick={() => setMinimized(true)}>—</button>
           <button type="button" className="studio-window-control" aria-label={maximized ? "Restore ODEI Studio" : "Maximize ODEI Studio"} title={maximized ? "Restore down" : "Maximize"} onClick={() => void toggleMaximize()}>{maximized ? "❐" : "□"}</button>
