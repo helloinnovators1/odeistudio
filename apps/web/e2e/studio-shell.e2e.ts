@@ -196,7 +196,7 @@ test("reference IDE browser tab supports navigation, history, reload and externa
 test("OIPTECH Core Explorer view toolbar switches views and offers working guidance", async ({ page }) => {
   await page.goto("/?window=ide");
   await page.getByRole("button", { name: "Source Control view" }).click();
-  await expect(page.getByText("Git status, staging and commits require a trusted local companion Git API.")).toBeVisible();
+  await expect(page.getByText("Actual Git status, staging, diffs and commits require the native ODEI desktop host.")).toBeVisible();
   await page.getByRole("button", { name: "Extensions view" }).click();
   await expect(page.getByText("Extensions are not installed into this browser workspace.")).toBeVisible();
   await page.getByRole("button", { name: "Explorer view", exact: true }).click();
