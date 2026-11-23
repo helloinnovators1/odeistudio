@@ -200,7 +200,7 @@ export default function NexusChatPanel({
     if (window.location.origin !== redirect.origin || window.location.pathname !== redirect.pathname) return;
     if (!window.location.search) return;
     callbackHandled.current = true;
-    if (!authAvailable) {
+    if (!authAvailable || !config.auth) {
       window.history.replaceState({}, document.title, redirect.pathname);
       clearODIDLoginTransaction();
       setAuthError(isDesktopHost && !desktopAuthEnabled
@@ -500,7 +500,7 @@ export default function NexusChatPanel({
   }, [workspaceContext?.workspaceId]);
 
   async function signIn() {
-    if (!authAvailable || (isDesktopHost && !desktopSettingsLoaded)) {
+    if (!authAvailable || !config.auth || (isDesktopHost && !desktopSettingsLoaded)) {
       setAuthError("ODID browser authentication is not configured. Set the required VITE_* environment values and register the exact redirect URI.");
       return;
     }
