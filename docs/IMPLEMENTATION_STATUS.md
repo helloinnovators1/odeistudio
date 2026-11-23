@@ -2,28 +2,30 @@
 
 ## Authoritative repository snapshot — 2026-11-23
 
-This snapshot supersedes older dated snapshots retained below. It distinguishes verified repository state from external provider acceptance and production deployment.
+This snapshot supersedes older dated snapshots retained below. It separates merged repository implementation, unmerged pull requests, exact-head CI evidence and external production acceptance.
 
-**Verified main:** `fda728fd0fd2b1c69cbb6024dda3e99796420424`.  
-**Merged:** [PR #74](https://github.com/helloinnovators1/odeistudio/pull/74) (MAC/MAD governance and security remediation), [PR #76](https://github.com/helloinnovators1/odeistudio/pull/76) (provider readiness matrix and production gates), and [PR #80](https://github.com/helloinnovators1/odeistudio/pull/80) (API container, production HTTPX dependency, Vercel configuration and subpath support).  
-**Main API CI:** [45114080192](https://github.com/helloinnovators1/odeistudio/actions/runs/45114080192) failed on the Vite config's Node `process` typing. [PR #81](https://github.com/helloinnovators1/odeistudio/pull/81) fixes this with Vite `loadEnv`; its code-fix commit API CI [45114336289](https://github.com/helloinnovators1/odeistudio/actions/runs/45114336289) and Security Scanning [45114336349](https://github.com/helloinnovators1/odeistudio/actions/runs/45114336349) passed; a subsequent documentation-only refresh is being rechecked. PR #81 remains open pending review/merge.  
-**Container:** main API Container Build [45114080131](https://github.com/helloinnovators1/odeistudio/actions/runs/45114080131) passed, including non-root/read-only runtime and fail-closed readiness smoke checks.  
-**Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection/review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (complete authenticated browser E2E/accessibility/visual regression).  
+**Verified main:** `68a66cb3d3885f2d2619d4178a8eb20718037f08`.  
+**Merged:** PR #74 (MAC/MAD governance and security remediation), PR #76 (provider readiness matrix and production gates), PR #80 (API container and Vercel configuration), PR #81 (Vite subpath build correction).  
+**Mainline API CI:** PR #81 merge commit `ee1d18e686c8aeca48084f2ad5757388f90f8e02` passed API CI run [45115693055](https://github.com/helloinnovators1/odeistudio/actions/runs/45115693055).  
+**Mainline Security Scanning:** current main `68a66cb3d3885f2d2619d4178a8eb20718037f08` passed [45115992154](https://github.com/helloinnovators1/odeistudio/actions/runs/45115992154).  
+**Open implementation PR:** [#85](https://github.com/helloinnovators1/odeistudio/pull/85), draft explicit multi-file context picker and bounded loader. It adds opt-in selection of up to five files from a paired companion, unsaved active-buffer precedence, path/size/budget validation, cancellation checks and unit tests. It is not merged; exact-head checks are pending.  
+**Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection/review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated browser E2E/accessibility/visual regression).  
 **Vercel account evidence:** Existing `zurios` project is linked to the separate `openpayglobal/zurios` repository; no ODEI Studio project or `/odeistudio/` route is configured. The Vercel-hosted domain is SSO-protected. No ODEI production deployment or production environment variables were verified.  
 **Production decision: NO-GO.** No production deployment, staging acceptance, production ODID/MongoDB/secrets, hardened worker fleet, backup restore, target Windows device acceptance or rollback drill is evidenced.
 
 | Workstream | Verified in main | Remaining production / acceptance gates |
 |---|---|---|
 | NEXUS identity/chat | PKCE browser foundation, token lifecycle, server-authorized org/project selection, consent-gated chat, SSE stream/cancel and tenant-scoped conversations. | Real ODID issuer/client/callback/scopes/audience/JWKS; tenant-isolation staging; complete audit coverage. |
-| Inspection/proposals | Bounded attached-excerpt inspection, redaction, persisted proposals, owner decisions and signed one-use capability for single-file local apply. | Multi-file transactional apply, journal/rollback/crash recovery, complete audit and authenticated browser acceptance. |
+| Inspection/context | Bounded inspection over explicitly attached excerpts, redaction, persisted proposals, owner decisions and signed single-file local apply. | PR #85 proposes explicit selection of up to five companion files; not yet merged. Whole-repository indexing, semantic/symbol/dependency retrieval and context provenance remain open. |
+| Editing | Multi-file proposal representation and diff review; one-file companion application. | Durable multi-file transaction journal, before-images, rollback, crash recovery, Windows/POSIX parity and fault-injection tests. |
 | Tasks/execution | Durable tasks, snapshots, run/event/lease persistence, worker/sandbox integration, cancellation, artifacts/history foundations. | Dedicated hardened worker fleet, hostile-code isolation, immutable images, restricted egress, quotas and failure/recovery drills. |
 | Local companion | Loopback-only companion, pairing, bounded read-only access and signed challenge-bound single-file apply. | Signed installer/update, Windows 10 build 18362.1256 device acceptance, identity binding and multi-file rollback/recovery. |
 | MAC/MAD | MAC RBAC/environment revision governance and deployment ledger/worker foundation; MAD telemetry/incident operations. | Real provider/secret-manager adapters, staging migration/rollback, reconciliation, database-enforced append-only audit and complete audit coverage. |
-| Browser QA | Playwright/Chromium CI and shell/responsive baseline. | Authenticated user journeys, axe/equivalent, keyboard/focus/dialog tests and deterministic visual baselines (#64). |
-| Repository governance | CI/security workflows. | Main protection, independent review, required checks, stale-review dismissal, conversation resolution and force/direct-push restrictions (#63). |
-| Hosting / domains / data | MongoDB transaction-capable readiness requirement; application config and CI foundations. | Choose and provision registrar/DNS, frontend host, API host, worker host, production MongoDB, object storage, KMS/secrets, identity, email (if used), monitoring and WAF. Verify actual Namecheap/Bluehost/Vercel or alternative accounts; no provider account is assumed. |
-| Operations / release | CI and security checks pass on the merged commit. | Staging, immutable artifacts/SBOM, backups/PITR and restore, observability/on-call, incident drills, canary, smoke tests and tested rollback. |
-| Product breadth | NEXUS and workspace foundations. | Full Agents Window/CLI/background-agent orchestration and complete multi-agent policy lifecycle are not delivered. |
+| Browser QA | Playwright/Chromium CI and shell/responsive baseline. | Authenticated ODID/org/project/chat/stream/task/patch/execution journeys, screen-reader/keyboard testing, axe/equivalent and deterministic visual baselines (#64). |
+| Repository governance | CI/security workflows pass on main. | Main protection, independent review, required checks, stale-review dismissal, conversation resolution and force/direct-push restrictions (#63). |
+| Hosting / domains / data | MongoDB transaction-capable readiness requirement; application config and CI foundations. | Choose and provision registrar/DNS, frontend host, API host, worker host, production MongoDB, object storage, KMS/secrets, identity, monitoring and WAF. Verify provider accounts; none is assumed. |
+| Operations / release | Mainline API CI and Security Scanning pass on the recorded commits. | Staging, immutable artifacts/SBOM, backups/PITR and restore, observability/on-call, incident drills, canary, smoke tests and tested rollback. |
+| Product breadth | NEXUS and workspace foundations. | Full agent tool loop, test-and-repair, subagents, Agents Window/CLI/background/cloud agents, browser automation and MCP governance are not delivered as complete workflows. |
 
 ## Current release blockers
 
