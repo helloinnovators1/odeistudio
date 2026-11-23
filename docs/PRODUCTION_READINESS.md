@@ -1,8 +1,8 @@
 # Production and Deployment Readiness
 
 **Assessment date:** 2026-11-23  
-**Assessed main commit:** `68a66cb3d3885f2d2619d4178a8eb20718037f08`  
-**Decision:** **NO-GO for production deployment.** The repository now has deployable web/API scaffolding and passing container/security checks, but production identity, database, secret management, worker isolation, provider routing, staging acceptance, and operational recovery have not been demonstrated. This is a release gate, not a claim that external deployment has occurred.
+**Assessed main commit:** `7f64fb13ec2542c849640d710db368a4b0774b4e`  
+**Decision:** **NO-GO for full product production use.** The ODEI web shell is deployed on Vercel and the `/odeistudio` host path is live. The API, production identity, database, secret management, hardened workers, staging acceptance, and operational recovery have not been demonstrated. A working static frontend URL is not an accepted production platform.
 
 ## Verified repository and provider evidence
 
@@ -13,9 +13,11 @@
 - PR [#82](https://github.com/helloinnovators1/odeistudio/pull/82) merged at the assessed main commit and reconciles this readiness record with the verified repository/Vercel deployment blockers. It is documentation-only and adds no production deployment, infrastructure provisioning or browser acceptance.
 - PR #80's initial API CI exposed a Vite TypeScript error from direct `process.env` use. PR #81 replaced this with Vite `loadEnv`, tested both root and `/odeistudio/` builds, and was merged on 2026-11-23 at `ee1d18e686c8aeca48084f2ad5757388f90f8e02`.
 - The container runs as UID/GID 10001, with a read-only filesystem, dropped capabilities, bounded resources, successful liveness and fail-closed readiness when MongoDB is absent. This proves container behavior, not production readiness.
-- The connected Vercel team has an existing `zurios` project (`prj_aE6LVAFP1VrF5QmeemFYvCQ7xwoR`) linked to `openpayglobal/zurios`, not this ODEI Studio repository. `zurios.vercel.app` is attached to that project. A fresh project search returns no `odeistudio` project. The connected GitHub identity has admin/push rights on `helloinnovators1/odeistudio` but only pull access on `openpayglobal/zurios`; Vercel project creation for the ODEI repository was rejected with `repo_no_access`. The existing project has SSO protection enabled for Vercel-hosted domains. The `/odeistudio/` Vite base-path setting alone does not create the required cross-project route. Do not deploy over the existing `zurios` project or disable its SSO protection.
-- The existing ZURIOS Vercel project has preview-only demo variables, including a browser-visible demo-password variable. Treat such `VITE_*` values as public client data; never reuse them as secrets or promote them to ODEI production.
-- No ODEI Studio production deployment, production ODID registration, production MongoDB topology, managed secret store, hardened worker fleet, staging acceptance, backup restoration, target-device acceptance or rollback drill is evidenced. Production remains NO-GO.
+- The separate Vercel project `odeistudio` (`prj_NWP3i6HFCJb7UKpbyy79lWOPqnUd`) is now connected to `helloinnovators1/odeistudio`, with production alias `odeistudio.vercel.app`, Vite framework, Node 22 and `VITE_BASE_PATH=/odeistudio/`. Production deployment `dpl_Hy8kvgFvEG3PrQbGD2yEw9nFujDf` is READY at commit `7f64fb13ec2542c849640d710db368a4b0774b4e`.
+- The public host `https://zurios.vercel.app/odeistudio` returns the ODEI HTML shell and its current JavaScript/CSS assets. The host root still returns the Zuri OS HTML shell. The existing ZURIOS project and SSO settings must not be overwritten or disabled.
+- The ODEI project currently has exactly one configured environment variable: `VITE_BASE_PATH`. No `VITE_ODEI_API_BASE_URL`, ODID issuer/client/redirect/resource/scopes are configured, and no dedicated `odeistudio-api` project exists. The team has a separate `zurios-api` project; it is not assumed to be ODEI's API and must not be wired into ODEI without verified ownership and API contract.
+- A direct request to `/odeistudio/api/v1/health/ready` currently receives the SPA `index.html` with HTTP 200. This is a false-success routing defect, not a working API. The web rewrite is being narrowed so `/api/*` is not served the SPA shell; the expected response is a real 404 until an ODEI API origin is deployed and explicitly configured.
+- The static frontend deployment does not prove authenticated NEXUS, database persistence, model execution, MAC/MAD provider operations or agent execution are operational. Production identity, transaction-capable MongoDB, managed secrets/KMS, hardened worker fleet, staging acceptance, backup restoration, target-device acceptance and rollback drills remain unverified. Full product production remains NO-GO.
 
 ## Provider landscape
 
