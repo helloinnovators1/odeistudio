@@ -1,15 +1,16 @@
 # Production and Deployment Readiness
 
 **Assessment date:** 2026-11-23  
-**Assessed main commit:** `ee1d18e686c8aeca48084f2ad5757388f90f8e02`  
+**Assessed main commit:** `68a66cb3d3885f2d2619d4178a8eb20718037f08`  
 **Decision:** **NO-GO for production deployment.** The repository now has deployable web/API scaffolding and passing container/security checks, but production identity, database, secret management, worker isolation, provider routing, staging acceptance, and operational recovery have not been demonstrated. This is a release gate, not a claim that external deployment has occurred.
 
 ## Verified repository and provider evidence
 
 - PR [#74](https://github.com/helloinnovators1/odeistudio/pull/74) is merged with MAC/MAD governance and security remediation.
 - PR [#76](https://github.com/helloinnovators1/odeistudio/pull/76) is merged with the provider matrix and evidence-based production readiness gates.
-- PR [#80](https://github.com/helloinnovators1/odeistudio/pull/80) is merged at the assessed main commit. It adds a non-root API container, production HTTPX dependency, Vercel/Vite configuration, `VITE_BASE_PATH` support and container smoke CI.
+- PR [#80](https://github.com/helloinnovators1/odeistudio/pull/80) added the non-root API container, production HTTPX dependency, Vercel/Vite configuration, initial `VITE_BASE_PATH` support and container smoke CI. PR [#81](https://github.com/helloinnovators1/odeistudio/pull/81) then fixed the Vite TypeScript build regression and was merged at `ee1d18e686c8aeca48084f2ad5757388f90f8e02`.
 - PR #81 exact-head API CI [45114676030](https://github.com/helloinnovators1/odeistudio/actions/runs/45114676030) passed all six jobs, including Windows Python 3.10/3.12, Ubuntu Python 3.10/3.12, web tests/build and MongoDB integration. Its exact-head Security Scanning [45114676028](https://github.com/helloinnovators1/odeistudio/actions/runs/45114676028) passed all four jobs. API container build/smoke [45113905870](https://github.com/helloinnovators1/odeistudio/actions/runs/45113905870) passed. These are PR-head checks; they are not evidence of a production deployment or post-merge run.
+- PR [#82](https://github.com/helloinnovators1/odeistudio/pull/82) merged at the assessed main commit and reconciles this readiness record with the verified repository/Vercel deployment blockers. It is documentation-only and adds no production deployment, infrastructure provisioning or browser acceptance.
 - PR #80's initial API CI exposed a Vite TypeScript error from direct `process.env` use. PR #81 replaced this with Vite `loadEnv`, tested both root and `/odeistudio/` builds, and was merged on 2026-11-23 at `ee1d18e686c8aeca48084f2ad5757388f90f8e02`.
 - The container runs as UID/GID 10001, with a read-only filesystem, dropped capabilities, bounded resources, successful liveness and fail-closed readiness when MongoDB is absent. This proves container behavior, not production readiness.
 - The connected Vercel team has an existing `zurios` project (`prj_aE6LVAFP1VrF5QmeemFYvCQ7xwoR`) linked to `openpayglobal/zurios`, not this ODEI Studio repository. `zurios.vercel.app` is attached to that project. A fresh project search returns no `odeistudio` project. The connected GitHub identity has admin/push rights on `helloinnovators1/odeistudio` but only pull access on `openpayglobal/zurios`; Vercel project creation for the ODEI repository was rejected with `repo_no_access`. The existing project has SSO protection enabled for Vercel-hosted domains. The `/odeistudio/` Vite base-path setting alone does not create the required cross-project route. Do not deploy over the existing `zurios` project or disable its SSO protection.
