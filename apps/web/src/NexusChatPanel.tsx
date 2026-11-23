@@ -1037,9 +1037,9 @@ export default function NexusChatPanel({
       try {
         excerpt = await loadNexusWorkspaceExcerpts(
           requestedPaths,
-          async (path) => {
+          async (path, signal) => {
             if (!workspaceContext) throw new Error("Pair the local companion before attaching additional workspace files.");
-            return readWorkspaceFile(workspaceContext.accessToken, workspaceContext.workspaceId, path);
+            return readWorkspaceFile(workspaceContext.accessToken, workspaceContext.workspaceId, path, signal);
           },
           activeFile,
           controller.signal,
