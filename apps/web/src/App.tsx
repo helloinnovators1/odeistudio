@@ -54,6 +54,7 @@ export default function App() {
     }
   });
   const [chatSide, setChatSide] = useState<ChatPanelSide>(() => readChatPanelSide());
+  const [mobileView, setMobileView] = useState<"explorer" | "editor" | "nexus">("editor");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
@@ -74,7 +75,11 @@ export default function App() {
     function onKeyDown(event: KeyboardEvent) {
       if (isToggleNexusChatShortcut(event)) {
         event.preventDefault();
-        setChatOpen((open) => !open);
+        setChatOpen((open) => {
+          const next = !open;
+          setMobileView(next ? "nexus" : "editor");
+          return next;
+        });
         return;
       }
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "s") {
@@ -317,7 +322,10 @@ export default function App() {
 
   const chatPanel = (
     <NexusChatPanel
-      onClose={() => setChatOpen(false)}
+      onClose={() => {
+        setChatOpen(false);
+        setMobileView("editor");
+      }}
       isOpen={chatOpen}
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
       workspaceContext={token && workspace ? { accessToken: token, workspaceId: workspace, files } : null}
@@ -330,11 +338,21 @@ export default function App() {
         <div className="brand-lockup"><div className="brand-mark">O</div><div><b>ODEI STUDIO</b><small>Development workspace</small></div></div>
         <div className="titlebar-project"><span className="status-dot" />{workspaceName}</div>
         <div className="titlebar-actions">
-          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>NEXUS <kbd>⌘ / Ctrl + I</kbd></button>
+          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => {
+            const next = !open;
+            setMobileView(next ? "nexus" : "editor");
+            return next;
+          })}>NEXUS <kbd>⌘ / Ctrl + I</kbd></button>
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
         </div>
       </header>
+
+      <nav className="mobile-workspace-nav" aria-label="Workspace views">
+        <button type="button" aria-pressed={mobileView === "explorer"} className={mobileView === "explorer" ? "active" : ""} onClick={() => setMobileView("explorer")}>Explorer</button>
+        <button type="button" aria-pressed={mobileView === "editor"} className={mobileView === "editor" ? "active" : ""} onClick={() => setMobileView("editor")}>Editor</button>
+        <button type="button" aria-pressed={mobileView === "nexus"} className={mobileView === "nexus" ? "active" : ""} onClick={() => { setMobileView("nexus"); setChatOpen(true); }}>NEXUS</button>
+      </nav>
 
       <div className="ide-menubar">
         <span>File</span><span>Edit</span><span>Selection</span><span>View</span><span>Go</span><span>Run</span><span>Terminal</span><span>Help</span>
@@ -358,7 +376,7 @@ export default function App() {
 
       <div className="connection-status" role="status" aria-live="polite">{busy ? "Working…" : message}{error && <span className="inline-error">{error}</span>}</div>
 
-      <div className={`workbench ${chatOpen ? `chat-${chatSide}` : "chat-closed"}`}>
+      <div className={`workbench ${chatOpen ? `chat-${chatSide}` : "chat-closed"} mobile-${mobileView}`}>
         <nav className="activity-rail" aria-label="Activity bar">
           <button className="rail-button active" title="Explorer">▤</button>
           <button className="rail-button" title="Search (not connected)" disabled>⌕</button>

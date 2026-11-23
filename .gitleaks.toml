@@ -1,7 +1,0 @@
-title = "ODEI Studio Gitleaks configuration"
-
-[allowlist]
-description = "Synthetic conversation ID used only in browser transport tests; not a credential."
-regexes = [
-  '''conversation-1''',
-]

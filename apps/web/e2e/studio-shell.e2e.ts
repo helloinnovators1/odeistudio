@@ -52,3 +52,33 @@ test("workspace and NEXUS remain within common narrow and desktop viewports", as
     expect(dimensions.document, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
   }
 });
+
+
+test("compact workspace navigation switches between Explorer, Editor and NEXUS without stacking panels", async ({ page }) => {
+  for (const width of [320, 360, 390, 768, 900]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    const nav = page.getByRole("navigation", { name: "Workspace views" });
+    await expect(nav).toBeVisible();
+    await nav.getByRole("button", { name: "Explorer" }).click();
+    await expect(page.locator(".explorer-pane")).toBeVisible();
+    await expect(page.locator(".editor-column")).toBeHidden();
+    await nav.getByRole("button", { name: "Editor" }).click();
+    await expect(page.locator(".editor-column")).toBeVisible();
+    await expect(page.locator(".explorer-pane")).toBeHidden();
+    await nav.getByRole("button", { name: "NEXUS" }).click();
+    await expect(page.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
+    await expect(page.locator(".editor-column")).toBeHidden();
+    const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth, height: document.documentElement.clientHeight, bodyHeight: document.documentElement.scrollHeight }));
+    expect(dimensions.document, "horizontal overflow at " + width + "px").toBeLessThanOrEqual(dimensions.viewport);
+    expect(dimensions.bodyHeight, "unexpected document vertical overflow at " + width + "px").toBeLessThanOrEqual(dimensions.height);
+  }
+});
+
+test("desktop keeps the full editor layout and hides compact navigation", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await expect(page.getByRole("navigation", { name: "Workspace views" })).toBeHidden();
+  await expect(page.locator(".explorer-pane")).toBeVisible();
+  await expect(page.locator(".editor-column")).toBeVisible();
+});
