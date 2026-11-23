@@ -12,7 +12,8 @@ The repository currently includes:
 - ODID Authorization Code + PKCE browser foundation and in-memory token lifecycle.
 - Server-authorized organization and project discovery.
 - Consent-gated project chat, streaming and tenant/owner-scoped persisted conversations.
-- Bounded inspection tools over explicitly attached excerpts, secret redaction and review-only patch proposals.\n- Merged PR #85 adds an explicit companion file picker for up to five files, unsaved active-buffer precedence, credential/private-key path exclusions, strict per-file/aggregate budgets and abortable local reads.
+- Bounded inspection tools over explicitly attached excerpts, secret redaction and review-only patch proposals.
+- Merged PR #85 adds an explicit companion file picker for up to five files, unsaved active-buffer precedence, credential/private-key path exclusions, strict per-file/aggregate budgets and abortable local reads.
 - Durable task planning and owner approval; approval is not execution.
 - One-file signed, challenge-bound local companion application.
 - Approved-profile workspace snapshot execution, durable run/event/lease state, worker integration, cancellation, bounded artifacts and project history.
