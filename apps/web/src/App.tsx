@@ -96,7 +96,7 @@ export default function App() {
       if (event.shiftKey && (document.activeElement === first || !activeDialog.contains(document.activeElement))) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+      } else if (!event.shiftKey && (document.activeElement === last || !activeDialog.contains(document.activeElement))) {
         event.preventDefault();
         first.focus();
       }
