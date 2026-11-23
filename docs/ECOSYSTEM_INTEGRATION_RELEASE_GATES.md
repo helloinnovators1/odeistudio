@@ -1,14 +1,14 @@
 # Ecosystem integration and release gates
 
-**Reviewed:** 2026-11-22  
-**Status:** PR #49 MAD dashboard is merged. PR #55 consolidates MAC environment governance and MAD transactional auditing and remains open, unmerged and undeployed. Production readiness is not claimed.  
-**Current main commit at review:** `8b2b2e6f9449732256fb756d7d81f848e5a91597`.  
+**Reviewed:** 2026-11-23  
+**Status:** PR #49 MAD dashboard and NEXUS hardening PRs #52, #53 and #56 are merged. This integration candidate combines MAC/MAD transactional governance with the NEXUS project-load race fix; production readiness is not claimed.  
+**Current main commit at review:** `33354c866beda0da44a3f65bbf42a35b552bb509`.  
 **Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
 
 ## Verified integration state
 
 - PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged; GitHub reports no open PRs in this integration set.
-- The current mainline security workflow passed, including CodeQL, Python/web dependency audits and secret scanning. The verified feature PR heads #52, #53, #55 and #56 each passed API CI (6/6) and Security Scanning (4/4), including Windows/Ubuntu Python 3.10/3.12, web tests/build and MongoDB replica-set integration.
+- PRs #52, #53 and #56 are now merged into main. Their exact PR heads passed API CI and Security Scanning before integration. PR #55 and #65 are closed without merge; their relevant functionality was reconstructed or superseded in the current-main integration and PR #71 respectively. Mainline CI/security was triggered again after the three merges and must pass on the resulting release candidate.
 - Merging is not deployment. Real ODID configuration, provisioned worker/runtime, production secret manager, staging E2E, MAD UI/alerting, MAC control-plane acceptance and Windows 10 build 18362 device acceptance remain external/product gates.
 - The eight PR descriptions below record their original scope; they are historical scope descriptions, not open work items.
 
@@ -138,3 +138,21 @@ The target device reported by the project owner is Windows 10 version 1903, OS b
 ## 9. Operational truth
 
 Execution PRs #26–#33 are merged into main. PR #49 MAD dashboard is merged. PR #55 MAC/MAD transactional governance and PRs #52, #53 and #56 NEXUS hardening remain open and unmerged; each latest reconciled head passed API CI and Security Scanning. Mainline Security Scanning, including CodeQL, passed on commit `8b2b2e6f9449732256fb756d7d81f848e5a91597`. No production deployment, live ODID provider connection, provisioned worker execution, staging acceptance, target Windows device acceptance, or complete MAC/MAD product acceptance is claimed. The remaining checklists in this document are live release gates, not claims of completion.
+
+
+## MAC transactional audit implementation — 2026-11-22
+
+- Successful MAC lifecycle mutations and their success audit records now share one MongoDB transaction/session. If the audit insert fails, the mutation is rolled back. Failure/denial records are appended separately after the aborted transaction.
+- The transaction requires a replica set or sharded MongoDB topology. The API readiness check reports transaction support and rejects standalone MongoDB.
+- Route-level tests assert that the MAC store operation and audit insert receive the same session. A real replica-set integration test also verifies that an audit insert failure rolls back the MAC revision and that a successful operation persists the revision and audit event together. Exact code head `909caf02edd077146e8a78f2f700fb02c83ec305` passed API CI [45018761778](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761778) and Security Scanning [45018761807](https://github.com/helloinnovators1/odeistudio/actions/runs/45018761807), including Windows/Ubuntu Python 3.10/3.12 and real MongoDB replica-set integration.
+- PRs #50 and #51 are closed as superseded by PR #55, which consolidates both implementations on current `main`. The latest reconciled PR #55 head has passed API CI 6/6 and Security Scanning 4/4, including Windows/Ubuntu Python 3.10/3.12, web tests/build, MongoDB replica-set integration, CodeQL, dependency audits and secret scanning.
+- PR #55 is open and unmerged pending independent review. The promotion endpoint changes only the active configuration pointer; it is not a provider deployment.
+- Remaining MAC release gates: production secret-manager adapter and authorization, concrete provider adapter, provider-side idempotency/reconciliation, provider health verification and rollback/compensation, operator-applied revision migration, real ODID staging permissions, worker deployment, monitoring and operational acceptance.
+
+
+## MAC/MAD current integration candidate — 2026-11-23
+
+- PR #66 is closed as superseded. PR #74 is the current-main integration candidate for MAC environment revisions, NEXUS MAC panel, deployment worker, transactional audit, bounded secret resolution, separate request/approval permissions and associated tests.
+- PR #74 latest head `e2d4e106decfde1916defea8b93cbb509d9743d6` is based directly on current main `33354c866beda0da44a3f65bbf42a35b552bb509`, has no merge conflicts and is rerunning API CI and Security Scanning. Its preceding code-equivalent head passed both workflows (API CI 6/6, Security Scanning 4/4).
+- PR #74 remains unmerged and has no independent security approval. Main remains unprotected; no production migration, worker deployment, provider invocation or production rollout has been performed.
+- Before merge: independent review of transaction/audit session propagation, provider idempotency/reconciliation, secret resolver cancellation, allowlisted factory loading, migration/rollback and worker crash recovery. Before rollout: staging replica-set migration rehearsal, real ODID and operator-role acceptance, concrete provider/secret-manager adapters, hardened isolated worker and monitored rollback.

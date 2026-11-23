@@ -16,20 +16,21 @@ MAC_ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "platform_owner": frozenset({
         "mac:read", "mac:identity:manage", "mac:environment:manage",
         "mac:secrets:manage", "mac:providers:manage", "mac:security:manage",
-        "mac:deployments:approve", "mac:audit:read",
+        "mac:deployments:request", "mac:deployments:approve", "mac:audit:read",
     }),
     "super_admin": frozenset({
         "mac:read", "mac:environment:manage", "mac:secrets:manage",
         "mac:providers:manage", "mac:security:manage",
-        "mac:deployments:approve", "mac:audit:read",
+        "mac:deployments:request", "mac:deployments:approve", "mac:audit:read",
     }),
     "infrastructure_admin": frozenset({
         "mac:read", "mac:environment:manage", "mac:providers:manage",
-        "mac:deployments:approve",
+        "mac:deployments:request",
     }),
     "security_admin": frozenset({
         "mac:read", "mac:secrets:manage", "mac:security:manage", "mac:audit:read",
     }),
+    "deployment_approver": frozenset({"mac:read", "mac:deployments:approve"}),
     "read_only_auditor": frozenset({"mac:read", "mac:audit:read"}),
 }
 _ALLOWED_ROLES = frozenset(MAC_ROLE_PERMISSIONS)

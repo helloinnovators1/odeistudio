@@ -37,9 +37,14 @@ class MongoMadIncidentStore:
         await self.collection.create_index([("status", ASCENDING), ("updated_at", DESCENDING)])
         await self.collection.create_index([("severity", ASCENDING), ("updated_at", DESCENDING)])
 
-    async def record_alerts(self, alerts: list[dict[str, Any]]) -> None:
-        """Upsert active alert observations; reopen a previously resolved incident."""
+    async def record_alerts(
+        self, alerts: list[dict[str, Any]], *, session: Any | None = None,
+    ) -> None:
+        """Upsert alert observations, optionally in the caller's transaction."""
+        if not isinstance(alerts, list) or len(alerts) > 100:
+            raise MadIncidentValidationError("Alert batch size is invalid")
         now = datetime.now(timezone.utc)
+        session_options = {"session": session} if session is not None else {}
         for alert in alerts:
             incident_id = alert.get("deduplication_key")
             if not isinstance(incident_id, str) or not _INCIDENT_ID.fullmatch(incident_id):
@@ -54,7 +59,7 @@ class MongoMadIncidentStore:
             if not isinstance(runbook, str) or not runbook.startswith("docs/runbooks/") or len(runbook) > 256:
                 raise MadIncidentValidationError("Alert runbook is invalid")
 
-            existing = await self.collection.find_one({"_id": incident_id})
+            existing = await self.collection.find_one({"_id": incident_id}, **session_options)
             if existing is None:
                 document = {
                     "_id": incident_id,
@@ -72,10 +77,11 @@ class MongoMadIncidentStore:
                     "history": [{"action": "opened", "actor": "system", "at": now, "version": 1}],
                 }
                 try:
-                    await self.collection.insert_one(document)
+                    await self.collection.insert_one(document, **session_options)
                 except Exception as exc:
-                    # A concurrent observer may have inserted the same dedup key.
-                    if type(exc).__name__ != "DuplicateKeyError":
+                    # Inside a transaction, duplicate-key errors abort the transaction.
+                    # Propagate them so the transaction is retried or aborted safely.
+                    if session is not None or type(exc).__name__ != "DuplicateKeyError":
                         raise
                 continue
 
@@ -94,6 +100,7 @@ class MongoMadIncidentStore:
                             "version": int(existing.get("version", 0)) + 1,
                         }], "$slice": -200}},
                     },
+                    **session_options,
                 )
             else:
                 await self.collection.update_one(
@@ -102,6 +109,7 @@ class MongoMadIncidentStore:
                         "severity": severity, "summary": summary, "runbook": runbook,
                         "last_seen_at": now,
                     }},
+                    **session_options,
                 )
 
     async def list_incidents(self, *, include_resolved: bool = False, limit: int = 100) -> list[dict[str, Any]]:
@@ -114,6 +122,7 @@ class MongoMadIncidentStore:
     async def transition(
         self, *, incident_id: str, action: str, actor: str,
         expected_version: int, assignee: str | None = None,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         if not isinstance(incident_id, str) or not _INCIDENT_ID.fullmatch(incident_id):
             raise MadIncidentValidationError("Incident ID is invalid")
@@ -129,7 +138,7 @@ class MongoMadIncidentStore:
         elif assignee is not None:
             raise MadIncidentValidationError("Assignee is only valid for assignment")
 
-        current = await self.collection.find_one({"_id": incident_id})
+        current = await self.collection.find_one({"_id": incident_id}, session=session)
         if current is None:
             raise MadIncidentNotFound("Incident does not exist")
         status = current.get("status")
@@ -160,10 +169,11 @@ class MongoMadIncidentStore:
                     **({"assignee": assignee} if action == "assign" else {}),
                 }], "$slice": -200}},
             },
+            session=session,
         )
         if result.modified_count != 1:
             raise MadIncidentConflict("Incident changed; refresh before retrying")
-        updated = await self.collection.find_one({"_id": incident_id})
+        updated = await self.collection.find_one({"_id": incident_id}, session=session)
         if updated is None:
             raise MadIncidentNotFound("Incident disappeared after transition")
         return updated

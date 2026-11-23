@@ -1,3 +1,5 @@
+import json
+import re
 from functools import lru_cache
 from urllib.parse import urlsplit
 
@@ -22,6 +24,8 @@ class Settings(BaseSettings):
     execution_worker_id: str | None = None
     mad_metrics_token: SecretStr | None = None
     mac_platform_operators_json: str = Field(default="", max_length=262_144)
+    mac_provider_factory_allowlist_json: str = Field(default="", max_length=8_192)
+    mac_secret_resolver_factory_allowlist_json: str = Field(default="", max_length=8_192)
     auth_issuer: str | None = None
     auth_audience: str | None = None
     auth_jwks_url: str | None = None
@@ -56,6 +60,23 @@ class Settings(BaseSettings):
             from odei_api.security.mac_rbac import parse_mac_operator_registry
 
             parse_mac_operator_registry(self.mac_platform_operators_json)
+        factory_reference = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$")
+        for setting_name, raw in (
+            ("MAC_PROVIDER_FACTORY_ALLOWLIST_JSON", self.mac_provider_factory_allowlist_json),
+            ("MAC_SECRET_RESOLVER_FACTORY_ALLOWLIST_JSON", self.mac_secret_resolver_factory_allowlist_json),
+        ):
+            if not raw.strip():
+                continue
+            try:
+                allowed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{setting_name} must be a JSON array") from exc
+            if (
+                not isinstance(allowed, list) or not 1 <= len(allowed) <= 32
+                or any(not isinstance(item, str) or not factory_reference.fullmatch(item) for item in allowed)
+                or len(set(allowed)) != len(allowed)
+            ):
+                raise ValueError(f"{setting_name} must contain 1 to 32 unique module:callable references")
         if self.mad_metrics_token is not None and (
             not self.mad_metrics_token.get_secret_value().isascii()
             or len(self.mad_metrics_token.get_secret_value()) < 32

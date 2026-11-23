@@ -155,3 +155,20 @@ def test_mac_access_endpoint_fails_closed_when_audit_storage_is_unavailable(monk
         monkeypatch.setattr(settings, "mac_platform_operators_json", previous_registry)
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "AUDIT_STORE_UNAVAILABLE"
+
+
+
+def test_deployment_request_and_approval_permissions_are_separate():
+    request_only = mac_rbac.resolve_mac_access(json.dumps([{
+        "issuer": ISSUER, "subject": SUBJECT, "roles": ["infrastructure_admin"],
+    }]), issuer=ISSUER, subject=SUBJECT)
+    approval_only = mac_rbac.resolve_mac_access(json.dumps([{
+        "issuer": ISSUER, "subject": SUBJECT, "roles": ["deployment_approver"],
+    }]), issuer=ISSUER, subject=SUBJECT)
+
+    mac_rbac.require_mac_permission(request_only, "mac:deployments:request")
+    with pytest.raises(HTTPException):
+        mac_rbac.require_mac_permission(request_only, "mac:deployments:approve")
+    mac_rbac.require_mac_permission(approval_only, "mac:deployments:approve")
+    with pytest.raises(HTTPException):
+        mac_rbac.require_mac_permission(approval_only, "mac:deployments:request")

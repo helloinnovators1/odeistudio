@@ -1,12 +1,12 @@
 # Implementation Status
 
-## Authoritative repository snapshot — 2026-11-22 (PR #74 review candidate)
+## Authoritative repository snapshot — 2026-11-23 (PR #74 review candidate)
 
 This snapshot distinguishes mainline code from unmerged candidate work, CI evidence, independent review, external acceptance and production deployment.
 
-**Main at snapshot:** `f25e6fc71d3eff77e8c45c6aa4eed0b7520614c5`.  
+**Main at snapshot:** `33354c866beda0da44a3f65bbf42a35b552bb509`.  
 **Recently merged:** [#68](https://github.com/helloinnovators1/odeistudio/pull/68) (NEXUS shell/browser baseline), [#69](https://github.com/helloinnovators1/odeistudio/pull/69) (NEXUS documentation), [#70](https://github.com/helloinnovators1/odeistudio/pull/70) (delivery snapshot correction), [#71](https://github.com/helloinnovators1/odeistudio/pull/71) (stale project-discovery response guard), [#72](https://github.com/helloinnovators1/odeistudio/pull/72) (npm lockfile and deterministic installs), and [#73](https://github.com/helloinnovators1/odeistudio/pull/73) (post-PR-72 documentation refresh).  
-**Open integration PR:** [#74](https://github.com/helloinnovators1/odeistudio/pull/74), ready for independent review; exact head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a`. It reconstructs MAC/MAD work on current main and restores the MAC environment panel while preserving PR #71's project-load race fix. It is not merged. PR #66 is closed as superseded by #74.  
+**Open integration PR:** [#74](https://github.com/helloinnovators1/odeistudio/pull/74), ready for independent review; latest merge-synchronized branch tip (see PR #74 Checks). It reconstructs MAC/MAD work on current main and restores the MAC environment panel while preserving PR #71's project-load race fix. It is not merged. PR #66 is closed as superseded by #74.  
 **Open engineering issues:** [#63](https://github.com/helloinnovators1/odeistudio/issues/63) (main branch protection/review policy) and [#64](https://github.com/helloinnovators1/odeistudio/issues/64) (authenticated browser E2E/accessibility/visual regression). [#62](https://github.com/helloinnovators1/odeistudio/issues/62) is closed after PR #72.
 
 | Workstream | Verified in main | Candidate work / remaining gates |
@@ -16,7 +16,7 @@ This snapshot distinguishes mainline code from unmerged candidate work, CI evide
 | Inspection/proposals | Bounded tool loop over explicitly attached excerpts, redaction, persisted proposals, owner decisions and signed one-use capability for one-file local apply. | Broader safe multi-file context, conversation/proposal mutation-audit consistency, authenticated proposal/apply/recovery journeys. |
 | Tasks/execution | Durable task planning/approval, filtered workspace snapshots, separate upload/execution consent, approved profiles, durable runs/events/leases, worker/sandbox integration, cancellation, artifacts/history. | Production hardened worker/runtime, concrete secret/provider integration, hostile-code isolation and crash/retry/lease/cancel/cleanup drills. |
 | Local companion | Explicit workspace selection, bounded read-only inspection, pairing and signed fresh-challenge-bound one-file apply. | Multi-file journal, rollback/crash recovery, durable receipt/audit, signed installer/update and actual Windows 10 build 18362.1256 device acceptance. |
-| MAC/MAD | MAD telemetry and incident operations are in main; MAC RBAC/permission foundation is in main. | PR #74 adds environment revisions, NEXUS MAC panel, transactional audit fail-closed behavior, bounded/cancellable secret resolution, separate request/approval roles, exact factory allowlists, provider idempotency retry coverage and worker packaging. Exact-head Security Scanning passed; API CI passed all six jobs: Ubuntu/Windows Python 3.10 and 3.12, MongoDB integration and web build/tests/Playwright. Independent security review, concrete production adapters, staging migration/rollback and hardened worker deployment remain required. |
+| MAC/MAD | MAD telemetry and incident operations are in main; MAC RBAC/permission foundation is in main. | PR #74 adds environment revisions, NEXUS MAC panel, transactional audit fail-closed behavior, bounded/cancellable secret resolution, separate request/approval roles, exact factory allowlists, provider idempotency retry coverage and worker packaging. The preceding code-equivalent head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a` passed API CI 6/6 and Security Scanning 4/4. The final merge-synchronization commit is rerunning both workflows; check the PR's Checks tab for the current head. Independent security review, concrete production adapters, staging migration/rollback and hardened worker deployment remain required. |
 | Browser QA | Playwright/Chromium CI; panel open/shortcut, accessible landmark, safe unauthenticated state, narrow/desktop overflow and project request-generation unit tests. | Authenticated ODID/org/project/chat/stream/cancel/task/execution/patch/companion/MAC/MAD journeys, axe/accessibility, keyboard/focus/dialog tests and deterministic visual baselines. |
 | Web dependencies | PR #72 merged: lockfile v3, npm 10.9.4 pin, Node/npm engine range, `npm ci` in API CI and Security Scanning. | Keep lockfile current and require lockfile-based installs in new workflows. |
 | Repository governance | `main` remains unprotected; no active ruleset was found. The connected integration cannot administer branch protection. | A repository administrator must configure independent review, required CI/security contexts, stale-approval dismissal, conversation resolution, and force-push/direct-push restrictions. |
@@ -24,9 +24,9 @@ This snapshot distinguishes mainline code from unmerged candidate work, CI evide
 
 ### Verification evidence and limits
 
-- PR #68, #71 and #72 passed their reported final-head checks before merge. PR #74 exact head is `a80c8005b6ee9bdae7b4304368a67be0238c1e0a`.
-- PR #74 Security Scanning passed all four jobs: CodeQL, Python dependency audit, web dependency audit and secret scanning.
-- PR #74 API CI at this snapshot had passed Ubuntu Python 3.10/3.12, Windows Python 3.12, MongoDB replica-set transaction integration, and web unit tests/build/Playwright. Windows Python 3.10 was still running; do not describe the full exact-head API CI matrix as complete until that job passes.
+- PR #68, #71 and #72 passed their reported final-head checks before merge. PR #74 code-equivalent head `a80c8005b6ee9bdae7b4304368a67be0238c1e0a` passed API CI 6/6 and Security Scanning 4/4; current merge-synchronized branch tip is rerunning both workflows; see the PR's Checks tab for the current head.
+- The preceding code-equivalent PR #74 head passed all four Security Scanning jobs: CodeQL, Python dependency audit, web dependency audit and secret scanning.
+- The preceding code-equivalent PR #74 head passed all six API CI jobs: Ubuntu and Windows Python 3.10/3.12, MongoDB replica-set transaction integration, and web unit tests/build/Playwright. The latest merge-synchronized head is rerunning the same workflows.
 - PR #74's transaction/audit tests prove the mutation and success-audit use the same MongoDB transaction session and that missing transaction support fails closed. The worker tests bound secret resolution and simulate provider success followed by cancellation before receipt persistence, verifying the same idempotency key is reused on reclaim.
 - Provider and secret-resolver factories now require exact deployment-owned JSON allowlists. This does not provide concrete cloud-provider or secret-manager implementations; none has been accepted in a real environment.
 - PR #74 is not merged and has no independent security approval. PR #66 is closed as superseded, not merged.
@@ -35,7 +35,7 @@ This snapshot distinguishes mainline code from unmerged candidate work, CI evide
 
 ### Immediate dependency-ordered work
 
-1. Finish exact-head Windows 3.10 CI for PR #74 and obtain independent security review.
+1. Confirm the rerun of API CI and Security Scanning on the current PR #74 head, then obtain independent security review.
 2. Implement and accept concrete provider/secret-manager adapters; prove provider idempotency in the actual upstream APIs.
 3. Run migration dry-run, transactional backfill, full history verification and rollback in staging.
 4. Deploy the worker only in a hardened isolation boundary and complete crash/restart/lease/cancel/cleanup drills.
