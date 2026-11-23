@@ -24,8 +24,9 @@ Configure these Vite build-time variables in the Vercel project. Values are publ
 | `VITE_ODID_REDIRECT_URI` | Exact HTTPS callback URL registered with ODID |
 | `VITE_ODID_API_RESOURCE` | Exact API resource/audience requested by the browser |
 | `VITE_ODID_SCOPES` | Space- or comma-separated approved scopes |
+| `VITE_BASE_PATH` | Optional asset base path; use `/` for a root deployment or `/odeistudio/` for a subpath deployment |
 
-Do not guess the API URL path or ODID values. Confirm them against the deployed API routes and ODID application registration. Register the exact redirect URI and exact browser origin at the identity provider and API.
+Do not guess the API URL path or ODID values. Confirm them against the deployed API routes and ODID application registration. Register the exact redirect URI and exact browser origin at the identity provider and API. `VITE_BASE_PATH` changes generated asset URLs only; a subpath mount also requires a route/rewrite on the owning Vercel project. The checked-in setting does not create that cross-project route.
 
 ## API container — provider-neutral OCI image
 
