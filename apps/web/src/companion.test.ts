@@ -4,10 +4,68 @@ import {
   applyApprovedWorkspacePatch,
   createWorkspaceApplyChallenge,
   previewWorkspacePatch,
+  searchWorkspaceFiles,
 } from "./companion";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+
+describe("searchWorkspaceFiles", () => {
+  it("sends an authenticated, abortable local exact-search request and validates provenance", async () => {
+    const controller = new AbortController();
+    const response = {
+      workspace_id: "workspace-1",
+      results: [{
+        path: "src/main.ts", line: 12, text: "const value = NEXUS;", sha256: "a".repeat(64),
+      }],
+      files_scanned: 4, bytes_scanned: 12_345, skipped_files: 1, truncated: false,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await searchWorkspaceFiles(
+      "local-session", "workspace-1", "NEXUS", controller.signal,
+    );
+    expect(result).toEqual(response);
+    const request = fetchMock.mock.calls[0][0] as Request;
+    expect(request.method).toBe("POST");
+    expect(request.url).toContain("/v1/workspaces/workspace-1/search");
+    expect(request.headers.get("Authorization")).toBe("Bearer local-session");
+    expect(await request.json()).toEqual({ query: "NEXUS" });
+    controller.abort();
+    expect(request.signal.aborted).toBe(true);
+  });
+
+  it("rejects invalid queries and malformed or cross-workspace search responses", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(searchWorkspaceFiles("token", "workspace-1", "  "))
+      .rejects.toThrow("1–200");
+    await expect(searchWorkspaceFiles("token", "workspace-1", "x".repeat(201)))
+      .rejects.toThrow("1–200");
+    await expect(searchWorkspaceFiles("token", "workspace-1", "x" + String.fromCharCode(0)))
+      .rejects.toThrow("1–200");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      workspace_id: "other-workspace",
+      results: [], files_scanned: 0, bytes_scanned: 0, skipped_files: 0, truncated: false,
+    }), { status: 200 }));
+    await expect(searchWorkspaceFiles("token", "workspace-1", "NEXUS"))
+      .rejects.toThrow("invalid workspace search response");
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      workspace_id: "workspace-1",
+      results: [{ path: "../.env", line: 1, text: "secret", sha256: "a".repeat(64) }],
+      files_scanned: 1, bytes_scanned: 6, skipped_files: 0, truncated: false,
+    }), { status: 200 }));
+    await expect(searchWorkspaceFiles("token", "workspace-1", "secret"))
+      .rejects.toThrow("invalid workspace search response");
+  });
 });
 
 describe("previewWorkspacePatch", () => {
