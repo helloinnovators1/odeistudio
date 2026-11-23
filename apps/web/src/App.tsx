@@ -30,6 +30,12 @@ interface OpenTab {
   content: string;
 }
 
+function collectFolderPaths(nodes: WorkspaceTreeNode[]): string[] {
+  return nodes.flatMap((node) => node.kind === "directory"
+    ? [node.path, ...collectFolderPaths(node.children)]
+    : []);
+}
+
 export default function App() {
   const [homeOpen, setHomeOpen] = useState(() => {
     if (new URLSearchParams(window.location.search).get("window") === "ide") return false;
@@ -528,7 +534,7 @@ export default function App() {
             <button type="button" aria-label="Explorer view options" title="View options" onClick={() => setMessage("Explorer view options: filter selected workspace files, collapse folders, or refresh the selected folder.")}>⌄</button>
           </div>
           {ideSidebarView === "source-control" ? <section className="ide-sidebar-message"><strong>SOURCE CONTROL</strong><p>Git status, staging and commits require a trusted local companion Git API. This companion session currently grants workspace read and approval-gated patch access only.</p><button type="button" onClick={() => setMessage("No Git operations were attempted. Connect a companion build that explicitly exposes repository-scoped Git permissions.")}>Check Git integration</button></section> : ideSidebarView === "extensions" ? <section className="ide-sidebar-message"><strong>EXTENSIONS</strong><p>Extensions are not installed into this browser workspace. The native desktop host must provide a signed extension manager.</p><button type="button" onClick={() => window.open("https://marketplace.visualstudio.com/vscode", "_blank", "noopener,noreferrer")}>Browse extension marketplace ↗</button></section> : <>
-          <div className="pane-heading"><strong>{isIDEWindow ? "OIPTECH CORE" : "EXPLORER"}</strong><div className="explorer-actions"><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span><button type="button" aria-label="Search files" title="Search files" onClick={() => { if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching files."); }}>⌕</button><button type="button" aria-label="Refresh Explorer" title="Refresh Explorer" onClick={() => { if (token && workspace) void chooseWorkspace(workspace); else setMessage("Connect the local companion to refresh the Explorer."); }}>↻</button><button type="button" aria-label="Collapse all folders" title="Collapse all folders" onClick={() => { const folders = files.filter((file) => file.kind === "directory").map((file) => file.path); setCollapsedFolders(new Set(folders)); setMessage(folders.length ? `Collapsed ${folders.length} Explorer folders.` : "There are no loaded folders to collapse."); }}>⌄</button></div></div>
+          <div className="pane-heading"><strong>{isIDEWindow ? "OIPTECH CORE" : "EXPLORER"}</strong><div className="explorer-actions"><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span><button type="button" aria-label="Search files" title="Search files" onClick={() => { if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching files."); }}>⌕</button><button type="button" aria-label="Refresh Explorer" title="Refresh Explorer" onClick={() => { if (token && workspace) void chooseWorkspace(workspace); else setMessage("Connect the local companion to refresh the Explorer."); }}>↻</button><button type="button" aria-label="Collapse all folders" title="Collapse all folders" onClick={() => { const folders = collectFolderPaths(workspaceTree); setCollapsedFolders(new Set(folders)); setMessage(folders.length ? `Collapsed ${folders.length} Explorer folders.` : "There are no loaded folders to collapse."); }}>⌄</button></div></div>
           {!token && <div className="pane-empty">Connect the companion to see your selected folders.</div>}
           {token && <>
             <label className="field-label" htmlFor="workspace-select">WORKSPACE</label>
