@@ -196,7 +196,7 @@ class WorkspaceHandleRegistry:
         )
         truncated = len(files) > MAX_SEARCH_FILES
         files = files[:MAX_SEARCH_FILES]
-        needle = query.casefold()
+        needle = query.strip().casefold()
         results: list[dict[str, str | int]] = []
         files_scanned = 0
         bytes_scanned = 0
