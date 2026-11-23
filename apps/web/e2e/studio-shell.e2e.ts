@@ -115,3 +115,19 @@ test("ODEI title bar exposes IDE, app launcher, overflow menu and window control
   await expect(page.getByRole("button", { name: "Maximize ODEI Studio" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Close ODEI Studio" })).toBeVisible();
 });
+
+
+test("IDE opens the full workbench in a separate independent window", async ({ page, context }) => {
+  await page.goto("/");
+  const popupPromise = context.waitForEvent("page");
+  await page.getByRole("button", { name: "Open IDE in independent window" }).click();
+  const ideWindow = await popupPromise;
+  await ideWindow.waitForLoadState("domcontentloaded");
+  await expect(ideWindow).toHaveURL(/window=ide/);
+  await expect(ideWindow.locator(".ide-titlebar")).toBeVisible();
+  await expect(ideWindow.locator(".explorer-pane")).toBeVisible();
+  await expect(ideWindow.locator(".editor-column")).toBeVisible();
+  await expect(ideWindow.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "ODEI Studio Window" })).toBeVisible();
+  await ideWindow.close();
+});

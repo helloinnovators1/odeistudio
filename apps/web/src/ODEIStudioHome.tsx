@@ -27,6 +27,13 @@ export default function ODEIStudioHome({
   const [showApps, setShowApps] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
 
+  function openIndependentIDE() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("window", "ide");
+    const ideWindow = window.open(url.toString(), "odei-ide-window", "popup=yes,width=1440,height=900,resizable=yes,scrollbars=yes");
+    if (ideWindow) ideWindow.focus();
+  }
+
   async function toggleMaximize() {
     const next = !maximized;
     setMaximized(next);
@@ -57,7 +64,7 @@ export default function ODEIStudioHome({
         <nav aria-label="Application menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></nav>
         <span className="studio-home-window-label">ODEI Studio Window</span>
         <div className="studio-home-tools">
-          <button type="button" className="studio-ide-label" aria-label="IDE home" onClick={() => { setShowApps(false); setOverflowOpen(false); }}>IDE</button>
+          <button type="button" className="studio-ide-label" aria-label="Open IDE in independent window" title="Open IDE in independent window" onClick={openIndependentIDE}>IDE</button>
           <div className="studio-menu-anchor">
             <button type="button" className="studio-topbar-icon" aria-label="Show apps" title="Show apps" aria-expanded={showApps} onClick={() => { setShowApps((open) => !open); setOverflowOpen(false); }}>▦</button>
             {showApps && <div className="studio-topbar-popover studio-app-launcher" role="dialog" aria-label="Apps">

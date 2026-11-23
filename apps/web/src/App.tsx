@@ -32,6 +32,7 @@ interface OpenTab {
 
 export default function App() {
   const [homeOpen, setHomeOpen] = useState(() => {
+    if (new URLSearchParams(window.location.search).get("window") === "ide") return false;
     try {
       const callback = new URL(import.meta.env.VITE_ODID_REDIRECT_URI);
       const isAuthCallback = window.location.origin === callback.origin
@@ -57,6 +58,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("Connect the local companion to open a workspace.");
   const [chatOpen, setChatOpen] = useState(() => {
+    if (new URLSearchParams(window.location.search).get("window") === "ide") return true;
     try {
       const callback = new URL(import.meta.env.VITE_ODID_REDIRECT_URI);
       return window.location.origin === callback.origin
