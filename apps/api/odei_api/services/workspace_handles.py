@@ -187,13 +187,15 @@ class WorkspaceHandleRegistry:
         if not isinstance(max_results, int) or not 1 <= max_results <= MAX_SEARCH_RESULTS:
             raise ValueError("Search result limit is invalid")
 
+        # Enumerate at most one extra metadata record to detect file-count truncation.
+        # File sizes are not read here; content reads remain capped separately below.
         files = self.list_files(
             workspace_id,
-            max_files=MAX_SEARCH_FILES,
-            max_total_bytes=MAX_SEARCH_TOTAL_BYTES,
+            max_files=MAX_SEARCH_FILES + 1,
+            max_total_bytes=(1 << 63) - 1,
         )
-        listed_bytes = sum(item.size for item in files)
-        truncated = len(files) >= MAX_SEARCH_FILES or listed_bytes >= MAX_SEARCH_TOTAL_BYTES
+        truncated = len(files) > MAX_SEARCH_FILES
+        files = files[:MAX_SEARCH_FILES]
         needle = query.casefold()
         results: list[dict[str, str | int]] = []
         files_scanned = 0
