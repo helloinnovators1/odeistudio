@@ -38,6 +38,7 @@ import {
 } from "./nexus-patch-proposals";
 import { getMadExecutionMetrics, listMadIncidents, transitionMadIncident, type MadIncident, type MadMetrics } from "./mad-operations";
 import { RequestGeneration } from "./request-generation";
+import { isNexusContextPathAllowed, loadNexusWorkspaceExcerpts } from "./nexus-context";
 import { approveMacEnvironment, createMacEnvironmentDraft, getMacEnvironment, promoteMacEnvironment, rollbackMacEnvironment, submitMacEnvironment, updateMacEnvironmentDraft, type MacEnvironmentRecord } from "./mac-environments";
 import "./nexus-chat-panel.css";
 
@@ -109,6 +110,7 @@ export default function NexusChatPanel({
   const [draft, setDraft] = useState("");
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
+  const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
   const [useAttachedTools, setUseAttachedTools] = useState(false);
   const [inspectionRunning, setInspectionRunning] = useState(false);
   const [sending, setSending] = useState(false);
@@ -315,6 +317,11 @@ export default function NexusChatPanel({
     setAttachActiveFile(false);
     setUseAttachedTools(false);
   }, [activeFile?.path, activeFile?.content]);
+
+  useEffect(() => {
+    setSelectedContextPaths([]);
+    setUseAttachedTools(false);
+  }, [workspaceContext?.workspaceId]);
 
   useEffect(() => {
     const accessToken = access?.accessToken;
@@ -1018,9 +1025,32 @@ export default function NexusChatPanel({
       setChatError("Messages are limited to 8,000 characters.");
       return;
     }
-    const excerpt = attachActiveFile && activeFile
-      ? [{ path: activeFile.path, content: activeFile.content.slice(0, 8_000) }]
-      : [];
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setSending(true);
+    const requestedPaths = [...new Set([
+      ...(attachActiveFile && activeFile ? [activeFile.path] : []),
+      ...selectedContextPaths,
+    ])];
+    let excerpt: Array<{ path: string; content: string }> = [];
+    if (requestedPaths.length > 0) {
+      try {
+        excerpt = await loadNexusWorkspaceExcerpts(
+          requestedPaths,
+          async (path, signal) => {
+            if (!workspaceContext) throw new Error("Pair the local companion before attaching additional workspace files.");
+            return readWorkspaceFile(workspaceContext.accessToken, workspaceContext.workspaceId, path, signal);
+          },
+          activeFile,
+          controller.signal,
+        );
+      } catch (cause) {
+        if (abortRef.current === controller) abortRef.current = null;
+        setSending(false);
+        if (!controller.signal.aborted) setChatError(errorMessage(cause));
+        return;
+      }
+    }
     const next: TranscriptMessage[] = [
       ...messages,
       { id: newMessageId(), role: "user" as const, content },
@@ -1029,11 +1059,8 @@ export default function NexusChatPanel({
     setDraft("");
     setConsent(false);
     setChatError("");
-    setSending(true);
     const isInspection = useAttachedTools && excerpt.length > 0;
     setInspectionRunning(isInspection);
-    const controller = new AbortController();
-    abortRef.current = controller;
     try {
       let activeConversationId = conversationId;
       if (!activeConversationId) {
@@ -1116,6 +1143,13 @@ export default function NexusChatPanel({
   }
 
   const selectedProject = projects.find((item) => item.project_id === projectId);
+  const selectedContextCount = new Set([
+    ...(attachActiveFile && activeFile ? [activeFile.path] : []),
+    ...selectedContextPaths,
+  ]).size;
+  const availableContextFiles = (workspaceContext?.files ?? [])
+    .filter((file) => isNexusContextPathAllowed(file.path))
+    .slice(0, 100);
 
   return (
     <aside className={`nexus-pane${isOpen ? "" : " nexus-pane-hidden"}`} aria-label="NEXUS AI chat panel">
@@ -1159,6 +1193,9 @@ export default function NexusChatPanel({
               setTaskError("");
               executionGenerationRef.current += 1;
               setOrganizationId(event.target.value);
+              setSelectedContextPaths([]);
+              setAttachActiveFile(false);
+              setUseAttachedTools(false);
               setProjects([]);
               setProjectId("");
               setTaskPlan(null);
@@ -1198,6 +1235,9 @@ export default function NexusChatPanel({
                 setTaskError("");
                 executionGenerationRef.current += 1;
                 setProjectId(event.target.value);
+                setSelectedContextPaths([]);
+                setAttachActiveFile(false);
+                setUseAttachedTools(false);
                 setTaskPlan(null);
                 setTaskError("");
                 setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
@@ -1378,7 +1418,7 @@ export default function NexusChatPanel({
           <div className="nexus-empty-state">
             <div className="nexus-mark">N</div>
             <h2>Your coding agent</h2>
-            <p>{selectedProject ? "Ask a question about your project. NEXUS is currently read-only." : notice}</p>
+            <p>{selectedProject ? "Ask NEXUS to explain your project, inspect explicitly selected files, prepare review-only proposals, plan tasks or run separately approved executions." : notice}</p>
           </div>
         )}
         {messages.map((message) => (
@@ -1586,24 +1626,40 @@ export default function NexusChatPanel({
           <>
             {activeFile && (
               <label className="nexus-attach-toggle">
-                <input type="checkbox" checked={attachActiveFile} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
-                Attach active file excerpt: {activeFile.path}
+                <input type="checkbox" checked={attachActiveFile} disabled={!isNexusContextPathAllowed(activeFile.path) || (!attachActiveFile && selectedContextCount >= 5 && !selectedContextPaths.includes(activeFile.path))} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
+                Attach active file excerpt: {activeFile.path}{!isNexusContextPathAllowed(activeFile.path) ? " · excluded from AI context for security" : ""}
               </label>
             )}
-            {attachActiveFile && activeFile && (
+            {workspaceContext && availableContextFiles.length > 0 && (
+              <details className="nexus-context-picker">
+                <summary>Select workspace files to attach ({selectedContextCount}/5)</summary>
+                <p className="nexus-muted">Only checked files are read and sent. Hidden files and the rest of the workspace are not included automatically.</p>
+                {availableContextFiles.map((file) => (
+                  <label className="nexus-attach-toggle" key={file.path}>
+                    <input type="checkbox" checked={selectedContextPaths.includes(file.path)}
+                      disabled={!selectedContextPaths.includes(file.path) && selectedContextCount >= 5}
+                      onChange={(event) => {
+                        setSelectedContextPaths((current) => event.target.checked
+                          ? [...current, file.path].slice(0, 5)
+                          : current.filter((path) => path !== file.path));
+                        if (!event.target.checked) setUseAttachedTools(false);
+                      }} />
+                    {file.path} <span className="nexus-muted">({file.size.toLocaleString()} bytes)</span>
+                  </label>
+                ))}
+                {workspaceContext.files.filter((file) => isNexusContextPathAllowed(file.path)).length > 100 && <p className="nexus-muted">Showing the first 100 workspace entries. Narrow the workspace in the editor to select other files.</p>}
+              </details>
+            )}
+            {selectedContextCount > 0 && (
               <label className="nexus-attach-toggle nexus-tools-toggle">
                 <input type="checkbox" checked={useAttachedTools}
-                  disabled={activeFile.content.length > 8_000}
                   onChange={(event) => setUseAttachedTools(event.target.checked)} />
-                Allow NEXUS inspection and review-only change proposals for this attached excerpt
+                Allow NEXUS inspection and review-only change proposals for the selected excerpts
               </label>
-            )}
-            {attachActiveFile && activeFile && activeFile.content.length > 8_000 && (
-              <p className="nexus-muted">Only the first 8,000 characters can be shared. To prevent stale base hashes, repository inspection and generated patch proposals are disabled for this larger file.</p>
             )}
             <label className="nexus-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              I consent to sending this request{attachActiveFile && activeFile ? " and the selected file excerpt" : ""} to the configured cloud AI provider.
+              I consent to sending this request{selectedContextCount > 0 ? ` and ${selectedContextCount} explicitly selected file excerpt(s)` : ""} to the configured cloud AI provider.
             </label>
             <form className="chat-composer" onSubmit={(event) => void submitMessage(event)}>
               <textarea
@@ -1622,7 +1678,7 @@ export default function NexusChatPanel({
                 }}
               />
               <div>
-                <span>Read-only · durable project history</span>
+                <span>Chat · inspect · plan · propose · approved execution</span>
                 {sending
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>{inspectionRunning ? "Cancel inspection" : "Stop"}</button>
                   : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy || taskBusy}>Send</button>}
