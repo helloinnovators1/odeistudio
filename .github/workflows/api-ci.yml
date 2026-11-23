@@ -118,8 +118,10 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Test
         run: npm test
-      - name: Build
-        run: npm run build
+      - name: Build root and subpath variants
+        run: |
+          npm run build
+          VITE_BASE_PATH=/odeistudio/ npm run build
       - name: Install Chromium for browser acceptance tests
         run: npx playwright install --with-deps chromium
       - name: Run browser end-to-end tests
