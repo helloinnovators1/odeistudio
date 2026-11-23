@@ -218,3 +218,64 @@ def test_all_credential_key_variants_require_secret_references(key):
 def test_secret_references_reject_ambiguous_or_traversal_paths(reference):
     with pytest.raises(MacEnvironmentError):
         validate_environment_config({"database_password": reference})
+
+
+@pytest.mark.asyncio
+async def test_stale_draft_cannot_be_submitted_after_newer_revision_exists():
+    store = MongoMacEnvironmentStore(Collection())
+    await store.create_draft(
+        environment="staging", actor="author-1",
+        config={"region": "eu-west-1"}, change_summary="Initial",
+    )
+    await store.create_revision(
+        environment="staging", expected_latest_version=1, actor="author-2",
+        config={"region": "eu-central-1"}, change_summary="Newer revision",
+    )
+    with pytest.raises(MacEnvironmentConflict, match="latest draft"):
+        await store.submit_for_approval(
+            environment="staging", version=1, expected_latest_version=2, actor="author-1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_pending_revision_cannot_be_approved_after_newer_revision_exists():
+    store = MongoMacEnvironmentStore(Collection())
+    await store.create_draft(
+        environment="staging", actor="author-1",
+        config={"region": "eu-west-1"}, change_summary="Initial",
+    )
+    await store.submit_for_approval(
+        environment="staging", version=1, expected_latest_version=1, actor="author-1",
+    )
+    await store.create_revision(
+        environment="staging", expected_latest_version=1, actor="author-2",
+        config={"region": "eu-central-1"}, change_summary="Newer revision",
+    )
+    with pytest.raises(MacEnvironmentConflict, match="latest revision"):
+        await store.approve(
+            environment="staging", version=1, expected_latest_version=2, actor="reviewer-1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_older_approved_revision_cannot_be_promoted_over_newer_draft():
+    store = MongoMacEnvironmentStore(Collection())
+    await store.create_draft(
+        environment="staging", actor="author-1",
+        config={"region": "eu-west-1"}, change_summary="Initial",
+    )
+    await store.submit_for_approval(
+        environment="staging", version=1, expected_latest_version=1, actor="author-1",
+    )
+    await store.approve(
+        environment="staging", version=1, expected_latest_version=1, actor="reviewer-1",
+    )
+    await store.create_revision(
+        environment="staging", expected_latest_version=1, actor="author-2",
+        config={"region": "eu-central-1"}, change_summary="Newer revision",
+    )
+    with pytest.raises(MacEnvironmentConflict, match="latest approved revision"):
+        await store.promote(
+            environment="staging", version=1, expected_active_version=0,
+            expected_latest_version=2, actor="operator-1",
+        )
