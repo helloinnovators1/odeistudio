@@ -95,6 +95,10 @@ export default function App() {
   const [nativeGitDiff, setNativeGitDiff] = useState<{ unstaged: string; staged: string } | null>(null);
   const [nativeGitError, setNativeGitError] = useState("");
   const [nativeCommitMessage, setNativeCommitMessage] = useState("");
+  const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
+  const [terminalOutput, setTerminalOutput] = useState("");
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalError, setTerminalError] = useState("");
   const browserSurfaceRef = useRef<HTMLDivElement | null>(null);
 
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
@@ -182,6 +186,49 @@ export default function App() {
   useEffect(() => {
     if (ideSidebarView === "source-control" && window.odeiDesktop) void refreshNativeGit();
   }, [ideSidebarView]);
+
+  useEffect(() => {
+    if (!isIDEWindow || bottomPanel !== "terminal" || !window.odeiDesktop || terminalSessionId) return;
+    let disposed = false;
+    let sessionId: string | null = null;
+    const unsubscribe = window.odeiDesktop.terminal.onData((payload) => {
+      if (disposed || payload.id !== sessionId) return;
+      if (payload.data) setTerminalOutput((current) => (current + payload.data).slice(-120_000));
+      if (typeof payload.exitCode === "number") setTerminalOutput((current) => (current + `\\r\\n[process exited: ${payload.exitCode}]\\r\\n`).slice(-120_000));
+    });
+    void (async () => {
+      try {
+        let workspace = await window.odeiDesktop?.workspace.current();
+        if (!workspace) workspace = await window.odeiDesktop?.workspace.select();
+        if (!workspace || disposed) return;
+        const session = await window.odeiDesktop?.terminal.open({ cols: 100, rows: 24 });
+        if (!session || disposed) return;
+        sessionId = session.id;
+        setTerminalSessionId(session.id);
+        setTerminalError("");
+        setTerminalOutput(`ODEI Terminal · ${session.shell} · ${session.cwd}\\r\\n`);
+      } catch (cause) {
+        setTerminalError(cause instanceof Error ? cause.message : "Native terminal could not start.");
+      }
+    })();
+    return () => {
+      disposed = true;
+      unsubscribe();
+      if (sessionId) void window.odeiDesktop?.terminal.close(sessionId);
+      setTerminalSessionId(null);
+    };
+  }, [isIDEWindow, bottomPanel]);
+
+  async function sendTerminalInput(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!terminalSessionId || !window.odeiDesktop) return;
+    try {
+      await window.odeiDesktop.terminal.write(terminalSessionId, terminalInput + "\\r");
+      setTerminalInput("");
+    } catch (cause) {
+      setTerminalError(cause instanceof Error ? cause.message : "Terminal input failed.");
+    }
+  }
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.path === activePath) ?? null,
@@ -595,9 +642,9 @@ export default function App() {
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
           {isIDEWindow && <div className="ide-native-controls" role="group" aria-label="IDE window controls">
-            <button type="button" aria-label="Minimize IDE window" title="Minimize" onClick={() => setIdeMinimized(true)}>—</button>
-            <button type="button" aria-label={ideMaximized ? "Restore IDE window" : "Maximize IDE window"} title={ideMaximized ? "Restore" : "Maximize"} onClick={() => { const next = !ideMaximized; setIdeMaximized(next); if (next) void document.documentElement.requestFullscreen?.().catch(() => undefined); else if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); }}>{ideMaximized ? "❐" : "□"}</button>
-            <button type="button" aria-label="Close IDE window" title="Close" onClick={() => { if (window.opener) window.close(); else setHomeOpen(true); }}>×</button>
+            <button type="button" aria-label="Minimize IDE window" title="Minimize" onClick={() => { if (window.odeiDesktop) void window.odeiDesktop.window.minimize(); else setIdeMinimized(true); }}>—</button>
+            <button type="button" aria-label={ideMaximized ? "Restore IDE window" : "Maximize IDE window"} title={ideMaximized ? "Restore" : "Maximize"} onClick={() => { if (window.odeiDesktop) void window.odeiDesktop.window.toggleMaximize().then(setIdeMaximized); else { const next = !ideMaximized; setIdeMaximized(next); if (next) void document.documentElement.requestFullscreen?.().catch(() => undefined); else if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); } }}>{ideMaximized ? "❐" : "□"}</button>
+            <button type="button" aria-label="Close IDE window" title="Close" onClick={() => { if (window.odeiDesktop) void window.odeiDesktop.window.close(); else if (window.opener) window.close(); else setHomeOpen(true); }}>×</button>
           </div>}
         </div>
       </header>
@@ -736,7 +783,12 @@ export default function App() {
             <div className="bottom-content">
               {bottomPanel === "problems" && "Diagnostics are not connected (no language server)."}
               {bottomPanel === "output" && (error || message)}
-              {bottomPanel === "terminal" && <div className="ide-terminal-guidance"><span>Secure execution is available through NEXUS task plans and approved isolated profiles.</span><button type="button" onClick={() => { setChatOpen(true); setMessage("Create a NEXUS task plan, approve it, then select a server-approved isolated execution profile."); }}>Open NEXUS execution console</button></div>}
+              {bottomPanel === "terminal" && (window.odeiDesktop ? <div className="ide-native-terminal">
+                <pre aria-label="Terminal output">{terminalOutput || "Starting local terminal…"}</pre>
+                {terminalError && <p role="alert">{terminalError}</p>}
+                {terminalSessionId && <form onSubmit={(event) => void sendTerminalInput(event)}><label className="terminal-prompt" htmlFor="native-terminal-input">›</label><input id="native-terminal-input" aria-label="Terminal input" autoComplete="off" spellCheck={false} value={terminalInput} onChange={(event) => setTerminalInput(event.target.value)} placeholder="Enter a command or interactive input…" /><button type="submit" disabled={!terminalInput}>Send</button></form>}
+                {!terminalSessionId && <button type="button" onClick={() => { setTerminalError(""); setBottomPanel("output"); setTimeout(() => setBottomPanel("terminal"), 0); }}>Retry terminal</button>}
+              </div> : <div className="ide-terminal-guidance"><span>Interactive local shell requires the native ODEI desktop host. Browser-only sessions cannot safely access your computer's shell.</span><button type="button" onClick={() => setMessage("Launch apps/desktop to enable the native interactive terminal. Public web sessions never receive local shell access.")}>Desktop terminal requirements</button><button type="button" onClick={() => setChatOpen(true)}>Open NEXUS execution console</button></div>)}
             </div>
           </section>
           <footer className="statusbar"><span>{token ? "Companion connected" : "No local workspace"}</span><span>{activeTab ? languageForPath(activeTab.path) : "Plain Text"}</span><span>UTF-8</span><span>READ ONLY</span></footer>

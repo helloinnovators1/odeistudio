@@ -135,3 +135,10 @@
 .ide-reference .ide-source-control textarea{width:100%;margin:5px 0;padding:6px;border:1px solid #cbd1d7;background:#fff;color:#424b54;resize:vertical}
 .ide-reference .ide-git-diff{max-height:180px;overflow:auto;white-space:pre-wrap;background:#f4f5f6;border:1px solid #e0e2e5;padding:6px;font-size:10px}
 .ide-reference .native-browser-surface{background:#fff}
+
+.ide-reference .ide-native-terminal{height:100%;min-height:0;display:flex;flex-direction:column;gap:6px}
+.ide-reference .ide-native-terminal pre{flex:1;min-height:0;overflow:auto;margin:0;padding:8px;background:#fff;color:#3c4650;border:1px solid #e0e2e5;font:11px/1.5 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.ide-reference .ide-native-terminal form{display:flex;align-items:center;gap:6px}
+.ide-reference .ide-native-terminal input{flex:1;min-width:0;border:1px solid #cbd1d7;padding:6px;background:#fff;color:#333;font:11px Consolas,monospace}
+.ide-reference .ide-native-terminal button{border:1px solid #cbd1d7;padding:5px 9px;background:#f7f8f9;color:#3e4852;font-size:10px}
+.ide-reference .terminal-prompt{font:14px Consolas,monospace}
