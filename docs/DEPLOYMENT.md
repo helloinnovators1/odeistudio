@@ -25,3 +25,7 @@ Document service ownership, health endpoints, logs, metrics, alerts, backup sche
 ## MongoDB topology and readiness
 
 The API's readiness check verifies both a live MongoDB ping and transaction-capable topology (`setName` for a replica set or `msg=isdbgrid` for mongos). A standalone MongoDB server returns 503 with `transactions: unsupported`, because NEXUS task state, lifecycle events and audit events are committed in a multi-collection transaction. Use a supported replica set or sharded cluster in staging/production. A successful CI replica-set test is not evidence that the target Atlas cluster is connected or correctly configured.
+
+## Production release gate
+
+Use [Production and Deployment Readiness](PRODUCTION_READINESS.md) as the authoritative, evidence-backed go/no-go checklist. Production remains NO-GO until the identity, database, secrets, hardened worker, MAC/MAD, browser/device, observability, governance, staging and rollback gates have been independently accepted. A green CI run is necessary but is not production acceptance.
