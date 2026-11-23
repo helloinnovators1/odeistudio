@@ -38,7 +38,7 @@ export async function searchWorkspaceFiles(
   query: string,
   signal?: AbortSignal,
 ): Promise<WorkspaceSearchResponse> {
-  if (!query.trim() || query.length > 200 || query.includes("\\0")) {
+  if (!query.trim() || query.length > 200 || query.includes("\0")) {
     throw new Error("Workspace search requires 1–200 non-NUL characters.");
   }
   const response = await call<WorkspaceSearchResponse>(
@@ -53,7 +53,7 @@ export async function searchWorkspaceFiles(
     typeof response.truncated === "boolean" &&
     response.results.every((item) =>
       item && typeof item.path === "string" && item.path.length > 0 &&
-      !item.path.startsWith("/") && !item.path.includes("\\\\") &&
+      !item.path.startsWith("/") && !item.path.includes("\\") &&
       !item.path.split("/").some((part) => !part || part === "." || part === "..") &&
       Number.isInteger(item.line) && item.line >= 1 &&
       typeof item.text === "string" && item.text.length <= 500 &&
