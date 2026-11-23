@@ -168,3 +168,25 @@ test("IDE workbench menus and activity rail controls perform their advertised ac
   await expect(ide.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
   await ide.close();
 });
+
+
+test("reference IDE browser tab supports navigation, history, reload and external open", async ({ page }) => {
+  await page.goto("/?window=ide");
+  await expect(page.getByRole("tab", { name: "◎ Browser Tab" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Browser address" }).fill("https://example.com");
+  await page.getByRole("button", { name: "Navigate browser" }).click();
+  await expect(page.locator(".browser-frame")).toHaveAttribute("src", "https://example.com/");
+  await expect(page.getByRole("button", { name: "Browser back" })).toBeEnabled();
+  await page.getByRole("button", { name: "Browser back" }).click();
+  await expect(page.locator(".browser-frame")).toHaveAttribute("src", "http://127.0.0.1:3003/");
+  await page.getByRole("button", { name: "Reload browser" }).click();
+  await page.getByRole("button", { name: "Browser developer tools information" }).click();
+  await expect(page.getByRole("status")).toContainText("Press F12");
+  await expect(page.getByRole("button", { name: "Minimize IDE window" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Maximize IDE window" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close IDE window" })).toBeVisible();
+  await page.getByRole("button", { name: "Minimize IDE window" }).click();
+  await expect(page.getByText("OIPTECH Core is minimized")).toBeVisible();
+  await page.getByRole("button", { name: "Restore window" }).click();
+  await expect(page.getByRole("tab", { name: "◎ Browser Tab" })).toBeVisible();
+});
