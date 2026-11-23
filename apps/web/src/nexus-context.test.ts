@@ -12,7 +12,7 @@ describe("loadNexusWorkspaceExcerpts", () => {
       { path: "apps/api/main.py", content: "contents of apps/api/main.py" },
     ]);
     expect(readFile).toHaveBeenCalledTimes(2);
-    expect(readFile).toHaveBeenNthCalledWith(1, "src/main.ts");
+    expect(readFile).toHaveBeenNthCalledWith(1, "src/main.ts", undefined);
   });
 
   it("uses the current editor buffer instead of a potentially stale disk read", async () => {
