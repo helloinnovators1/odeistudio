@@ -82,6 +82,8 @@ export default function App() {
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [browserFavorite, setBrowserFavorite] = useState(false);
   const [browserToolsOpen, setBrowserToolsOpen] = useState(false);
+  const [ideMinimized, setIdeMinimized] = useState(false);
+  const [ideMaximized, setIdeMaximized] = useState(false);
 
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
   const [patchDraft, setPatchDraft] = useState("");
@@ -459,7 +461,7 @@ export default function App() {
   );
 
   return (
-    <main className={isIDEWindow ? "ide-shell ide-reference" : "ide-shell"}>
+    <main className={isIDEWindow ? `ide-shell ide-reference${ideMaximized ? " ide-maximized" : ""}` : "ide-shell"}>
       {homeOpen ? <ODEIStudioHome
         onOpenWorkspace={() => setHomeOpen(false)}
         onStartChat={(prompt) => { setInitialPrompt(prompt); setHomeOpen(false); setChatOpen(true); }}
@@ -475,10 +477,15 @@ export default function App() {
           <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>{isIDEWindow ? "Agents Window ↗" : <>NEXUS <kbd>⌘ / Ctrl + I</kbd></>}</button>
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
+          {isIDEWindow && <div className="ide-native-controls" role="group" aria-label="IDE window controls">
+            <button type="button" aria-label="Minimize IDE window" title="Minimize" onClick={() => setIdeMinimized(true)}>—</button>
+            <button type="button" aria-label={ideMaximized ? "Restore IDE window" : "Maximize IDE window"} title={ideMaximized ? "Restore" : "Maximize"} onClick={() => { const next = !ideMaximized; setIdeMaximized(next); if (next) void document.documentElement.requestFullscreen?.().catch(() => undefined); else if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); }}>{ideMaximized ? "❐" : "□"}</button>
+            <button type="button" aria-label="Close IDE window" title="Close" onClick={() => { if (window.opener) window.close(); else setHomeOpen(true); }}>×</button>
+          </div>}
         </div>
       </header>
 
-      <div className="ide-menubar">
+      {ideMinimized && isIDEWindow ? <div className="ide-minimized-overlay"><strong>OIPTECH Core is minimized</strong><button type="button" onClick={() => setIdeMinimized(false)}>Restore window</button></div> : null}\n      <div className="ide-menubar">
         <nav className="ide-menu-items" aria-label="Workbench menu">{Object.keys(workbenchMenus).map((menu) => <button type="button" key={menu} aria-haspopup="menu" aria-expanded={activeWorkbenchMenu === menu} onClick={() => setActiveWorkbenchMenu((current) => current === menu ? null : menu)}>{menu}</button>)}</nav>{activeWorkbenchMenu && <div className="ide-menu-popover" role="menu" aria-label={`${activeWorkbenchMenu} menu`}>{workbenchMenus[activeWorkbenchMenu].map((item) => <button type="button" role="menuitem" key={item.label} onClick={() => runWorkbenchCommand(item.command)}>{item.label}</button>)}</div>}
         <span className="menubar-spacer" />
         <span className="access-pill">LOCAL · READ ONLY</span>
@@ -511,7 +518,7 @@ export default function App() {
         </nav>
 
         <aside className="explorer-pane" tabIndex={-1}>
-          <div className="pane-heading"><strong>EXPLORER</strong><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span></div>
+          <div className="pane-heading"><strong>{isIDEWindow ? "OIPTECH CORE" : "EXPLORER"}</strong><div className="explorer-actions"><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span><button type="button" aria-label="Search files" title="Search files" onClick={() => document.getElementById("file-filter")?.focus()}>⌕</button><button type="button" aria-label="Refresh Explorer" title="Refresh Explorer" onClick={() => { if (token && workspace) void chooseWorkspace(workspace); else setMessage("Connect the local companion to refresh the Explorer."); }}>↻</button><button type="button" aria-label="Collapse all folders" title="Collapse all folders" onClick={() => setCollapsedFolders(new Set(files.filter((file) => file.kind === "directory").map((file) => file.path)))}>⌄</button></div></div>
           {!token && <div className="pane-empty">Connect the companion to see your selected folders.</div>}
           {token && <>
             <label className="field-label" htmlFor="workspace-select">WORKSPACE</label>

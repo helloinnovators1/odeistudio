@@ -75,3 +75,24 @@
 .browser-tools-note{padding:7px 10px;background:#fff8df;color:#6f5a20;font-size:10px}
 @media(max-width:900px){.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:250px minmax(0,1fr)}.ide-reference .nexus-pane{grid-column:1 / -1;grid-row:2;min-height:280px}.ide-reference .explorer-pane{grid-column:1;grid-row:1}.ide-reference .editor-column{grid-column:2;grid-row:1}}
 @media(max-width:650px){.ide-reference .ide-titlebar{padding:0 6px}.ide-reference .brand-lockup{min-width:0}.ide-reference .titlebar-actions .toolbar-button{font-size:9px;padding:4px 6px}.ide-reference .ide-menubar{overflow-x:auto}.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:1fr;grid-template-rows:180px minmax(400px,1fr) auto}.ide-reference .explorer-pane{grid-column:1;grid-row:1}.ide-reference .editor-column{grid-column:1;grid-row:2}.ide-reference .nexus-pane{grid-column:1;grid-row:3}}
+
+.ide-reference .ide-titlebar{position:relative}
+.ide-reference .ide-menubar{position:absolute;top:0;left:165px;right:360px;z-index:4;height:38px;min-height:38px;flex-basis:38px;overflow:visible;background:transparent;border:0;padding:0 4px;gap:0}
+.ide-reference .ide-menu-items{height:100%;gap:0}
+.ide-reference .ide-menu-items button{height:100%;padding:0 8px;font-size:12px}
+.ide-reference .ide-titlebar-actions{z-index:5}
+.ide-reference .titlebar-actions .toolbar-button[aria-label="Open settings"]{display:none}
+.ide-reference .ide-native-controls{display:flex;align-items:stretch;height:38px;margin-left:8px}
+.ide-reference .ide-native-controls button{width:42px;padding:0;border:0;border-radius:0;background:transparent;color:#616a74;font-size:16px}
+.ide-reference .ide-native-controls button:hover{background:#e2e5e8}
+.ide-reference .ide-native-controls button:last-child:hover{background:#d9434d;color:white}
+.ide-reference .ide-minimized-overlay{position:absolute;z-index:100;inset:72px 0 23px;display:flex;align-items:center;justify-content:center;gap:14px;background:#f4f5f6;color:#4a535d}
+.ide-reference .ide-minimized-overlay button{background:#e6e9ec;border-color:#cbd0d5;color:#3e4852}
+.ide-reference .explorer-actions{display:flex;align-items:center;gap:5px}
+.ide-reference .explorer-actions span{color:#77818b;font-size:10px}
+.ide-reference .explorer-actions button{width:23px;height:23px;padding:0;border:0;background:transparent;color:#6e7882;font-size:14px}
+.ide-reference .explorer-actions button:hover{background:#e6e9ed}
+.ide-reference .editor-actionbar{display:none}
+.ide-reference .editor-tabs{height:36px;flex-basis:36px;position:relative}
+.ide-reference .ide-maximized{height:100dvh}
+.ide-reference .browser-tab-menu{top:36px}
