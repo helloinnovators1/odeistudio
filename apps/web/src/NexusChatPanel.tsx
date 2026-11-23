@@ -109,7 +109,7 @@ export default function NexusChatPanel({
   const [conversationId, setConversationId] = useState("");
   const [conversationBusy, setConversationBusy] = useState(false);
   const [draft, setDraft] = useState(initialPrompt);
-  useEffect(() => { if (initialPrompt) setDraft(initialPrompt); }, [initialPrompt]);
+  useEffect(() => { setDraft(initialPrompt); }, [initialPrompt]);
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
   const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
