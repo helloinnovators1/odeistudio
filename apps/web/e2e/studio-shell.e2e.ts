@@ -1,9 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-test("IDE shell opens the authenticated NEXUS entry state", async ({ page }) => {
+test("ODEI Studio Window is the first screen and opens the workspace", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("main")).toBeVisible();
-  await expect(page.getByText("ODEI STUDIO", { exact: true })).toBeVisible();
+  await expect(page).toHaveTitle("ODEI Studio Window");
+  await expect(page.getByRole("main", { name: "ODEI Studio Window" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What are we building today?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Automations Coming soon" })).toBeDisabled();
+  await page.locator(".studio-quick-actions button").nth(1).click();
+  await expect(page.getByRole("heading", { name: "ODEI NEXUS Workspace" })).toBeVisible();
   await page.getByRole("button", { name: "NEXUS ⌘ / Ctrl + I" }).click();
   const panel = page.locator('aside[aria-label="NEXUS AI chat panel"]');
   await expect(panel).toBeVisible();
@@ -29,6 +33,7 @@ test("the workspace shell has no horizontal overflow at 320px", async ({ page })
 
 test("NEXUS exposes a named panel and a safe unauthenticated configuration state", async ({ page }) => {
   await page.goto("/");
+  await page.locator(".studio-quick-actions button").nth(1).click();
   await page.getByRole("button", { name: "NEXUS ⌘ / Ctrl + I" }).click();
 
   const panel = page.getByRole("complementary", { name: "NEXUS AI chat panel" });
@@ -42,6 +47,7 @@ test("workspace and NEXUS remain within common narrow and desktop viewports", as
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
+    await page.locator(".studio-quick-actions button").nth(1).click();
     await page.getByRole("button", { name: "NEXUS ⌘ / Ctrl + I" }).click();
     await expect(page.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
 
@@ -55,6 +61,7 @@ test("workspace and NEXUS remain within common narrow and desktop viewports", as
 
 test("settings dialog manages keyboard focus and restores its opener", async ({ page }) => {
   await page.goto("/");
+  await page.locator(".studio-quick-actions button").nth(1).click();
   const opener = page.getByRole("button", { name: "Open settings" });
   await opener.focus();
   await page.keyboard.press("Enter");
