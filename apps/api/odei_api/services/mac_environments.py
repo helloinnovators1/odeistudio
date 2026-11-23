@@ -56,6 +56,10 @@ def validate_environment_config(config: Mapping[str, Any]) -> dict[str, Any]:
             if not isinstance(value, str) or not _valid_secret_reference(value):
                 raise MacEnvironmentError("Secret values must be external secret:// references")
         elif isinstance(value, str):
+            if value.startswith("secret://"):
+                raise MacEnvironmentError(
+                    "Secret references must use a sensitive configuration key"
+                )
             if len(value) > 2048:
                 raise MacEnvironmentError("Configuration value is too long")
         elif (not isinstance(value, (bool, int, float))
