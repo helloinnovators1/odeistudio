@@ -200,5 +200,6 @@ test("OIPTECH Core Explorer view toolbar switches views and offers working guida
   await page.getByRole("button", { name: "Explorer view" }).click();
   await expect(page.getByText("Connect the companion to see your selected folders.")).toBeVisible();
   await page.getByRole("button", { name: "Terminal", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Show Terminal Panel" }).click();
   await expect(page.getByRole("button", { name: "Open NEXUS execution console" })).toBeVisible();
 });
