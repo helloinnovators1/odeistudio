@@ -1156,8 +1156,9 @@ export default function NexusChatPanel({
   return (
     <aside className={`nexus-pane${isOpen ? "" : " nexus-pane-hidden"}`} aria-label="NEXUS AI chat panel">
       <div className="pane-heading">
-        <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
+        <div><span className="pane-kicker">Tab · ODEI NEXUS</span><strong>{selectedProject?.name ?? "AI Chat"}</strong></div>
         <div className="nexus-header-actions">
+          {access && projectId && <button className="nexus-link-button" type="button" aria-label="New NEXUS conversation" title="New conversation" disabled={sending || conversationBusy} onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setConsent(false); setNotice("New conversation ready. Send a message to create it."); }}>＋</button>}
           {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>

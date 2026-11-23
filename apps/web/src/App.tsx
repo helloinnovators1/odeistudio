@@ -84,6 +84,7 @@ export default function App() {
   const [browserToolsOpen, setBrowserToolsOpen] = useState(false);
   const [ideMinimized, setIdeMinimized] = useState(false);
   const [ideMaximized, setIdeMaximized] = useState(false);
+  const [ideSidebarView, setIdeSidebarView] = useState<"explorer" | "search" | "source-control" | "extensions">("explorer");
 
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
   const [patchDraft, setPatchDraft] = useState("");
@@ -420,16 +421,16 @@ export default function App() {
     switch (command) {
       case "open-workspace": if (!token) { setMessage("Connect the local companion, then select a folder you explicitly choose."); document.querySelector<HTMLButtonElement>(".connect-actions .primary-button")?.click(); document.getElementById("pairing-code")?.focus(); } else { document.getElementById("workspace-select")?.focus(); } break;
       case "close-editor": if (activePath) closeTab(activePath); else setMessage("There is no open editor tab to close."); break;
-      case "search": if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching its files."); break;
-      case "source-control": setMessage("Source Control is not connected. Connect a Git provider before using repository operations."); break;
-      case "explorer": document.querySelector<HTMLElement>(".explorer-pane")?.focus(); setMessage("Explorer is active. Connect the companion to browse selected folders."); break;
+      case "search": setIdeSidebarView("search"); if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching its files."); break;
+      case "source-control": setIdeSidebarView("source-control"); setMessage("Git status is unavailable because the local companion does not expose a Git repository API."); break;
+      case "explorer": setIdeSidebarView("explorer"); document.querySelector<HTMLElement>(".explorer-pane")?.focus(); setMessage("Explorer is active. Connect the companion to browse selected folders."); break;
       case "agents": setChatOpen(true); break;
       case "settings": setSettingsOpen(true); break;
-      case "terminal": setBottomPanel("terminal"); break;
+      case "terminal": setBottomPanel("terminal"); setChatOpen(true); setMessage("Use NEXUS task plans and explicitly approved isolated execution for commands. An unrestricted local shell is not exposed by the web client."); break;
       case "output": setBottomPanel("output"); break;
       case "problems": setBottomPanel("problems"); break;
       case "quick-open": document.getElementById("file-filter")?.focus(); break;
-      case "run": setMessage("Run is unavailable until a trusted, isolated execution service is configured."); setBottomPanel("output"); break;
+      case "run": setChatOpen(true); setBottomPanel("output"); setMessage("Run is routed through NEXUS approved task plans and the configured isolated execution service; no arbitrary browser-side command is executed."); break;
       case "home": setHomeOpen(true); break;
       case "help": setMessage("Shortcuts: Ctrl/⌘+I toggles NEXUS; Ctrl/⌘+S reports read-only status. Use the Explorer filter to find files."); break;
     }
@@ -485,7 +486,8 @@ export default function App() {
         </div>
       </header>
 
-      {ideMinimized && isIDEWindow ? <div className="ide-minimized-overlay"><strong>OIPTECH Core is minimized</strong><button type="button" onClick={() => setIdeMinimized(false)}>Restore window</button></div> : null}\n      <div className="ide-menubar">
+      {ideMinimized && isIDEWindow ? <div className="ide-minimized-overlay"><strong>OIPTECH Core is minimized</strong><button type="button" onClick={() => setIdeMinimized(false)}>Restore window</button></div> : null}
+      <div className="ide-menubar">
         <nav className="ide-menu-items" aria-label="Workbench menu">{Object.keys(workbenchMenus).map((menu) => <button type="button" key={menu} aria-haspopup="menu" aria-expanded={activeWorkbenchMenu === menu} onClick={() => setActiveWorkbenchMenu((current) => current === menu ? null : menu)}>{menu}</button>)}</nav>{activeWorkbenchMenu && <div className="ide-menu-popover" role="menu" aria-label={`${activeWorkbenchMenu} menu`}>{workbenchMenus[activeWorkbenchMenu].map((item) => <button type="button" role="menuitem" key={item.label} onClick={() => runWorkbenchCommand(item.command)}>{item.label}</button>)}</div>}
         <span className="menubar-spacer" />
         <span className="access-pill">LOCAL · READ ONLY</span>
@@ -518,6 +520,14 @@ export default function App() {
         </nav>
 
         <aside className="explorer-pane" tabIndex={-1}>
+          <div className="ide-explorer-toolbar" role="toolbar" aria-label="Explorer views">
+            <button type="button" aria-label="Explorer view" title="Explorer" aria-pressed={ideSidebarView === "explorer"} onClick={() => setIdeSidebarView("explorer")}>▤</button>
+            <button type="button" aria-label="Search view" title="Search" aria-pressed={ideSidebarView === "search"} onClick={() => { setIdeSidebarView("search"); if (token) document.getElementById("file-filter")?.focus(); }}>⌕</button>
+            <button type="button" aria-label="Source Control view" title="Source Control" aria-pressed={ideSidebarView === "source-control"} onClick={() => setIdeSidebarView("source-control")}>⑂</button>
+            <button type="button" aria-label="Extensions view" title="Extensions" aria-pressed={ideSidebarView === "extensions"} onClick={() => setIdeSidebarView("extensions")}>▦</button><span />
+            <button type="button" aria-label="Explorer view options" title="View options" onClick={() => setMessage("Explorer view options: filter selected workspace files, collapse folders, or refresh the selected folder.")}>⌄</button>
+          </div>
+          {ideSidebarView === "source-control" ? <section className="ide-sidebar-message"><strong>SOURCE CONTROL</strong><p>Git status, staging and commits require a trusted local companion Git API. This companion session currently grants workspace read and approval-gated patch access only.</p><button type="button" onClick={() => setMessage("No Git operations were attempted. Connect a companion build that explicitly exposes repository-scoped Git permissions.")}>Check Git integration</button></section> : ideSidebarView === "extensions" ? <section className="ide-sidebar-message"><strong>EXTENSIONS</strong><p>Extensions are not installed into this browser workspace. The native desktop host must provide a signed extension manager.</p><button type="button" onClick={() => window.open("https://marketplace.visualstudio.com/vscode", "_blank", "noopener,noreferrer")}>Browse extension marketplace ↗</button></section> : <>
           <div className="pane-heading"><strong>{isIDEWindow ? "OIPTECH CORE" : "EXPLORER"}</strong><div className="explorer-actions"><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span><button type="button" aria-label="Search files" title="Search files" onClick={() => { if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching files."); }}>⌕</button><button type="button" aria-label="Refresh Explorer" title="Refresh Explorer" onClick={() => { if (token && workspace) void chooseWorkspace(workspace); else setMessage("Connect the local companion to refresh the Explorer."); }}>↻</button><button type="button" aria-label="Collapse all folders" title="Collapse all folders" onClick={() => { const folders = files.filter((file) => file.kind === "directory").map((file) => file.path); setCollapsedFolders(new Set(folders)); setMessage(folders.length ? `Collapsed ${folders.length} Explorer folders.` : "There are no loaded folders to collapse."); }}>⌄</button></div></div>
           {!token && <div className="pane-empty">Connect the companion to see your selected folders.</div>}
           {token && <>
@@ -532,6 +542,7 @@ export default function App() {
               {renderTree(workspaceTree)}
               {visibleFiles.length === 0 && <div className="pane-empty">{files.length === 0 ? "No files in this selected workspace." : "No file paths match this filter."}</div>}
             </div>
+          </>}
           </>}
         </aside>
 
@@ -597,7 +608,7 @@ export default function App() {
             <div className="bottom-content">
               {bottomPanel === "problems" && "Diagnostics are not connected (no language server)."}
               {bottomPanel === "output" && (error || message)}
-              {bottomPanel === "terminal" && "Terminal execution is disabled. Commands will not run in the browser; an isolated execution service is still required."}
+              {bottomPanel === "terminal" && <div className="ide-terminal-guidance"><span>Secure execution is available through NEXUS task plans and approved isolated profiles.</span><button type="button" onClick={() => { setChatOpen(true); setMessage("Create a NEXUS task plan, approve it, then select a server-approved isolated execution profile."); }}>Open NEXUS execution console</button></div>}
             </div>
           </section>
           <footer className="statusbar"><span>{token ? "Companion connected" : "No local workspace"}</span><span>{activeTab ? languageForPath(activeTab.path) : "Plain Text"}</span><span>UTF-8</span><span>READ ONLY</span></footer>

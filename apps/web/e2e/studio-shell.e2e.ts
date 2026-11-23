@@ -190,3 +190,15 @@ test("reference IDE browser tab supports navigation, history, reload and externa
   await page.getByRole("button", { name: "Restore window" }).click();
   await expect(page.getByRole("tab", { name: "◎ Browser Tab" })).toBeVisible();
 });
+
+test("OIPTECH Core Explorer view toolbar switches views and offers working guidance", async ({ page }) => {
+  await page.goto("/?window=ide");
+  await page.getByRole("button", { name: "Source Control view" }).click();
+  await expect(page.getByText("Git status, staging and commits require a trusted local companion Git API.")).toBeVisible();
+  await page.getByRole("button", { name: "Extensions view" }).click();
+  await expect(page.getByText("Extensions are not installed into this browser workspace.")).toBeVisible();
+  await page.getByRole("button", { name: "Explorer view" }).click();
+  await expect(page.getByText("Connect the companion to see your selected folders.")).toBeVisible();
+  await page.getByRole("button", { name: "Terminal", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Open NEXUS execution console" })).toBeVisible();
+});
