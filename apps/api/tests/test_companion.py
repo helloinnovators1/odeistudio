@@ -1002,3 +1002,104 @@ def test_windows_patch_read_rejects_file_modified_during_snapshot(tmp_path, monk
         match="changed while being read",
     ):
         windows_file_handles._read_windows_file(None, ("target.txt",))
+
+
+def test_companion_search_is_bounded_redacted_and_respects_exclusions(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    root = tmp_path / "project"
+    (root / "main.py").write_text(
+        "NEXUS agent entry\\napi_key = \"supersecretvalue123\"\\n",
+        encoding="utf-8",
+    )
+    (root / ".gitignore").write_text("ignored.txt\\n", encoding="utf-8")
+    (root / "ignored.txt").write_text("NEXUS ignored\\n", encoding="utf-8")
+    (root / ".env").write_text("NEXUS_SECRET=do-not-return\\n", encoding="utf-8")
+    (root / "large.txt").write_text("NEXUS " * 30_000, encoding="utf-8")
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        response = client.post(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            json={"query": "nexus"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert [item["path"] for item in payload["results"]] == ["main.py"]
+        assert payload["results"][0]["line"] == 1
+        assert len(payload["results"][0]["sha256"]) == 64
+        assert payload["files_scanned"] >= 1
+        assert payload["skipped_files"] >= 1
+        assert payload["truncated"] is False
+        assert ".env" not in response.text
+        assert "ignored.txt" not in response.text
+        assert "do-not-return" not in response.text
+
+        redacted = client.post(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            json={"query": "api_key"},
+        )
+        assert redacted.status_code == 200
+        assert "supersecretvalue123" not in redacted.text
+        assert "[REDACTED]" in redacted.text
+    finally:
+        registry.close()
+
+
+def test_companion_search_requires_pairing_and_valid_bounded_query(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        workspace_id = client.get("/v1/workspaces").json()["workspaces"][0]["workspace_id"] if False else None
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        unauthorized = client.post(
+            f"/v1/workspaces/{workspace_id}/search", json={"query": "NEXUS"}
+        )
+        assert unauthorized.status_code == 401
+        invalid = client.post(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            json={"query": " "},
+        )
+        assert invalid.status_code == 400
+        oversized = client.post(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            json={"query": "x" * 201},
+        )
+        assert oversized.status_code == 422
+        nul = client.post(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            json={"query": "x\\x00y"},
+        )
+        assert nul.status_code == 400
+        unknown = client.post(
+            "/v1/workspaces/not-selected/search",
+            headers=headers,
+            json={"query": "NEXUS"},
+        )
+        assert unknown.status_code == 404
+    finally:
+        registry.close()
+
+
+def test_companion_search_caps_results_and_reports_truncation(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    root = tmp_path / "project"
+    (root / "many.txt").write_text("NEXUS\\n" * 60, encoding="utf-8")
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        response = client.post(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            json={"query": "NEXUS"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload["results"]) == 50
+        assert payload["truncated"] is True
+    finally:
+        registry.close()
