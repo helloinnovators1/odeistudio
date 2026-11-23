@@ -33,6 +33,7 @@ Welcome to the engineering and product documentation for ODEI Studio, an African
 - [Hosting integrations](HOSTING_INTEGRATIONS.md) — hosting, cloud, registrar and DNS adapters.
 - [Provider capability research](PROVIDER_CAPABILITY_RESEARCH.md) — verified initial provider surfaces and limits.
 - [Deployment and environments](DEPLOYMENT.md) — local, preview, staging and production deployment.
+- [Deployment artifacts and provider setup](DEPLOYMENT_ARTIFACTS.md) — Vercel web build configuration, non-root API container, runtime settings and release boundaries.
 - [Quality and testing](TESTING.md) — test pyramid, security checks and release gates.
 - [Desktop project ingestion](DESKTOP_INGESTION.md) — safe, user-authorized local project indexing without ZIP packaging, plus the `odei-companion --diagnose` prerequisite command.
 - [Web workspace client](../apps/web/README.md) — Monaco read-only workspace, local pairing and configurable NEXUS panel.
