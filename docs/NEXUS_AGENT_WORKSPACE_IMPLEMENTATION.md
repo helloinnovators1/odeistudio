@@ -36,7 +36,7 @@ The current implementation branch adds an explicit context picker:
 - The current unsaved editor buffer takes precedence over a disk read for the active file.
 - Unsafe relative paths, case-insensitive duplicate paths and oversized context are rejected.
 - Context loading checks cancellation before and after each read.
-- Selected paths are reset when the companion workspace, organization, project, active editor file or identity changes.
+- Selected paths are reset when the companion workspace, organization, project or identity changes; the active-file attachment and inspection toggle reset when the editor buffer changes.
 - Cloud transmission still requires the existing explicit consent control.
 - Read-only inspection and review-only proposal semantics remain unchanged.
 
