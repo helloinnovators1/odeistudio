@@ -54,7 +54,7 @@ export default function App() {
     }
   });
   const [chatSide, setChatSide] = useState<ChatPanelSide>(() => readChatPanelSide());
-  const [mobileView, setMobileView] = useState<"explorer" | "editor" | "nexus">("editor");
+  const [mobileView, setMobileView] = useState<"explorer" | "editor" | "nexus">(() => chatOpen ? "nexus" : "editor");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
   const [patchDialogOpen, setPatchDialogOpen] = useState(false);
@@ -75,11 +75,9 @@ export default function App() {
     function onKeyDown(event: KeyboardEvent) {
       if (isToggleNexusChatShortcut(event)) {
         event.preventDefault();
-        setChatOpen((open) => {
-          const next = !open;
-          setMobileView(next ? "nexus" : "editor");
-          return next;
-        });
+        const next = !chatOpen;
+        setChatOpen(next);
+        setMobileView(next ? "nexus" : "editor");
         return;
       }
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "s") {
@@ -338,11 +336,11 @@ export default function App() {
         <div className="brand-lockup"><div className="brand-mark">O</div><div><b>ODEI STUDIO</b><small>Development workspace</small></div></div>
         <div className="titlebar-project"><span className="status-dot" />{workspaceName}</div>
         <div className="titlebar-actions">
-          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => {
-            const next = !open;
+          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => {
+            const next = !chatOpen;
+            setChatOpen(next);
             setMobileView(next ? "nexus" : "editor");
-            return next;
-          })}>NEXUS <kbd>⌘ / Ctrl + I</kbd></button>
+          }}>NEXUS <kbd>⌘ / Ctrl + I</kbd></button>
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
         </div>
