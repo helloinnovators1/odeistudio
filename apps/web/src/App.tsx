@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import NexusChatPanel from "./NexusChatPanel";
+import ODEIStudioHome from "./ODEIStudioHome";
 import {
   connectToCompanion,
   disconnectFromCompanion,
@@ -30,6 +31,8 @@ interface OpenTab {
 }
 
 export default function App() {
+  const [homeOpen, setHomeOpen] = useState(() => !window.location.search);
+  const [initialPrompt, setInitialPrompt] = useState("");
   const [connected, setConnected] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -367,15 +370,24 @@ export default function App() {
       isOpen={chatOpen}
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
       workspaceContext={token && workspace ? { accessToken: token, workspaceId: workspace, files } : null}
+      initialPrompt={initialPrompt}
     />
   );
 
   return (
     <main className="ide-shell">
+      {homeOpen ? <ODEIStudioHome
+        onOpenWorkspace={() => setHomeOpen(false)}
+        onStartChat={(prompt) => { setInitialPrompt(prompt); setHomeOpen(false); setChatOpen(true); }}
+        onCustomize={() => { setHomeOpen(false); setSettingsOpen(true); }}
+        workspaceName={workspaceName === "No folder open" ? "" : workspaceName}
+        companionConnected={Boolean(token)}
+      /> : <>
       <header className="ide-titlebar">
         <div className="brand-lockup"><div className="brand-mark">O</div><div><b>ODEI STUDIO</b><small>Development workspace</small></div></div>
         <div className="titlebar-project"><span className="status-dot" />{workspaceName}</div>
         <div className="titlebar-actions">
+          <button className="toolbar-button" onClick={() => setHomeOpen(true)} aria-label="Open ODEI Studio Window">⌂ Home</button>
           <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>NEXUS <kbd>⌘ / Ctrl + I</kbd></button>
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
@@ -527,6 +539,7 @@ export default function App() {
           <button className="primary-button" onClick={() => setSettingsOpen(false)}>Done</button>
         </section>
       </div>}
+      </>}
     </main>
   );
 }
