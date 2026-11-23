@@ -1,19 +1,28 @@
 # Ecosystem integration and release gates
 
 **Reviewed:** 2026-11-23  
-**Status:** PR #49 MAD dashboard and NEXUS hardening PRs #52, #53 and #56 are merged. This integration candidate combines MAC/MAD transactional governance with the NEXUS project-load race fix; production readiness is not claimed.  
-**Current main commit at review:** `33354c866beda0da44a3f65bbf42a35b552bb509`.  
-**Purpose:** one dependency-aware acceptance register for the execution, NEXUS, ODID, MAC, MAD and Windows work, separating repository implementation from deployment and device acceptance.
+**Verified main:** `45d968d8f4af82ec2d9520da37ded2485e21f87e`.  
+**Merged integration:** PRs #49, #52, #53, #56, #67, #74, #76, #80, #81 and #83. This includes NEXUS/MAC/MAD governance, dependency and browser smoke-test integration, API container/Vercel subpath scaffolding and production-readiness/host-routing documentation.  
+**Open NEXUS increment:** [PR #85](https://github.com/helloinnovators1/odeistudio/pull/85) is a draft, unmerged bounded multi-file context picker. Exact-head API CI and Security Scanning are being verified.  
+**Production decision: NO-GO.** No ODEI production deployment, ODID staging acceptance, production database/secrets, hardened worker fleet, backup restore, target Windows device acceptance, or monitored rollback drill is evidenced.  
+**Purpose:** one dependency-aware acceptance register for execution, NEXUS, ODID, MAC, MAD, Windows, browser and hosting work. It separates repository implementation from external provider and device acceptance.
 
-## Verified integration state
+## Current verified integration state
 
-- PRs [#26](https://github.com/helloinnovators1/odeistudio/pull/26), [#27](https://github.com/helloinnovators1/odeistudio/pull/27), [#28](https://github.com/helloinnovators1/odeistudio/pull/28), [#29](https://github.com/helloinnovators1/odeistudio/pull/29), [#30](https://github.com/helloinnovators1/odeistudio/pull/30), [#31](https://github.com/helloinnovators1/odeistudio/pull/31), [#32](https://github.com/helloinnovators1/odeistudio/pull/32) and [#33](https://github.com/helloinnovators1/odeistudio/pull/33) are merged; GitHub reports no open PRs in this integration set.
-- PRs #52, #53 and #56 are now merged into main. Their exact PR heads passed API CI and Security Scanning before integration. PR #55 and #65 are closed without merge; their relevant functionality was reconstructed or superseded in the current-main integration and PR #71 respectively. Mainline CI/security was triggered again after the three merges and must pass on the resulting release candidate.
-- Merging is not deployment. Real ODID configuration, provisioned worker/runtime, production secret manager, staging E2E, MAD UI/alerting, MAC control-plane acceptance and Windows 10 build 18362 device acceptance remain external/product gates.
-- The eight PR descriptions below record their original scope; they are historical scope descriptions, not open work items.
+- MAC/MAD governance was integrated through merged PR #74; do not refer to it as an open integration candidate.
+- PR #81's Vite TypeScript/subpath build fix is merged. Mainline API CI passed on its merge commit; current mainline Security Scanning passed. PR #83 reconciles production-readiness and host-routing documentation and is merged.
+- Main includes ODID PKCE browser foundations, tenant/project-scoped chat/history, SSE streaming/cancellation, bounded excerpt inspection, task planning/approval, patch proposals, single-file companion apply, and the separate approved-profile execution vertical slice.
+- NEXUS context inspection remains bounded to explicitly attached excerpts. PR #85 proposes up to five explicitly selected companion files with size/path limits and sensitive-path exclusions; it is not yet merged.
+- Multi-file proposal records do not imply multi-file local application. Durable transaction journaling, rollback and crash recovery remain open.
+- Task approval is not execution. The approved-profile worker/sandbox vertical slice exists, but the full model-controlled tool loop, integrated test-and-repair cycle and autonomous agent orchestration are not complete.
+- The current repository backlog tracks repository indexing (#86), multi-file transactional apply (#87), governed tool loop and verification/repair (#88), parallel agents/worktrees (#89), and browser/MCP/background automation (#90).
+- Issue #63 tracks main branch protection and independent review; #64 tracks authenticated browser E2E/accessibility/visual regression; #84 tracks Vercel project and host routing access.
+- The connected Vercel team currently has only projects linked to `openpayglobal/zurios`; there is no ODEI project and the existing Zurios project/SSO/routing must not be overwritten. Vercel team write/admin access to `helloinnovators1/odeistudio` and host-project admin access are external prerequisites.
+- Real ODID issuer/client/scopes/audience/JWKS/CORS, production MongoDB/KMS/secrets, concrete provider adapters, hardened hostile-code isolation, signed Windows installer/device acceptance, staging and rollback remain external gates.
 
+This document records repository and CI evidence separately from external acceptance. A green workflow proves only that the exact tested commit passed its jobs; it does not prove merge, deployment, live identity integration or production readiness. Detailed historical PR scope descriptions and the original execution acceptance checklists follow. The current authoritative workstream summary is [Implementation Status](IMPLEMENTATION_STATUS.md), and the current NEXUS target architecture is [NEXUS Agent Workspace Implementation](NEXUS_AGENT_WORKSPACE_IMPLEMENTATION.md).
 
-This document records verified repository/CI evidence separately from external acceptance. A green pull-request workflow proves only that the tested commit passed those jobs. It does not prove that the change is merged, deployed, configured against a real identity provider, or accepted on the target Windows device.
+---
 
 ## 1. Current execution change set
 
