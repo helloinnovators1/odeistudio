@@ -37,7 +37,7 @@ docker build --pull -t odei-api:release ./apps/api
 
 The image:
 
-- Installs the API package from its locked project metadata.
+- Installs the API package and its declared production dependencies from `pyproject.toml`.
 - Runs as UID/GID 10001, not root.
 - Uses a production environment by default, disabling FastAPI docs and ReDoc.
 - Binds to `0.0.0.0` and honors the platform-provided `PORT` (default 8000).
