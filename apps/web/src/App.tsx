@@ -124,6 +124,7 @@ export default function App() {
       if (isToggleNexusChatShortcut(event)) {
         event.preventDefault();
         setChatOpen((open) => !open);
+        setHomeOpen(false);
         return;
       }
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "s") {
