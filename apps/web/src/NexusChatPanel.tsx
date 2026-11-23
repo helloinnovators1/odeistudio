@@ -319,6 +319,11 @@ export default function NexusChatPanel({
   }, [activeFile?.path, activeFile?.content]);
 
   useEffect(() => {
+    setSelectedContextPaths([]);
+    setUseAttachedTools(false);
+  }, [workspaceContext?.workspaceId]);
+
+  useEffect(() => {
     const accessToken = access?.accessToken;
     if (!accessToken || !config.apiBaseUrl || !organizationId || !projectId) {
       setExecutionProfiles([]);
@@ -1182,6 +1187,9 @@ export default function NexusChatPanel({
               setTaskError("");
               executionGenerationRef.current += 1;
               setOrganizationId(event.target.value);
+              setSelectedContextPaths([]);
+              setAttachActiveFile(false);
+              setUseAttachedTools(false);
               setProjects([]);
               setProjectId("");
               setTaskPlan(null);
@@ -1221,6 +1229,9 @@ export default function NexusChatPanel({
                 setTaskError("");
                 executionGenerationRef.current += 1;
                 setProjectId(event.target.value);
+                setSelectedContextPaths([]);
+                setAttachActiveFile(false);
+                setUseAttachedTools(false);
                 setTaskPlan(null);
                 setTaskError("");
                 setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
@@ -1615,12 +1626,12 @@ export default function NexusChatPanel({
             )}
             {workspaceContext && workspaceContext.files.length > 0 && (
               <details className="nexus-context-picker">
-                <summary>Select workspace files to attach ({selectedContextPaths.length}/5)</summary>
+                <summary>Select workspace files to attach ({selectedContextCount}/5)</summary>
                 <p className="nexus-muted">Only checked files are read and sent. Hidden files and the rest of the workspace are not included automatically.</p>
                 {workspaceContext.files.slice(0, 100).map((file) => (
                   <label className="nexus-attach-toggle" key={file.path}>
                     <input type="checkbox" checked={selectedContextPaths.includes(file.path)}
-                      disabled={!selectedContextPaths.includes(file.path) && selectedContextPaths.length >= 5}
+                      disabled={!selectedContextPaths.includes(file.path) && selectedContextCount >= 5}
                       onChange={(event) => {
                         setSelectedContextPaths((current) => event.target.checked
                           ? [...current, file.path].slice(0, 5)
