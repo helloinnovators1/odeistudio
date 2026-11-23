@@ -65,6 +65,14 @@ describe("searchWorkspaceFiles", () => {
     }), { status: 200 }));
     await expect(searchWorkspaceFiles("token", "workspace-1", "secret"))
       .rejects.toThrow("invalid workspace search response");
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      workspace_id: "workspace-1",
+      results: [{ path: ".env.production", line: 1, text: "secret", sha256: "a".repeat(64) }],
+      files_scanned: 1, bytes_scanned: 6, skipped_files: 0, truncated: false,
+    }), { status: 200 }));
+    await expect(searchWorkspaceFiles("token", "workspace-1", "secret"))
+      .rejects.toThrow("invalid workspace search response");
   });
 });
 
