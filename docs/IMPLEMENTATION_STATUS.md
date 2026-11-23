@@ -43,6 +43,12 @@ This snapshot supersedes older dated snapshots retained below. It separates merg
 
 - [Issue #63 — protect main with required reviews and CI/security checks](https://github.com/helloinnovators1/odeistudio/issues/63)
 - [Issue #64 — authenticated browser E2E, accessibility and visual regression](https://github.com/helloinnovators1/odeistudio/issues/64)
+- [Issue #86 — project-scoped repository indexing and code intelligence](https://github.com/helloinnovators1/odeistudio/issues/86)
+- [Issue #87 — durable multi-file companion transactions and crash recovery](https://github.com/helloinnovators1/odeistudio/issues/87)
+- [Issue #88 — governed agent tool loop and automated verification/repair](https://github.com/helloinnovators1/odeistudio/issues/88)
+- [Issue #89 — parallel agents, worktrees, durable jobs and resumable sessions](https://github.com/helloinnovators1/odeistudio/issues/89)
+- [Issue #90 — isolated browser automation, MCP integrations and event-driven agents](https://github.com/helloinnovators1/odeistudio/issues/90)
+- [NEXUS Agent Workspace architecture and release gates](NEXUS_AGENT_WORKSPACE_IMPLEMENTATION.md)
 - [Production and Deployment Readiness](PRODUCTION_READINESS.md)
 - [Multi-provider Hosting, Domain and Infrastructure Deployment Matrix](PROVIDER_DEPLOYMENT_MATRIX.md)
 - [Deployment and Environment Strategy](DEPLOYMENT.md)
