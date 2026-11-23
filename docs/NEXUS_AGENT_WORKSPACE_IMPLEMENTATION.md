@@ -1,7 +1,7 @@
 # NEXUS Agent Workspace — Implementation and Acceptance Plan
 
 **Reviewed:** 2026-11-23  
-**Baseline:** `main` at `68a66cb3d3885f2d2619d4178a8eb20718037f08`  
+**Baseline:** `main` at `45d968d8f4af82ec2d9520da37ded2485e21f87e`  
 **Scope:** NEXUS chat, repository context, agent tool execution, editing, verification, orchestration and operational acceptance.
 
 This document separates shipped code from a proposed target architecture. A passing test proves only the tested behavior on the tested commit; it does not prove real ODID integration, production deployment or hostile-code isolation.
