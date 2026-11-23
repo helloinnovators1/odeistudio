@@ -3,19 +3,45 @@ export interface NexusContextFile {
   content: string;
 }
 
+export function isNexusContextPathAllowed(path: string): boolean {
+  try {
+    validateRelativePath(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export type NexusContextReader = (path: string, signal?: AbortSignal) => Promise<string>;
 
 export const MAX_NEXUS_CONTEXT_FILES = 5;
 export const MAX_NEXUS_CONTEXT_FILE_CHARS = 8_000;
 export const MAX_NEXUS_CONTEXT_TOTAL_CHARS = 40_000;
 
+const EXCLUDED_DIRECTORIES = new Set([
+  ".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__",
+  ".next", "dist", "build", "coverage", ".ssh", ".aws", ".azure", ".gnupg",
+]);
+const EXCLUDED_NAMES = new Set([
+  ".env", ".env.local", ".env.development", ".env.production", "id_rsa",
+  "id_ed25519", "credentials", "credentials.json", ".npmrc", ".pypirc", ".envrc",
+]);
+const SENSITIVE_SUFFIXES = [".pem", ".key", ".p12", ".pfx"];
+
 function validateRelativePath(path: string): string {
   const clean = path.trim();
+  const parts = clean.split("/");
+  const lowered = parts.map((part) => part.toLowerCase());
+  const basename = lowered[lowered.length - 1] ?? "";
+  const sensitive = lowered.some((part) =>
+    EXCLUDED_DIRECTORIES.has(part) || EXCLUDED_NAMES.has(part) ||
+    part.startsWith(".env.") || SENSITIVE_SUFFIXES.some((suffix) => part.endsWith(suffix))
+  );
   if (
     !clean || clean.length > 1_024 || clean.startsWith("/") ||
     clean.includes("\\") || clean.includes("\0") ||
-    clean.split("/").some((part) => !part || part === "." || part === "..") ||
-    /^[a-z]:/i.test(clean)
+    parts.some((part) => !part || part === "." || part === "..") ||
+    /^[a-z]:/i.test(clean) || sensitive || basename === "secrets.json"
   ) {
     throw new TypeError("Selected context paths must be safe workspace-relative paths.");
   }
