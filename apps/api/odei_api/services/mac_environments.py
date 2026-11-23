@@ -180,6 +180,8 @@ class MongoMacEnvironmentStore:
         actor: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
+        if version != expected_latest_version:
+            raise MacEnvironmentConflict("Only the latest draft can be submitted for approval")
         now = datetime.now(timezone.utc)
         result = await self.collection.update_one(
             {"_id": environment, "latest_version": expected_latest_version,
@@ -197,6 +199,8 @@ class MongoMacEnvironmentStore:
         actor: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
+        if version != expected_latest_version:
+            raise MacEnvironmentConflict("Only the latest revision can be approved")
         record = await self.get(environment, session=session)
         revision = next((item for item in record["versions"] if item["version"] == version), None)
         if revision is None:
@@ -224,6 +228,8 @@ class MongoMacEnvironmentStore:
         expected_latest_version: int, actor: str, session: Any | None = None,
     ) -> dict[str, Any]:
         _validate_identity(environment, actor)
+        if version != expected_latest_version:
+            raise MacEnvironmentConflict("Only the latest approved revision can be promoted")
         now = datetime.now(timezone.utc)
         result = await self.collection.update_one(
             {"_id": environment, "active_version": expected_active_version,
