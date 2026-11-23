@@ -376,11 +376,11 @@ export default function App() {
   function runWorkbenchCommand(command: string) {
     setActiveWorkbenchMenu(null);
     switch (command) {
-      case "open-workspace": setMessage("Choose a workspace from Explorer after connecting the local companion."); document.getElementById("workspace-select")?.focus(); break;
+      case "open-workspace": if (!token) { setMessage("Connect the local companion, then select a folder you explicitly choose."); document.querySelector<HTMLButtonElement>(".connect-actions .primary-button")?.click(); document.getElementById("pairing-code")?.focus(); } else { document.getElementById("workspace-select")?.focus(); } break;
       case "close-editor": if (activePath) closeTab(activePath); else setMessage("There is no open editor tab to close."); break;
-      case "search": document.getElementById("file-filter")?.focus(); break;
+      case "search": if (token) document.getElementById("file-filter")?.focus(); else setMessage("Connect the local companion and select a workspace before searching its files."); break;
       case "source-control": setMessage("Source Control is not connected. Connect a Git provider before using repository operations."); break;
-      case "explorer": document.querySelector<HTMLElement>(".explorer-pane")?.focus(); break;
+      case "explorer": document.querySelector<HTMLElement>(".explorer-pane")?.focus(); setMessage("Explorer is active. Connect the companion to browse selected folders."); break;
       case "agents": setChatOpen(true); break;
       case "settings": setSettingsOpen(true); break;
       case "terminal": setBottomPanel("terminal"); break;
@@ -470,7 +470,7 @@ export default function App() {
           <button className="rail-button" title="Settings" aria-label="Settings" onClick={() => setSettingsOpen(true)}>⚙</button>
         </nav>
 
-        <aside className="explorer-pane">
+        <aside className="explorer-pane" tabIndex={-1}>
           <div className="pane-heading"><strong>EXPLORER</strong><span>{visibleFiles.length}{fileQuery.trim() ? ` / ${files.length}` : ""}</span></div>
           {!token && <div className="pane-empty">Connect the companion to see your selected folders.</div>}
           {token && <>

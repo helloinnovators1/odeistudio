@@ -146,3 +146,25 @@ test("all application menus expose actionable commands and Help opens shortcuts"
   await expect(page.getByRole("dialog", { name: "KEYBOARD SHORTCUTS" })).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 });
+
+
+test("IDE workbench menus and activity rail controls perform their advertised actions", async ({ page, context }) => {
+  await page.goto("/");
+  const popupPromise = context.waitForEvent("page");
+  await page.getByRole("button", { name: "Open IDE in independent window" }).click();
+  const ide = await popupPromise;
+  await ide.waitForLoadState("domcontentloaded");
+  for (const menu of ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]) {
+    await ide.getByRole("button", { name: menu, exact: true }).click();
+    await expect(ide.getByRole("menu", { name: `${menu} menu` })).toBeVisible();
+    await expect(ide.getByRole("menuitem").first()).toBeVisible();
+    await ide.getByRole("button", { name: menu, exact: true }).click();
+  }
+  await ide.getByRole("button", { name: "Search workspace files" }).click();
+  await expect(ide.getByRole("status")).toContainText("Connect the local companion");
+  await ide.getByRole("button", { name: "Source control status" }).click();
+  await expect(ide.getByRole("status")).toContainText("Source Control is not connected");
+  await ide.getByRole("button", { name: "Open Agents and NEXUS" }).click();
+  await expect(ide.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
+  await ide.close();
+});
