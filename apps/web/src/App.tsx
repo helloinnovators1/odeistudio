@@ -62,6 +62,52 @@ export default function App() {
   const [patchPreviewBusy, setPatchPreviewBusy] = useState(false);
   const [patchPreviewError, setPatchPreviewError] = useState("");
 
+  // Keep modal dialogs keyboard-operable: move focus in, contain Tab navigation,
+  // close on Escape, and restore focus to the control that opened the dialog.
+  useEffect(() => {
+    if (!patchDialogOpen && !settingsOpen) return;
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+    if (!dialog) return;
+    const activeDialog = dialog;
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const focusable = () => Array.from(activeDialog.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.getAttribute("aria-hidden") !== "true");
+    focusable()[0]?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (patchDialogOpen) setPatchDialogOpen(false);
+        else setSettingsOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        activeDialog.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !activeDialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !activeDialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [patchDialogOpen, settingsOpen]);
+
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.path === activePath) ?? null,
     [tabs, activePath],
@@ -360,12 +406,12 @@ export default function App() {
 
       <div className={`workbench ${chatOpen ? `chat-${chatSide}` : "chat-closed"}`}>
         <nav className="activity-rail" aria-label="Activity bar">
-          <button className="rail-button active" title="Explorer">▤</button>
-          <button className="rail-button" title="Search (not connected)" disabled>⌕</button>
-          <button className="rail-button" title="Source control (not connected)" disabled>⑂</button>
-          <button className="rail-button" title="Agents window (not connected)" disabled>✧</button>
+          <button className="rail-button active" title="Explorer" aria-label="Explorer">▤</button>
+          <button className="rail-button" title="Search (not connected)" aria-label="Search (not connected)" disabled>⌕</button>
+          <button className="rail-button" title="Source control (not connected)" aria-label="Source control (not connected)" disabled>⑂</button>
+          <button className="rail-button" title="Agents window (not connected)" aria-label="Agents window (not connected)" disabled>✧</button>
           <span className="rail-spacer" />
-          <button className="rail-button" title="Settings" onClick={() => setSettingsOpen(true)}>⚙</button>
+          <button className="rail-button" title="Settings" aria-label="Settings" onClick={() => setSettingsOpen(true)}>⚙</button>
         </nav>
 
         <aside className="explorer-pane">
