@@ -13,6 +13,11 @@
 - MAC environment governance, revision lifecycle, deployment ledger/worker foundation and MAD incident/audit work from PR #74 are integrated. The code provides allowlisted factory hooks; this is not proof of a real cloud provider or external secret-manager adapter.
 - No production deployment, production smoke test, staging acceptance, target-device acceptance, backup restoration, or rollback drill is recorded by this assessment.
 
+
+## Provider landscape
+
+See the [Multi-provider Hosting, Domain and Infrastructure Deployment Matrix](PROVIDER_DEPLOYMENT_MATRIX.md) for the end-to-end provider roles and acceptance gates covering Namecheap, Bluehost, Vercel, API hosting, worker hosting, MongoDB, object storage, secrets/KMS, identity, email, DNS, TLS, observability and safe cutover. It distinguishes registrar/DNS services from application hosting and does not assume that a vendor API integration exists.
+
 ## Release-blocking gates
 
 A gate is complete only when its evidence is attached to the release record and independently reviewed. Do not mark a gate complete from a configuration example, unit test, CI pass, or code path alone.
