@@ -1008,12 +1008,14 @@ def test_companion_search_is_bounded_redacted_and_respects_exclusions(tmp_path) 
     client, registry, _pairing, code = _build_client(tmp_path)
     root = tmp_path / "project"
     (root / "main.py").write_text(
-        "NEXUS agent entry\\napi_key = \"supersecretvalue123\"\\n",
+        """NEXUS agent entry
+api_key = "supersecretvalue123"
+""",
         encoding="utf-8",
     )
-    (root / ".gitignore").write_text("ignored.txt\\n", encoding="utf-8")
-    (root / "ignored.txt").write_text("NEXUS ignored\\n", encoding="utf-8")
-    (root / ".env").write_text("NEXUS_SECRET=do-not-return\\n", encoding="utf-8")
+    (root / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (root / "ignored.txt").write_text("NEXUS ignored\n", encoding="utf-8")
+    (root / ".env").write_text("NEXUS_SECRET=do-not-return\n", encoding="utf-8")
     (root / "large.txt").write_text("NEXUS " * 30_000, encoding="utf-8")
     try:
         headers = _paired_headers(client, code)
@@ -1050,7 +1052,6 @@ def test_companion_search_is_bounded_redacted_and_respects_exclusions(tmp_path) 
 def test_companion_search_requires_pairing_and_valid_bounded_query(tmp_path) -> None:
     client, registry, _pairing, code = _build_client(tmp_path)
     try:
-        workspace_id = client.get("/v1/workspaces").json()["workspaces"][0]["workspace_id"] if False else None
         headers = _paired_headers(client, code)
         workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
         unauthorized = client.post(
@@ -1072,7 +1073,7 @@ def test_companion_search_requires_pairing_and_valid_bounded_query(tmp_path) -> 
         nul = client.post(
             f"/v1/workspaces/{workspace_id}/search",
             headers=headers,
-            json={"query": "x\\x00y"},
+            json={"query": "x" + chr(0) + "y"},
         )
         assert nul.status_code == 400
         unknown = client.post(
@@ -1088,7 +1089,7 @@ def test_companion_search_requires_pairing_and_valid_bounded_query(tmp_path) -> 
 def test_companion_search_caps_results_and_reports_truncation(tmp_path) -> None:
     client, registry, _pairing, code = _build_client(tmp_path)
     root = tmp_path / "project"
-    (root / "many.txt").write_text("NEXUS\\n" * 60, encoding="utf-8")
+    (root / "many.txt").write_text(("NEXUS\n") * 60, encoding="utf-8")
     try:
         headers = _paired_headers(client, code)
         workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
