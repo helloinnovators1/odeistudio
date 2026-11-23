@@ -26,6 +26,8 @@ export default function ODEIStudioHome({
   const [closed, setClosed] = useState(false);
   const [showApps, setShowApps] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   function openIndependentIDE() {
     const url = new URL(window.location.href);
@@ -47,7 +49,7 @@ export default function ODEIStudioHome({
 
   if (closed) return <section className="studio-home studio-home-exited" aria-label="ODEI Studio closed"><div className="studio-exit-card"><span className="studio-home-mark">O</span><h1>ODEI Studio is closed</h1><p>The ODEI workspace view is closed. Your browser window remains under browser control.</p><button className="studio-reopen-button" onClick={() => { setClosed(false); setMinimized(false); }}>Reopen ODEI Studio</button></div></section>;
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function runMenuAction(action: string) {\n    setActiveMenu(null);\n    switch (action) {\n      case "new-chat": onStartChat(""); break;\n      case "open-workspace": onOpenWorkspace(); break;\n      case "close": setClosed(true); break;\n      case "focus-prompt": document.getElementById("studio-home-prompt")?.focus(); break;\n      case "select-prompt": { const field = document.getElementById("studio-home-prompt") as HTMLTextAreaElement | null; field?.focus(); field?.select(); break; }\n      case "clear-prompt": setPrompt(""); document.getElementById("studio-home-prompt")?.focus(); break;\n      case "customize": onCustomize(); break;\n      case "open-ide": openIndependentIDE(); break;\n      case "show-apps": setShowApps(true); break;\n      case "start-plan": onStartChat(prompt.trim() || "Help me plan a new project. Clarify its goal, constraints, architecture and first deliverable."); break;\n      case "help": setHelpOpen(true); break;\n    }\n  }\n\n  const menuItems: Record<string, Array<{ label: string; action: string; shortcut?: string }>> = {\n    File: [{label:"New Chat",action:"new-chat",shortcut:"Ctrl+N"},{label:"Open Workspace",action:"open-workspace",shortcut:"Ctrl+O"},{label:"Close ODEI Studio",action:"close"}],\n    Edit: [{label:"Focus Prompt",action:"focus-prompt"},{label:"Select Prompt Text",action:"select-prompt",shortcut:"Ctrl+A"},{label:"Clear Prompt",action:"clear-prompt"},{label:"Customize",action:"customize"}],\n    Selection: [{label:"Select Prompt Text",action:"select-prompt",shortcut:"Ctrl+A"},{label:"Clear Prompt",action:"clear-prompt"}],\n    View: [{label:"Open IDE in New Window",action:"open-ide"},{label:"Show Apps",action:"show-apps"}],\n    Go: [{label:"Open Workspace",action:"open-workspace"},{label:"Focus Prompt",action:"focus-prompt"}],\n    Run: [{label:"Start with a Plan",action:"start-plan"}],\n    Terminal: [{label:"Open IDE Workspace",action:"open-workspace"}],\n    Help: [{label:"Keyboard Shortcuts",action:"help"}],\n  };\n\n  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onStartChat(prompt.trim());
   }
@@ -61,7 +63,7 @@ export default function ODEIStudioHome({
     <section className="studio-home" aria-label="ODEI Studio Window">
       <header className="studio-home-menubar">
         <div className="studio-home-brand"><span className="studio-home-mark">O</span><strong>ODEI STUDIO</strong></div>
-        <nav aria-label="Application menu"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></nav>
+        <nav aria-label="Application menu">{Object.keys(menuItems).map((menu) => <button key={menu} type="button" className={activeMenu === menu ? "studio-menubar-item active" : "studio-menubar-item"} aria-haspopup="menu" aria-expanded={activeMenu === menu} onClick={() => { setActiveMenu((current) => current === menu ? null : menu); setShowApps(false); setOverflowOpen(false); }}>{menu}</button>)}</nav>\n        {activeMenu && <div className="studio-menubar-popover" role="menu" aria-label={`${activeMenu} menu`}>{menuItems[activeMenu].map((item) => <button key={item.label} type="button" role="menuitem" onClick={() => runMenuAction(item.action)}><span>{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>)}</div>}
         <span className="studio-home-window-label">ODEI Studio Window</span>
         <div className="studio-home-tools">
           <button type="button" className="studio-ide-label" aria-label="Open IDE in independent window" title="Open IDE in independent window" onClick={openIndependentIDE}>IDE</button>
@@ -95,7 +97,7 @@ export default function ODEIStudioHome({
         </div>
       </header>
 
-      {minimized ? <div className="studio-minimized-view"><span className="studio-home-mark">O</span><strong>ODEI Studio is minimized</strong><button type="button" onClick={() => setMinimized(false)}>Restore ODEI Studio</button></div> : <div className="studio-home-layout">
+      {helpOpen && <div className="studio-help-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setHelpOpen(false); }}><section className="studio-help-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-help-title"><div className="studio-help-heading"><strong id="studio-help-title">KEYBOARD SHORTCUTS</strong><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setHelpOpen(false)}>×</button></div><p><kbd>Ctrl / ⌘ + N</kbd> New Chat</p><p><kbd>Ctrl / ⌘ + O</kbd> Open Workspace</p><p><kbd>Ctrl / ⌘ + A</kbd> Select prompt text</p><p><kbd>Ctrl / ⌘ + I</kbd> Toggle NEXUS in the IDE workspace</p><button type="button" onClick={() => setHelpOpen(false)}>Done</button></section></div>}\n      {minimized ? <div className="studio-minimized-view"><span className="studio-home-mark">O</span><strong>ODEI Studio is minimized</strong><button type="button" onClick={() => setMinimized(false)}>Restore ODEI Studio</button></div> : <div className="studio-home-layout">
         <aside className="studio-home-sidebar">
           <div className="studio-home-nav" aria-label="Primary navigation">
             <button className={activeSection === "New Chat" ? "studio-nav-item active" : "studio-nav-item"} onClick={() => { setActiveSection("New Chat"); onStartChat(""); }}>
