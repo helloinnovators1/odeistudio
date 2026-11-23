@@ -131,3 +131,18 @@ test("IDE opens the full workbench in a separate independent window", async ({ p
   await expect(page.getByRole("region", { name: "ODEI Studio Window" })).toBeVisible();
   await ideWindow.close();
 });
+
+
+test("all application menus expose actionable commands and Help opens shortcuts", async ({ page }) => {
+  await page.goto("/");
+  for (const menu of ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]) {
+    await page.getByRole("button", { name: menu, exact: true }).click();
+    await expect(page.getByRole("menu", { name: `${menu} menu` })).toBeVisible();
+    await expect(page.getByRole("menuitem").first()).toBeVisible();
+    await page.getByRole("button", { name: menu, exact: true }).click();
+  }
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Keyboard Shortcuts" }).click();
+  await expect(page.getByRole("dialog", { name: "KEYBOARD SHORTCUTS" })).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+});
