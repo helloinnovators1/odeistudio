@@ -18,7 +18,7 @@ Configure these Vite build-time variables in the Vercel project. Values are publ
 
 | Variable | Required value |
 |---|---|
-| `VITE_ODEI_API_BASE_URL` | Exact HTTPS origin/base URL of the deployed API, including `/api/v1` only if the frontend transport expects it; verify the transport contract before setting |
+| `VITE_ODEI_API_BASE_URL` | Exact HTTPS API origin only (for example, `https://api.example.com`); the browser transport appends `/api/v1` itself |
 | `VITE_ODID_ISSUER` | Exact production ODID issuer |
 | `VITE_ODID_CLIENT_ID` | Public browser client ID registered with ODID |
 | `VITE_ODID_REDIRECT_URI` | Exact HTTPS callback URL registered with ODID |
