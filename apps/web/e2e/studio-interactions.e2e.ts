@@ -64,7 +64,7 @@ test("home dialogs trap keyboard focus and restore it when dismissed", async ({ 
   await expect(dialog).toBeVisible();
   await expect(close).toBeFocused();
   await page.keyboard.press("Shift+Tab");
-  await expect(dialog.getByRole("button", { name: "Save automation draft" })).toBeFocused();
+  await expect(dialog.getByLabel("Schedule")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(close).toBeFocused();
   await page.keyboard.press("Escape");
