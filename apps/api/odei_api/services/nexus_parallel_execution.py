@@ -141,6 +141,11 @@ class NexusParallelExecutionHandler:
                 })
                 last_observed = observed
 
+            if cancelled and run.status in {
+                ExecutionRunStatus.COMPLETED, ExecutionRunStatus.FAILED,
+                ExecutionRunStatus.CANCELLED, ExecutionRunStatus.EXPIRED,
+            }:
+                return {"outcome": "cancelled", "execution_run_id": run_id}
             if run.status is ExecutionRunStatus.COMPLETED:
                 return {"outcome": "completed", "execution_run_id": run_id}
             if run.status is ExecutionRunStatus.CANCELLED:
