@@ -54,7 +54,7 @@ def _checkpoint(value: dict[str, Any] | None) -> tuple[dict[str, Any] | None, st
     if value is None:
         return None, None
     if not isinstance(value, dict):
-        raise ValueError("checkpoint must be an object")
+        raise TypeError("checkpoint must be an object")
     try:
         encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     except (TypeError, ValueError, UnicodeEncodeError) as exc:
@@ -102,7 +102,7 @@ class MongoParallelJobStore:
             job_id = _identifier(item.get("job_id", f"{group_id}-{index}"), "job_id")
             payload = item.get("payload", {})
             if not isinstance(payload, dict):
-                raise ValueError("job payload must be an object")
+                raise TypeError("job payload must be an object")
             encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
             if len(encoded) > 32_768:
                 raise ValueError("job payload exceeds the size limit")
