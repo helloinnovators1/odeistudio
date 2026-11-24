@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from odei_api.services.repository_index import RepositoryIndex, RepositoryIndexError
