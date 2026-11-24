@@ -287,6 +287,24 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
         for item, original in zip(items, originals, strict=True):
             results.append(apply_single_file_patch(grant, item))
             applied.append((item, original))
+        # A successful sequence of atomic renames is not enough: another
+        # process may edit an earlier file while later files are being applied.
+        # Verify the complete approved postcondition before issuing success.
+        for item, parsed in zip(items, parsed_items, strict=True):
+            observed = _read_for_batch(grant, item, parsed)
+            if item["operation"] == "delete":
+                if observed is not None:
+                    raise WorkspacePatchApplyError(
+                        "A deleted file reappeared before the batch was verified"
+                    )
+            elif (
+                observed is None
+                or hashlib.sha256(observed.encode("utf-8")).hexdigest()
+                != item["result_sha256"]
+            ):
+                raise WorkspacePatchApplyError(
+                    "A patched file changed before the batch could be verified"
+                )
     except (OSError, ValueError) as failure:
         applied_paths = [item["path"] for item, _original in applied]
         rolled_back: list[str] = []
