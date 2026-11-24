@@ -53,3 +53,21 @@ test("composer exposes all four explicit interaction modes", async ({ page }) =>
   await mode.selectOption("debug");
   await expect(mode).toHaveValue("debug");
 });
+
+
+test("home dialogs trap keyboard focus and restore it when dismissed", async ({ page }) => {
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: /Automations/ });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Automations" });
+  const close = dialog.getByRole("button", { name: "Close automations" });
+  await expect(dialog).toBeVisible();
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "Save automation draft" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
