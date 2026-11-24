@@ -45,6 +45,7 @@ from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
 from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.parallel_jobs import MongoParallelJobStore
+from odei_api.services.parallel_jobs_api import router as parallel_jobs_router
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
 from odei_api.services.repository_index_store import MongoRepositoryIndexStore
@@ -182,6 +183,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(nexus_tasks_router)
+app.include_router(parallel_jobs_router)
 app.include_router(nexus_execution_router)
 app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
