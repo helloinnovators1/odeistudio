@@ -4,13 +4,12 @@ from __future__ import annotations
 import logging
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.project_access import require_project_access
-from odei_api.services.parallel_jobs import ParallelJobError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,8 +30,7 @@ class CreateParallelJobGroupRequest(BaseModel):
     max_attempts: int = Field(default=3, ge=1, le=10)
 
 
-async def _authorize(request, organization_id, project_id, principal):
-    from fastapi import Request
+async def _authorize(request: Request, organization_id, project_id, principal):
     database = getattr(request.app.state, "mongo_database", None)
     store = getattr(request.app.state, "parallel_job_store", None)
     audit = getattr(request.app.state, "audit_event_store", None)
@@ -76,7 +74,7 @@ async def _audit(audit, principal, organization_id, project_id, action, outcome,
 )
 async def create_parallel_job_group(
     payload: CreateParallelJobGroupRequest,
-    request,
+    request: Request,
     organization_id: str = Path(min_length=1, max_length=128),
     project_id: str = Path(min_length=1, max_length=128),
     principal: Principal = principal_dependency,
