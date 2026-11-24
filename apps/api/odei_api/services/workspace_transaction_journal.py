@@ -159,9 +159,9 @@ class DurableWorkspaceJournal:
             with self._connect() as connection:
                 cursor = connection.execute(
                     "UPDATE patch_transactions SET state=?, updated_at=?, "
-                    "payload_json='[]', receipt_json=? "
-                    "WHERE transaction_id=? AND state='pending'",
-                    (state, time.time(), receipt_json, transaction_id),
+                    "payload_json=CASE WHEN ?='conflict' THEN payload_json ELSE '[]' END, "
+                    "receipt_json=? WHERE transaction_id=? AND state IN ('pending', 'conflict')",
+                    (state, time.time(), state, receipt_json, transaction_id),
                 )
                 if cursor.rowcount != 1:
                     raise WorkspaceJournalError("Pending transaction was not found")
