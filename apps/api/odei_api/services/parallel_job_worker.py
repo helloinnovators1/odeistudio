@@ -6,6 +6,8 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from pymongo.errors import PyMongoError
+
 from odei_api.services.parallel_jobs import (
     MongoParallelJobStore,
     ParallelJob,
@@ -121,7 +123,7 @@ class ParallelJobWorker:
                 if cancelled or (isinstance(result, dict) and result.get("outcome") == "cancelled")
                 else "completed"
             )
-        except RetryableParallelJobError as exc:
+        except (RetryableParallelJobError, PyMongoError) as exc:
             retry_delay = min(
                 900, self.retry_base_seconds * (2 ** max(0, job.attempt - 1)),
             )
@@ -204,7 +206,7 @@ class ParallelJobWorker:
                     worker_id=self.worker_id, lease_token=lease_token,
                     lease_seconds=self.lease_seconds,
                 )
-            except ParallelJobConflict:
+            except (ParallelJobConflict, PyMongoError):
                 stopped.set()
                 return
 
@@ -214,7 +216,15 @@ class ParallelJobWorker:
         try:
             await self._publish_heartbeat("idle")
             while True:
-                result = await self.run_once()
+                try:
+                    result = await self.run_once()
+                except (PyMongoError, OSError) as exc:
+                    logger.warning(
+                        "Parallel worker storage unavailable (error=%s)",
+                        type(exc).__name__,
+                    )
+                    await asyncio.sleep(max(idle_seconds, 2.0))
+                    continue
                 if result is None:
                     await asyncio.sleep(idle_seconds)
         finally:
