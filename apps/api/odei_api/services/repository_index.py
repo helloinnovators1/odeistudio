@@ -11,9 +11,9 @@ import hashlib
 import os
 import re
 import stat
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Iterable
 
 _MAX_FILES = 5_000
 _MAX_FILE_BYTES = 1_048_576
