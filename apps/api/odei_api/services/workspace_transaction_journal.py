@@ -109,7 +109,8 @@ class DurableWorkspaceJournal:
             raise ValueError("A journal transaction must contain between 1 and 20 files")
         if not isinstance(before_images, list) or len(files) != len(before_images):
             raise ValueError("Every journaled file must have exactly one before-image")
-        total = 0
+        before_total = 0
+        content_total = 0
         normalized = []
         for item, before in zip(files, before_images, strict=True):
             if not isinstance(item, dict) or set(item) != {
@@ -122,10 +123,11 @@ class DurableWorkspaceJournal:
                 raise ValueError("Journal before-image must be UTF-8 text or null")
             if item["content"] is not None and not isinstance(item["content"], str):
                 raise ValueError("Journal patch content must be UTF-8 text or null")
-            total += len((before or "").encode("utf-8")) + len((item["content"] or "").encode("utf-8"))
+            before_total += len((before or "").encode("utf-8"))
+            content_total += len((item["content"] or "").encode("utf-8"))
             normalized.append({"patch": item, "before": before})
-        if total > MAX_TOTAL_BYTES * 2:
-            raise ValueError("Journal transaction exceeds the aggregate before-image limit")
+        if before_total > MAX_TOTAL_BYTES or content_total > MAX_TOTAL_BYTES:
+            raise ValueError("Journal transaction exceeds the aggregate before-image or patch limit")
         return json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
 
     def prepare(
