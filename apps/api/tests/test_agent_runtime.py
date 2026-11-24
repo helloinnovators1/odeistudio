@@ -180,3 +180,135 @@ def test_agent_can_capture_a_review_only_file_replacement_without_writing(tmp_pa
     assert result.tool_names == ("propose_attached_file_change",)
     assert tools.proposed_changes["src/greet.py"] == "replacement source"
     assert tools.proposal_base_files["src/greet.py"] == original
+
+
+
+def test_agent_passes_remaining_wall_clock_budget_to_provider(tmp_path):
+    from odei_api.services.agent_runtime import MAX_AGENT_WALL_SECONDS
+
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    client = FakeClient([_response([SimpleNamespace(type="message")], "Completed.")])
+    try:
+        result = run_nexus_agent(
+            client, model="model", task="Inspect", workspace_tools=tools,
+            cloud_model_consent=True, timeout_seconds=17,
+        )
+        assert result.answer == "Completed."
+        assert client.responses.calls[0]["timeout"] <= 17
+        assert client.responses.calls[0]["timeout"] > 0
+        with pytest.raises(ValueError, match="timeout_seconds"):
+            run_nexus_agent(
+                client, model="model", task="Inspect", workspace_tools=tools,
+                cloud_model_consent=True, timeout_seconds=MAX_AGENT_WALL_SECONDS + 1,
+            )
+    finally:
+        registry.close()
+
+
+def test_agent_cancellation_is_checked_before_provider_request(tmp_path):
+    from odei_api.services.agent_runtime import AgentRunCancelled
+
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    client = FakeClient([])
+    try:
+        with pytest.raises(AgentRunCancelled, match="cancelled"):
+            run_nexus_agent(
+                client, model="model", task="Inspect", workspace_tools=tools,
+                cloud_model_consent=True, cancel_check=lambda: True,
+            )
+        assert client.responses.calls == []
+    finally:
+        registry.close()
+
+
+def test_agent_cancellation_is_checked_between_tool_calls(tmp_path):
+    from odei_api.services.agent_runtime import AgentRunCancelled
+
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    client = FakeClient([
+        _response([
+            SimpleNamespace(
+                type="function_call", name="list_project_files",
+                arguments="{}", call_id="cancel_call_1",
+            ),
+            SimpleNamespace(
+                type="function_call", name="list_project_files",
+                arguments="{}", call_id="cancel_call_2",
+            ),
+        ])
+    ])
+    checks = iter([False, False, True])
+    try:
+        with pytest.raises(AgentRunCancelled, match="cancelled"):
+            run_nexus_agent(
+                client, model="model", task="Inspect", workspace_tools=tools,
+                cloud_model_consent=True, cancel_check=lambda: next(checks),
+            )
+        assert len(client.responses.calls) == 1
+    finally:
+        registry.close()
+
+
+def test_agent_emits_redacted_lifecycle_and_tool_audit_events(tmp_path):
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    events = []
+    client = FakeClient([
+        _response([
+            SimpleNamespace(
+                type="function_call", name="list_project_files",
+                arguments="{}", call_id="audit_call_1",
+            )
+        ]),
+        _response([SimpleNamespace(type="message")], "Inspection completed."),
+    ])
+    try:
+        result = run_nexus_agent(
+            client, model="test-model", task="Inspect workspace",
+            workspace_tools=tools, cloud_model_consent=True,
+            event_sink=events.append,
+        )
+        names = [event["event"] for event in events]
+        assert names == [
+            "agent.run.started",
+            "agent.provider.requested",
+            "agent.tool.started",
+            "agent.tool.completed",
+            "agent.provider.requested",
+            "agent.run.completed",
+        ]
+        assert result.tool_calls == 1
+        assert events[2]["tool_name"] == "list_project_files"
+        assert events[-1]["tool_calls"] == 1
+        assert all("arguments" not in event and "output" not in event for event in events)
+        assert all(event["model"] == "test-model" for event in events)
+    finally:
+        registry.close()
+
+
+def test_agent_fails_closed_when_audit_event_delivery_fails(tmp_path):
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    client = FakeClient([_response([SimpleNamespace(type="message")], "Should not run.")])
+
+    def broken_audit_sink(_event):
+        raise OSError("audit store unavailable")
+
+    try:
+        with pytest.raises(AgentRuntimeError, match="audit event delivery failed"):
+            run_nexus_agent(
+                client, model="test-model", task="Inspect workspace",
+                workspace_tools=tools, cloud_model_consent=True,
+                event_sink=broken_audit_sink,
+            )
+        assert client.responses.calls == []
+    finally:
+        registry.close()

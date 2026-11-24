@@ -79,6 +79,8 @@ def _read_posix(parent_fd: int, name: str) -> tuple[str, os.stat_result] | None:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_FILE_BYTES:
             raise WorkspacePatchApplyError("Target is not a bounded regular file")
+        if getattr(metadata, "st_nlink", 1) != 1:
+            raise WorkspacePatchApplyError("Hard-linked patch targets are not permitted")
         chunks = bytearray()
         while len(chunks) <= MAX_FILE_BYTES:
             chunk = os.read(descriptor, min(65_536, MAX_FILE_BYTES + 1 - len(chunks)))

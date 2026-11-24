@@ -562,14 +562,37 @@ def create_companion_app(
         workspace_id: str,
         request: Request,
         path: str = Query(min_length=1, max_length=1024),
+        expected_sha256: str | None = Query(
+            default=None, pattern="^[0-9a-f]{64}$"
+        ),
     ):
+        """Read a selected file, optionally requiring the exact hash previously retrieved."""
         require_bearer(request)
         require_selected_workspace(workspace_id)
         try:
             content = await run_in_threadpool(registry.read_text, workspace_id, path)
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail="File is unavailable for safe reading") from exc
-        return {"workspace_id": workspace_id, "path": path, "content": content}
+        content_sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if (
+            expected_sha256 is not None
+            and not hmac.compare_digest(expected_sha256, content_sha256)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "WORKSPACE_FILE_STALE",
+                    "message": "The file changed after it was retrieved; refresh its context before continuing.",
+                    "path": path,
+                    "current_sha256": content_sha256,
+                },
+            )
+        return {
+            "workspace_id": workspace_id,
+            "path": path,
+            "content": content,
+            "content_sha256": content_sha256,
+        }
 
     @app.post("/v1/workspaces/{workspace_id}/patch-proposals")
     async def preview_workspace_patch(
