@@ -8,10 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
+from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.project_access import require_project_access
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 router = APIRouter()
 principal_dependency = Depends(get_current_principal)
 
@@ -69,7 +71,7 @@ async def _audit(audit, principal, organization_id, project_id, action, outcome,
 
 
 @router.post(
-    "/api/v1/organizations/{organization_id}/projects/{project_id}/nexus/job-groups",
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/job-groups",
     tags=["nexus-jobs"],
 )
 async def create_parallel_job_group(
@@ -113,7 +115,7 @@ async def create_parallel_job_group(
 
 
 @router.get(
-    "/api/v1/organizations/{organization_id}/projects/{project_id}/nexus/jobs/{job_id}",
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/jobs/{{job_id}}",
     tags=["nexus-jobs"],
 )
 async def get_parallel_job(
@@ -140,7 +142,7 @@ async def get_parallel_job(
 
 
 @router.delete(
-    "/api/v1/organizations/{organization_id}/projects/{project_id}/nexus/job-groups/{group_id}",
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/nexus/job-groups/{{group_id}}",
     tags=["nexus-jobs"],
 )
 async def cancel_parallel_job_group(
