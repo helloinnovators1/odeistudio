@@ -48,7 +48,7 @@ Never place provider secrets, model credentials or raw tokens in job payloads or
 - Workers claim jobs with an atomic, expiring lease. Only the worker holding the current lease token may heartbeat, checkpoint, retry or finalize.
 - The parallel worker periodically renews its lease while it polls the existing execution-run store.
 - Checkpoints contain only the execution-run ID, last observed run version and status. On restart the worker re-reads the authoritative run and resumes polling; the checkpoint is not treated as the source of truth.
-- A parallel-group cancellation sets a cancellation request for active jobs. The worker forwards that request to the associated execution-run lifecycle, which stops the sandbox through the existing execution worker and updates task/run state.
+- A parallel-group cancellation marks queued, dependency-blocked and leased jobs for cancellation. Pending jobs are made claimable so the worker can forward cancellation to their associated execution runs; active jobs are stopped through the existing execution-run lifecycle and execution worker. Task/run state is updated through the existing transactional execution store.
 - Transient execution-state storage errors schedule bounded exponential retries. Retries stop at the configured job attempt limit. Expired leases are reclaimed; cancellation requests are honored instead of re-queuing a cancelled job.
 - A process shutdown releases a claimed job for retry; it must not be interpreted as a user cancellation.
 - A lost lease is terminal for that worker attempt. Never attempt to finalize or overwrite a job after another worker has reclaimed it.
