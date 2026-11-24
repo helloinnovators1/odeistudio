@@ -494,7 +494,7 @@ async def nexus_project_chat_stream(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
             conversation_id=payload.conversation_id, role="user",
-            content=payload.messages[-1]["content"],
+            content=payload.messages[-1]["content"], mode=payload.mode,
             expected_version=conversation["version"],
         )
         if persisted_user is None:
@@ -588,7 +588,7 @@ async def nexus_project_chat_stream(
                     organization_id=organization_id, project_id=project_id,
                     owner_issuer=principal.issuer, owner_subject=principal.subject,
                     conversation_id=payload.conversation_id, role="assistant",
-                    content=answer, expected_version=persisted_user["version"],
+                    content=answer, mode=payload.mode, expected_version=persisted_user["version"],
                 )
                 if saved is None:
                     raise RuntimeError("Conversation version changed during streamed generation")
@@ -704,7 +704,7 @@ async def nexus_project_chat(
                 organization_id=organization_id, project_id=project_id,
                 owner_issuer=principal.issuer, owner_subject=principal.subject,
                 conversation_id=payload.conversation_id, role="user",
-                content=payload.messages[-1]["content"],
+                content=payload.messages[-1]["content"], mode=payload.mode,
                 expected_version=conversation["version"],
             )
             if persisted_user_message is None:
@@ -763,7 +763,7 @@ async def nexus_project_chat(
                 organization_id=organization_id, project_id=project_id,
                 owner_issuer=principal.issuer, owner_subject=principal.subject,
                 conversation_id=payload.conversation_id, role="assistant",
-                content=result.answer, expected_version=persisted_user_message["version"],
+                content=result.answer, mode=payload.mode, expected_version=persisted_user_message["version"],
             )
             if saved is None:
                 raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "The conversation changed while NEXUS was responding. Reload history before continuing."})

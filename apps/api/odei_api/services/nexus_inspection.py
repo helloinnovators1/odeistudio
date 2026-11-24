@@ -91,7 +91,7 @@ async def inspect_attached_project_excerpts(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
             conversation_id=conversation_id, role="user",
-            content=payload.messages[-1]["content"],
+            content=payload.messages[-1]["content"], mode=payload.mode,
             expected_version=conversation["version"],
         )
         if user_turn is None:
@@ -198,7 +198,7 @@ async def inspect_attached_project_excerpts(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
             conversation_id=conversation_id, role="assistant",
-            content=result.answer, expected_version=user_turn["version"],
+            content=result.answer, mode=payload.mode, expected_version=user_turn["version"],
         )
         if saved is None:
             raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "The conversation changed while NEXUS was inspecting files. Reload history before continuing."})

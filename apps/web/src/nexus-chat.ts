@@ -199,6 +199,7 @@ export interface NexusConversationMessage {
   message_id: string;
   role: "user" | "assistant";
   content: string;
+  mode?: "ask" | "plan" | "agent" | "debug";
   created_at: string;
 }
 
@@ -298,7 +299,8 @@ function validateConversation(value: unknown): NexusConversation {
       typeof message.message_id !== "string" ||
       (message.role !== "user" && message.role !== "assistant") ||
       typeof message.content !== "string" || message.content.length > 16_000 ||
-      typeof message.created_at !== "string"
+      (message.mode !== undefined && !["ask", "plan", "agent", "debug"].includes(String(message.mode))) ||
+      typeof message.created_at !== "string
     ) throw new NexusChatTransportError("NEXUS returned an invalid conversation message.", 200);
     return message as unknown as NexusConversationMessage;
   });

@@ -100,9 +100,12 @@ class MongoConversationStore:
         self, *, organization_id: str, project_id: str,
         owner_issuer: str, owner_subject: str, conversation_id: str,
         role: str, content: str, expected_version: int | None = None,
+        mode: str | None = None,
     ) -> dict | None:
         if role not in {"user", "assistant"}:
             raise ConversationStoreError("Conversation message role is invalid")
+        if mode is not None and mode not in {"ask", "plan", "agent", "debug"}:
+            raise ConversationStoreError("Conversation message mode is invalid")
         if not isinstance(content, str) or not content.strip() or len(content) > MAX_CONVERSATION_MESSAGE_CHARS:
             raise ConversationStoreError("Conversation message must contain 1 to 16,000 characters")
         content = redact_secrets(content.strip())
@@ -138,6 +141,7 @@ class MongoConversationStore:
             "message_id": uuid4().hex,
             "role": role,
             "content": content,
+            **({"mode": mode} if mode is not None else {}),
             "created_at": now,
         }
         updated = await self._collection.find_one_and_update(
