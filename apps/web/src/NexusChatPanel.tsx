@@ -118,6 +118,7 @@ export default function NexusChatPanel({
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
   const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
+  const [contextSearch, setContextSearch] = useState("");
   const [useAttachedTools, setUseAttachedTools] = useState(false);
   const [mode, setMode] = useState<"ask" | "plan" | "agent" | "debug">("ask");
   const [inspectionRunning, setInspectionRunning] = useState(false);
@@ -1189,6 +1190,10 @@ export default function NexusChatPanel({
   const availableContextFiles = (workspaceContext?.files ?? [])
     .filter((file) => isNexusContextPathAllowed(file.path))
     .slice(0, 100);
+  const normalizedContextSearch = contextSearch.trim().replace(/^@/, "").toLocaleLowerCase("en-US");
+  const filteredContextFiles = normalizedContextSearch
+    ? availableContextFiles.filter((file) => file.path.toLocaleLowerCase("en-US").includes(normalizedContextSearch))
+    : availableContextFiles;
 
   return (
     <aside className={`nexus-pane${isOpen ? "" : " nexus-pane-hidden"}`} aria-label="NEXUS AI chat panel">
@@ -1716,7 +1721,16 @@ export default function NexusChatPanel({
               <details className="nexus-context-picker">
                 <summary>Select workspace files to attach ({selectedContextCount}/5)</summary>
                 <p className="nexus-muted">Only checked files are read and sent. Hidden files and the rest of the workspace are not included automatically.</p>
-                {availableContextFiles.map((file) => (
+                <input
+                  type="search"
+                  aria-label="Search workspace context files"
+                  placeholder="Search files or type @path…"
+                  value={contextSearch}
+                  onChange={(event) => setContextSearch(event.target.value)}
+                />
+                {filteredContextFiles.length === 0 ? (
+                  <p className="nexus-muted">No eligible files match this search.</p>
+                ) : filteredContextFiles.map((file) => (
                   <label className="nexus-attach-toggle" key={file.path}>
                     <input type="checkbox" checked={selectedContextPaths.includes(file.path)}
                       disabled={!selectedContextPaths.includes(file.path) && selectedContextCount >= 5}
