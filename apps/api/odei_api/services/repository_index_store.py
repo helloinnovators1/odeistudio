@@ -82,6 +82,24 @@ class MongoRepositoryIndexStore:
         }, {"_id": 0}).sort("path", 1).limit(limit)
         return await cursor.to_list(length=limit)
 
+    async def get_active_file_hashes(
+        self, *, organization_id: str, project_id: str,
+    ) -> dict[str, str]:
+        state = await self.get_state(organization_id=organization_id, project_id=project_id)
+        if state is None:
+            return {}
+        cursor = self._files.find({
+            "organization_id": organization_id,
+            "project_id": project_id,
+            "revision_id": state["revision_id"],
+        }, {"_id": 0, "path": 1, "sha256": 1})
+        rows = await cursor.to_list(length=5_000)
+        return {
+            item["path"]: item["sha256"]
+            for item in rows
+            if isinstance(item.get("path"), str) and isinstance(item.get("sha256"), str)
+        }
+
     async def get_active_chunks(
         self, *, organization_id: str, project_id: str, limit: int = 500,
     ) -> list[dict[str, Any]]:
