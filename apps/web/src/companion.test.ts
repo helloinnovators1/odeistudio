@@ -170,6 +170,28 @@ describe("signed companion patch application", () => {
     });
   });
 
+  it("surfaces paths that need manual recovery after incomplete batch rollback", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: {
+        code: "PATCH_BATCH_RECOVERY_REQUIRED",
+        message: "Patch batch failed and automatic rollback was incomplete.",
+        rollback_failures: ["src/main.py", "README.md"],
+      },
+    }), { status: 500 }));
+    const file = {
+      path: "src/main.py", operation: "update" as const,
+      base_sha256: "a".repeat(64), result_sha256: "b".repeat(64),
+      content: "updated", unified_diff: "",
+    };
+    await expect(applyApprovedWorkspacePatch(
+      "local-session", "workspace-1", {
+        organizationId: "org-1", projectId: "project-1",
+        proposalId: "proposal-1", proposalVersion: 2,
+        challenge: "C".repeat(43), capability: "signed-capability", files: [file],
+      }, fetchMock,
+    )).rejects.toThrow("Recovery is required for: src/main.py, README.md");
+  });
+
   it("rejects a response for a different proposal or workspace", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       workspace_id: "other-workspace",
