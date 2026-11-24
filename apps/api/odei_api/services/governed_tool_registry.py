@@ -6,8 +6,9 @@ import json
 import re
 import threading
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.secret_redaction import redact_secrets
@@ -24,6 +25,7 @@ class GovernedToolError(RuntimeError):
 @dataclass(frozen=True)
 class ToolApproval:
     """Short-lived approval bound to one actor, resource, tool and argument digest."""
+
     organization_id: str
     project_id: str
     actor_issuer: str
@@ -70,7 +72,7 @@ class GovernedToolRegistry:
         if not isinstance(actor_issuer, str) or not actor_issuer.startswith("https://"):
             raise ValueError("actor issuer must be HTTPS")
         if not callable(audit_sink):
-            raise ValueError("a durable audit sink is required")
+            raise TypeError("a durable audit sink is required")
         self._mode = mode
         self._organization_id = organization_id
         self._project_id = project_id
@@ -88,8 +90,7 @@ class GovernedToolRegistry:
         if definition.name in self._tools or not callable(definition.handler):
             raise ValueError("tool name is duplicated or handler is invalid")
         if not isinstance(definition.schema, Mapping):
-            raise ValueError("tool schema must be an object")
-        # Only the server-owned capability map can authorize a tool in this mode.
+            raise TypeError("tool schema must be an object")
         try:
             NexusCapabilityPolicy.require(self._mode, definition.capability)
         except NexusCapabilityDenied as exc:
@@ -98,15 +99,22 @@ class GovernedToolRegistry:
 
     def schemas(self) -> list[dict[str, Any]]:
         return [
-            {"type": "function", "name": item.name, "description": "Governed ODEI tool.",
-             "strict": True, "parameters": dict(item.schema)}
+            {
+                "type": "function",
+                "name": item.name,
+                "description": "Governed ODEI tool.",
+                "strict": True,
+                "parameters": dict(item.schema),
+            }
             for item in self._tools.values()
         ]
 
     @staticmethod
     def _digest(arguments: dict[str, Any]) -> str:
         try:
-            encoded = json.dumps(arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            encoded = json.dumps(
+                arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
         except (TypeError, ValueError, UnicodeEncodeError) as exc:
             raise GovernedToolError("tool arguments are not canonical JSON") from exc
         if len(encoded) > _MAX_ARGUMENT_BYTES:
@@ -161,18 +169,16 @@ class GovernedToolRegistry:
             raise GovernedToolError("audit unavailable; tool execution stopped") from exc
         try:
             result = definition.handler(dict(arguments))
-            rendered = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+            rendered = result if isinstance(result, str) else json.dumps(
+                result, ensure_ascii=False, default=str
+            )
             rendered = redact_secrets(rendered[:_MAX_RESULT_CHARS])
         except Exception as exc:
-            try:
-                self._audit({"event": "nexus.tool.failed", **event, "error_type": type(exc).__name__})
-            except Exception:
-                pass
             raise GovernedToolError("tool execution failed") from exc
         try:
             self._audit({"event": "nexus.tool.completed", **event})
         except Exception as exc:
-            # The side effect may have occurred; surface uncertainty rather than
-            # claiming success when its durable completion record is missing.
-            raise GovernedToolError("tool result is uncertain because audit delivery failed") from exc
+            raise GovernedToolError(
+                "tool result is uncertain because audit delivery failed"
+            ) from exc
         return rendered
