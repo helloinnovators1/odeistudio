@@ -153,7 +153,10 @@ def run_nexus_agent(
     if history_chars > MAX_AGENT_HISTORY_CHARS:
         raise ValueError("prior_messages exceeds the maximum context budget")
     history.append({"role": "user", "content": redact_secrets(clean_task)})
-    emit_event("agent.run.started", timeout_seconds=timeout_seconds)\n    emit_event("agent.provider.requested", request_number=1)\n    response = client.responses.create(\n        timeout=remaining_seconds(),
+    emit_event("agent.run.started", timeout_seconds=timeout_seconds)
+    emit_event("agent.provider.requested", request_number=1)
+    response = client.responses.create(
+        timeout=remaining_seconds(),
         model=model,
         instructions=AGENT_INSTRUCTIONS,
         input=list(history),
@@ -177,7 +180,9 @@ def run_nexus_agent(
             answer = _field(response, "output_text", "")
             if not isinstance(answer, str) or not answer.strip():
                 raise AgentRuntimeError("The model returned no final answer")
-            emit_event("agent.run.completed", tool_calls=total_calls, tool_rounds=rounds)\n            return AgentRunResult(\n                answer=redact_secrets(answer[:MAX_AGENT_OUTPUT_CHARS]),
+            emit_event("agent.run.completed", tool_calls=total_calls, tool_rounds=rounds)
+            return AgentRunResult(
+                answer=redact_secrets(answer[:MAX_AGENT_OUTPUT_CHARS]),
                 model=model,
                 tool_calls=total_calls,
                 tool_rounds=rounds,
@@ -203,14 +208,17 @@ def run_nexus_agent(
                 raise AgentRuntimeError("Model returned oversized tool arguments")
             seen_call_ids.add(call_id)
             total_calls += 1
-            emit_event("agent.tool.started", tool_name=name, call_number=total_calls)\n            try:
+            emit_event("agent.tool.started", tool_name=name, call_number=total_calls)
+            try:
                 arguments = json.loads(raw_arguments)
                 if not isinstance(arguments, dict):
                     raise ToolExecutionError("Tool arguments must be a JSON object")
                 result = workspace_tools.execute(name, arguments)
                 invoked_tools.append(name)
-                emit_event("agent.tool.completed", tool_name=name, call_number=total_calls)\n            except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:
-                emit_event("agent.tool.failed", tool_name=name, call_number=total_calls, error_type=type(exc).__name__)\n                result = json.dumps({"error": redact_secrets(str(exc)[:500])})
+                emit_event("agent.tool.completed", tool_name=name, call_number=total_calls)
+            except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:
+                emit_event("agent.tool.failed", tool_name=name, call_number=total_calls, error_type=type(exc).__name__)
+                result = json.dumps({"error": redact_secrets(str(exc)[:500])})
             outputs.append({
                 "type": "function_call_output",
                 "call_id": call_id,
@@ -230,7 +238,9 @@ def run_nexus_agent(
         history.extend(output_items)
         history.extend(outputs)
         rounds += 1
-        emit_event("agent.provider.requested", request_number=rounds + 2)\n        response = client.responses.create(\n            timeout=remaining_seconds(),
+        emit_event("agent.provider.requested", request_number=rounds + 2)
+        response = client.responses.create(
+            timeout=remaining_seconds(),
             model=model,
             instructions=AGENT_INSTRUCTIONS,
             input=history,
