@@ -300,6 +300,15 @@ class WorkspaceHandleRegistry:
         with self._borrow(workspace_id) as grant:
             return grant.allow_patch_apply
 
+    def transaction_receipt(
+        self, workspace_id: str, transaction_id: str
+    ) -> dict[str, Any] | None:
+        """Read a durable transaction receipt scoped to the selected workspace."""
+        with self._borrow(workspace_id) as grant:
+            if self._journal is None:
+                return None
+            return self._journal.receipt(grant.root_key, transaction_id)
+
     def apply_patch(self, workspace_id: str, file: dict) -> dict[str, str | bool]:
         """Apply one signed, pre-authorized file operation beneath its held root."""
         from odei_api.services.workspace_patch_apply import apply_single_file_patch
