@@ -1,10 +1,14 @@
 import hashlib
+import json
 import time
 
 import pytest
 
 from odei_api.services.governed_tool_registry import (
-    GovernedToolError, GovernedToolRegistry, ToolApproval, ToolDefinition,
+    GovernedToolError,
+    GovernedToolRegistry,
+    ToolApproval,
+    ToolDefinition,
 )
 
 
@@ -26,15 +30,18 @@ def _registry(handler, *, audit=None, consume=None):
 
 
 def _approval(arguments, **overrides):
-    values = dict(
-        organization_id="org-1", project_id="project-1",
-        actor_issuer="https://identity.example", actor_subject="user-1",
-        tool_name="run_diagnostics",
-        arguments_sha256=hashlib.sha256(
-            __import__("json").dumps(arguments, sort_keys=True, separators=(",", ":")).encode()
+    values = {
+        "organization_id": "org-1",
+        "project_id": "project-1",
+        "actor_issuer": "https://identity.example",
+        "actor_subject": "user-1",
+        "tool_name": "run_diagnostics",
+        "arguments_sha256": hashlib.sha256(
+            json.dumps(arguments, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest(),
-        expires_at=time.time() + 30, approval_id="approval-1",
-    )
+        "expires_at": time.time() + 30,
+        "approval_id": "approval-1",
+    }
     values.update(overrides)
     return ToolApproval(**values)
 
@@ -64,8 +71,10 @@ def test_approval_is_bound_to_identity_scope_tool_and_exact_arguments(changes):
     calls = []
     registry, _ = _registry(lambda args: calls.append(args))
     with pytest.raises(GovernedToolError, match="approval"):
-        registry.execute("run_diagnostics", {"profile": "python"},
-                         approval=_approval({"profile": "python"}, **changes))
+        registry.execute(
+            "run_diagnostics", {"profile": "python"},
+            approval=_approval({"profile": "python"}, **changes),
+        )
     assert calls == []
 
 
@@ -73,7 +82,6 @@ def test_unknown_and_mode_unauthorized_tools_fail_closed():
     registry, _ = _registry(lambda _: "ok")
     with pytest.raises(GovernedToolError, match="not registered"):
         registry.execute("run_shell", {})
-    from odei_api.services.governed_tool_registry import ToolDefinition
     ask = GovernedToolRegistry(
         mode="ask", organization_id="org", project_id="project",
         actor_issuer="https://identity.example", actor_subject="user",
@@ -89,8 +97,10 @@ def test_unknown_and_mode_unauthorized_tools_fail_closed():
 
 def test_audit_failure_prevents_handler_execution_and_secrets_are_redacted():
     calls = []
+
     def fail(_):
         raise RuntimeError("offline")
+
     registry, _ = _registry(lambda args: calls.append(args), audit=fail)
     args = {"profile": "python"}
     with pytest.raises(GovernedToolError, match="audit unavailable"):
