@@ -104,3 +104,105 @@ def test_journal_refuses_symlink_database(tmp_path):
     link.symlink_to(target)
     with pytest.raises(WorkspaceJournalError, match="symbolic link"):
         DurableWorkspaceJournal(link)
+
+
+def _batch_for_recovery(project):
+    before = (project / "main.py").read_text(encoding="utf-8")
+    return [
+        {
+            "path": "main.py", "operation": "update",
+            "base_sha256": hashlib.sha256(before.encode()).hexdigest(),
+            "result_sha256": hashlib.sha256(b"after").hexdigest(),
+            "content": "after",
+        },
+        {
+            "path": "created.txt", "operation": "create",
+            "base_sha256": None,
+            "result_sha256": hashlib.sha256(b"created").hexdigest(),
+            "content": "created",
+        },
+    ]
+
+
+def test_registry_recovers_interrupted_batch_after_process_restart(tmp_path, monkeypatch):
+    from odei_api.services import workspace_patch_apply
+    from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "main.py").write_text("before", encoding="utf-8")
+    journal = DurableWorkspaceJournal(tmp_path / "state" / "journal.sqlite3")
+    first_registry = WorkspaceHandleRegistry(journal=journal)
+    workspace_id = first_registry.register_selected_root(project, allow_patch_apply=True)
+    real_apply = workspace_patch_apply.apply_single_file_patch
+    calls = {"count": 0}
+
+    def simulate_process_crash(grant, item):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise KeyboardInterrupt("simulated abrupt process termination")
+        return real_apply(grant, item)
+
+    monkeypatch.setattr(workspace_patch_apply, "apply_single_file_patch", simulate_process_crash)
+    with pytest.raises(KeyboardInterrupt):
+        first_registry.apply_patch_batch(workspace_id, _batch_for_recovery(project))
+    first_registry.close()
+    monkeypatch.setattr(workspace_patch_apply, "apply_single_file_patch", real_apply)
+
+    assert (project / "main.py").read_text(encoding="utf-8") == "after"
+    assert not (project / "created.txt").exists()
+
+    restarted_registry = WorkspaceHandleRegistry(journal=journal)
+    try:
+        recovered_id = restarted_registry.register_selected_root(
+            project, allow_patch_apply=True
+        )
+        assert restarted_registry.read_text(recovered_id, "main.py") == "before"
+        assert not (project / "created.txt").exists()
+        assert journal.pending(
+            workspace_root_key(
+                project,
+                f"posix:{os.stat(project).st_dev}:{os.stat(project).st_ino}",
+            ) if os.name != "nt" else "0" * 64
+        ) == []
+    finally:
+        restarted_registry.close()
+
+
+def test_crash_recovery_preserves_external_edits_and_blocks_workspace_open(tmp_path, monkeypatch):
+    from odei_api.services import workspace_patch_apply
+    from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+    from odei_api.services.workspace_patch_apply import WorkspacePatchRecoveryRequired
+
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "main.py").write_text("before", encoding="utf-8")
+    journal = DurableWorkspaceJournal(tmp_path / "state" / "journal.sqlite3")
+    registry = WorkspaceHandleRegistry(journal=journal)
+    workspace_id = registry.register_selected_root(project, allow_patch_apply=True)
+    real_apply = workspace_patch_apply.apply_single_file_patch
+    calls = {"count": 0}
+
+    def simulate_process_crash(grant, item):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise KeyboardInterrupt("simulated abrupt process termination")
+        return real_apply(grant, item)
+
+    monkeypatch.setattr(workspace_patch_apply, "apply_single_file_patch", simulate_process_crash)
+    with pytest.raises(KeyboardInterrupt):
+        registry.apply_patch_batch(workspace_id, _batch_for_recovery(project))
+    registry.close()
+    monkeypatch.setattr(workspace_patch_apply, "apply_single_file_patch", real_apply)
+
+    (project / "main.py").write_text("edited by user", encoding="utf-8")
+    restarted_registry = WorkspaceHandleRegistry(journal=journal)
+    try:
+        with pytest.raises(WorkspacePatchRecoveryRequired, match="conflicts"):
+            restarted_registry.register_selected_root(
+                project, allow_patch_apply=True
+            )
+        assert (project / "main.py").read_text(encoding="utf-8") == "edited by user"
+        assert not (project / "created.txt").exists()
+    finally:
+        restarted_registry.close()
