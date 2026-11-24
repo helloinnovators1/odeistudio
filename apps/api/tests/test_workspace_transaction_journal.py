@@ -146,7 +146,7 @@ def test_registry_recovers_interrupted_batch_after_process_restart(tmp_path, mon
 
     def simulate_process_crash(grant, item):
         calls["count"] += 1
-        if calls["count"] == 2:
+        if calls["count"] == 3:
             raise KeyboardInterrupt("simulated abrupt process termination")
         return real_apply(grant, item)
 
@@ -194,7 +194,7 @@ def test_crash_recovery_preserves_external_edits_and_blocks_workspace_open(tmp_p
 
     def simulate_process_crash(grant, item):
         calls["count"] += 1
-        if calls["count"] == 2:
+        if calls["count"] == 3:
             raise KeyboardInterrupt("simulated abrupt process termination")
         return real_apply(grant, item)
 
