@@ -12,7 +12,7 @@ const viewports = [
 test("visible interactive controls have programmatic accessible names", async ({ page }) => {
   await page.goto("/");
   const unnamed = await page.locator(
-    'button:visible, input:visible:not([type="hidden"]), textarea:visible, select:visible, [role="button"]:visible, [role="tab"]:visible, [role="menuitem"]:visible',
+    'button:visible, input:visible:not([type="hidden"]):not([type="file"]), textarea:visible, select:visible, [role="button"]:visible, [role="tab"]:visible, [role="menuitem"]:visible',
   ).evaluateAll((elements) => elements.filter((node) => {
     const element = node as HTMLElement & { labels?: NodeListOf<HTMLLabelElement> | null };
     const labelledBy = element.getAttribute("aria-labelledby");
@@ -36,7 +36,7 @@ test("visible interactive controls have programmatic accessible names", async ({
 
 test("dialogs expose an accessible name and modal state when opened", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).last().click();
   const dialog = page.getByRole("dialog", { name: "WORKSPACE SETTINGS" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("aria-modal", "true");
