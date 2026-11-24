@@ -55,9 +55,16 @@ test("NEXUS opens a local-only chat harness without calling authenticated servic
     if (new URL(request.url()).pathname.includes("/api/")) apiRequests.push(request.url());
   });
 
-  await panel.getByRole("checkbox", { name: /local UI test/i }).check();
-  await panel.getByRole("textbox", { name: "NEXUS message" }).fill("Test the local NEXUS chat");
-  await panel.getByRole("button", { name: "Send" }).click();
+  const consent = panel.getByRole("checkbox", { name: /local UI test/i });
+  await consent.check();
+  await expect(consent).toBeChecked();
+  const composer = panel.getByRole("textbox", { name: "NEXUS message" });
+  await expect(composer).toBeEnabled();
+  await composer.fill("Test the local NEXUS chat");
+  const send = panel.getByRole("button", { name: "Send" });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(panel).toContainText("Test the local NEXUS chat");
   await expect(panel).toContainText("Local chat interface test completed.");
   expect(apiRequests).toEqual([]);
 });
