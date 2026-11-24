@@ -541,10 +541,24 @@ def list_project_files_from_posix_fd(
 
 
 def _read_open_descriptor(file_fd: int, metadata: os.stat_result, max_bytes: int) -> str:
+    """Read one stable file snapshot; reject concurrent in-place modification."""
     with os.fdopen(file_fd, "rb") as file_handle:
         if metadata.st_size > max_bytes:
             raise ProjectFileTooLarge(f"File exceeds the {max_bytes}-byte read limit")
+        before = os.fstat(file_handle.fileno())
+        identity_fields = ("st_dev", "st_ino", "st_mode")
+        if any(getattr(metadata, field) != getattr(before, field) for field in identity_fields):
+            raise UnsafeProjectPath("File identity changed before the read")
         data = file_handle.read(max_bytes + 1)
+        after = os.fstat(file_handle.fileno())
+        stable_fields = (
+            "st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns",
+        )
+        if (
+            any(getattr(before, field) != getattr(after, field) for field in stable_fields)
+            or len(data) != after.st_size
+        ):
+            raise UnsafeProjectPath("File changed while being read")
     if len(data) > max_bytes:
         raise ProjectFileTooLarge(f"File exceeds the {max_bytes}-byte read limit")
     if b"\x00" in data:
@@ -553,7 +567,6 @@ def _read_open_descriptor(file_fd: int, metadata: os.stat_result, max_bytes: int
         return data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise BinaryProjectFile("File is not valid UTF-8 text") from exc
-
 
 def read_project_text_file_from_posix_fd(
     root_fd: int,
