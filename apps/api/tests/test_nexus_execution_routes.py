@@ -228,10 +228,11 @@ def test_project_execution_history_rejects_partial_cursor(execution_state):
     assert response.json()["detail"]["code"] == "INVALID_EXECUTION_CURSOR"
 
 
-def test_execution_requires_agent_mode_at_api_boundary(execution_state):
+@pytest.mark.parametrize("mode", ["ask", "plan", "debug", "unknown"])
+def test_execution_requires_agent_mode_at_api_boundary(execution_state, mode):
     response = TestClient(app).post(
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
-        json=payload(mode="ask"),
+        json=payload(mode=mode),
     )
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "NEXUS_MODE_CAPABILITY_DENIED"
