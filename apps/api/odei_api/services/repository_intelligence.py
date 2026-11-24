@@ -328,7 +328,9 @@ async def refresh_repository_index(
                     organization_id=organization_id, project_id=project_id,
                     snapshot=snapshot, files=files, symbols=symbols,
                     references=references, imports=imports, chunks=chunks,
-                    embedding_model=_EMBEDDING_MODEL, chunk_limit_reached=analysis["chunk_limit_reached"],
+                    embedding_model=_EMBEDDING_MODEL,
+                    chunk_limit_reached=analysis["chunk_limit_reached"],
+                    analysis_truncated=analysis["analysis_truncated"],
                     mongo_client=mongo_client, audit_store=audit_store, principal=principal,
                 )
             except RepositoryIndexConflict as exc:
