@@ -46,6 +46,8 @@ from odei_api.services.nexus_patch_proposals import router as nexus_patch_propos
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
+from odei_api.services.repository_index_store import MongoRepositoryIndexStore
+from odei_api.services.repository_intelligence import router as repository_intelligence_router
 from odei_api.services.task_store import MongoTaskStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
@@ -139,6 +141,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             snapshot_store = MongoWorkspaceSnapshotStore(application.state.mongo_database)
             await snapshot_store.initialize()
             application.state.workspace_snapshot_store = snapshot_store
+            repository_index_store = MongoRepositoryIndexStore(application.state.mongo_database)
+            await repository_index_store.initialize()
+            application.state.repository_index_store = repository_index_store
             artifact_store = MongoExecutionArtifactStore(application.state.mongo_database)
             await artifact_store.initialize()
             application.state.execution_artifact_store = artifact_store
@@ -150,6 +155,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             application.state.patch_proposal_store = None
             application.state.execution_run_store = None
             application.state.workspace_snapshot_store = None
+            application.state.repository_index_store = None
             application.state.execution_artifact_store = None
         yield
     finally:
@@ -171,6 +177,7 @@ app.include_router(nexus_execution_router)
 app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
 app.include_router(nexus_patch_proposals_router)
+app.include_router(repository_intelligence_router)
 app.include_router(projects_router)
 app.include_router(mac_environment_router)
 

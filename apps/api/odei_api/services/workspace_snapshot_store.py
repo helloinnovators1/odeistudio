@@ -83,6 +83,20 @@ class MongoWorkspaceSnapshotStore:
             "expires_at": {"$gt": datetime.now(timezone.utc)},
         })
 
+    async def get_latest_for_tenant(
+        self, *, organization_id: str, project_id: str,
+    ) -> dict[str, Any] | None:
+        """Return the newest unexpired snapshot for one authorized project."""
+        return await self._metadata.find_one(
+            {
+                "organization_id": organization_id,
+                "project_id": project_id,
+                "state": "available",
+                "expires_at": {"$gt": datetime.now(timezone.utc)},
+            },
+            sort=[("created_at", -1)],
+        )
+
     async def get_archive_for_worker(self, *, snapshot_id: str) -> tuple[dict[str, Any], bytes] | None:
         document = await self._metadata.find_one({
             "_id": snapshot_id, "state": "available",
