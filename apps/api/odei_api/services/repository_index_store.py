@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from odei_api.security.auth import Principal
 from odei_api.services.audit_store import MongoAuditEventStore
@@ -244,7 +244,7 @@ class MongoRepositoryIndexStore:
                             },
                             {"$set": {"expires_at": retire_at}},
                         )
-                    except Exception as cleanup_error:
+                    except PyMongoError as cleanup_error:
                         logger.warning(
                             "Could not shorten retention for superseded repository index (%s)",
                             type(cleanup_error).__name__,
@@ -283,7 +283,7 @@ class MongoRepositoryIndexStore:
                     "project_id": project_id,
                     "revision_id": revision_id,
                 })
-        except Exception as exc:
+        except PyMongoError as exc:
             logger.warning(
                 "Could not clean up unpublished repository index revision (%s)",
                 type(exc).__name__,
