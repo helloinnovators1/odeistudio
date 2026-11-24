@@ -124,7 +124,20 @@ def _payload():
         "changes": {"src/main.py": "print('new')\n"},
         "expected_base_hashes": {"src/main.py": sha256_text(base)},
         "cloud_model_consent": True,
+        "mode": "agent",
     }
+
+
+@pytest.mark.parametrize("mode", ["ask", "plan", "debug", "unknown"])
+def test_patch_proposal_creation_requires_agent_mode(patch_state, mode):
+    payload = _payload()
+    payload["mode"] = mode
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
+        json=payload,
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "NEXUS_MODE_CAPABILITY_DENIED"
 
 
 def test_patch_proposal_is_persisted_redacted_and_owner_approved(patch_state):

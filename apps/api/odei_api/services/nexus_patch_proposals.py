@@ -17,6 +17,7 @@ from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_tasks import _authorize_project
 from odei_api.services.patch_approval import (
     PatchApprovalError,
@@ -46,6 +47,7 @@ class PatchProposalRequest(BaseModel):
     changes: dict[StrictStr, StrictStr | None] = Field(min_length=1, max_length=MAX_PATCH_FILES)
     expected_base_hashes: dict[StrictStr, StrictStr | None] = Field(max_length=MAX_PATCH_FILES)
     cloud_model_consent: StrictBool
+    mode: StrictStr = Field(min_length=1, max_length=16)
 
     @model_validator(mode="after")
     def validate_budgets(self):
@@ -266,6 +268,16 @@ async def create_patch_proposal(
     """Persist a validated diff preview; never apply it to local files."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "patch.propose")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "NEXUS_MODE_CAPABILITY_DENIED",
+                "message": "Switch to Agent mode to propose workspace changes.",
+            },
+        ) from exc
     _, store = await _project_and_store(request, organization_id, project_id, principal)
     try:
         for path, expected_hash in payload.expected_base_hashes.items():
