@@ -1141,6 +1141,50 @@ def test_windows_patch_read_rejects_file_modified_during_snapshot(tmp_path, monk
         windows_file_handles._read_windows_file(None, ("target.txt",))
 
 
+
+
+def test_companion_file_read_rejects_stale_context_hash_and_returns_current_provenance(tmp_path):
+    client, registry, _pairing, code = _build_client(tmp_path)
+    project_file = tmp_path / "project" / "main.py"
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
+        original = project_file.read_text(encoding="utf-8")
+        original_hash = hashlib.sha256(original.encode("utf-8")).hexdigest()
+
+        current = client.get(
+            f"/v1/workspaces/{workspace_id}/file",
+            params={"path": "main.py", "expected_sha256": original_hash},
+            headers=headers,
+        )
+        assert current.status_code == 200
+        assert current.json()["content_sha256"] == original_hash
+        assert current.json()["content"] == original
+
+        project_file.write_text("print('changed elsewhere')", encoding="utf-8")
+        stale = client.get(
+            f"/v1/workspaces/{workspace_id}/file",
+            params={"path": "main.py", "expected_sha256": original_hash},
+            headers=headers,
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "WORKSPACE_FILE_STALE"
+        assert "content" not in stale.json()
+
+        refreshed_content = project_file.read_text(encoding="utf-8")
+        refreshed_hash = hashlib.sha256(refreshed_content.encode("utf-8")).hexdigest()
+        refreshed = client.get(
+            f"/v1/workspaces/{workspace_id}/file",
+            params={"path": "main.py", "expected_sha256": refreshed_hash},
+            headers=headers,
+        )
+        assert refreshed.status_code == 200
+        assert refreshed.json()["content_sha256"] == refreshed_hash
+    finally:
+        registry.close()
+
 def test_companion_search_returns_bounded_literal_matches_with_provenance(tmp_path):
     client, registry, _pairing, code = _build_client(tmp_path)
     project = tmp_path / "project"
