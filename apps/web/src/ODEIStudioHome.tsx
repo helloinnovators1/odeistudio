@@ -56,6 +56,44 @@ export default function ODEIStudioHome({
     try { window.localStorage.setItem("odei-selected-model", selectedModel); } catch { /* Model selection remains usable without storage. */ }
   }, [selectedModel]);
 
+  useEffect(() => {
+    if (!automationsOpen && !githubOpen && !helpOpen) return;
+    const dialog = document.querySelector<HTMLElement>(".studio-feature-dialog, .studio-help-dialog");
+    if (!dialog) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const getFocusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.getAttribute("aria-hidden") !== "true");
+    const focusable = getFocusable();
+    (focusable[0] ?? dialog).focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (automationsOpen) setAutomationsOpen(false);
+        else if (githubOpen) setGithubOpen(false);
+        else setHelpOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = getFocusable();
+      if (items.length === 0) { event.preventDefault(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [automationsOpen, githubOpen, helpOpen]);
+
   function openIndependentIDE() {
     const url = new URL(window.location.href);
     url.searchParams.set("window", "ide");
@@ -310,8 +348,8 @@ export default function ODEIStudioHome({
           <div className="studio-home-status"><span>{companionConnected ? "Local companion connected" : "Local workspace not connected"}</span><span>ODEI Studio Window</span></div>
         </section>
       </div>}
-      {automationsOpen && <div className="studio-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAutomationsOpen(false); }}><section className="studio-feature-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-automations-title"><div className="studio-dialog-heading"><strong id="studio-automations-title">Automations</strong><button type="button" onClick={() => setAutomationsOpen(false)}>×</button></div><p>Save automation drafts. Live scheduling and background execution require the automation service to be configured.</p><form onSubmit={saveAutomationDraft}><label htmlFor="studio-automation-name">Automation name</label><input id="studio-automation-name" value={automationName} onChange={(event) => setAutomationName(event.target.value)} placeholder="Review open pull requests" required /><label htmlFor="studio-automation-schedule">Schedule</label><select id="studio-automation-schedule" value={automationSchedule} onChange={(event) => setAutomationSchedule(event.target.value)}><option>Daily</option><option>Weekly</option><option>On repository update</option><option>Manual</option></select><button type="submit" disabled={!automationName.trim()}>Save automation draft</button></form></section></div>}
-      {githubOpen && <div className="studio-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGithubOpen(false); }}><section className="studio-feature-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-github-title"><div className="studio-dialog-heading"><strong id="studio-github-title">Connect GitHub</strong><button type="button" onClick={() => setGithubOpen(false)}>×</button></div><p>GitHub repository access requires a configured ODEI GitHub OAuth application or GitHub App installation. This deployment has not supplied that connection, so no repository permissions are requested here.</p><button type="button" onClick={() => { setGithubOpen(false); onOpenWorkspace(); }}>Open local workspace instead</button><button type="button" className="studio-secondary-action" onClick={() => window.open("https://github.com/settings/apps", "_blank", "noopener,noreferrer")}>Review GitHub app settings ↗</button></section></div>}
+      {automationsOpen && <div className="studio-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAutomationsOpen(false); }}><section className="studio-feature-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-automations-title"><div className="studio-dialog-heading"><strong id="studio-automations-title">Automations</strong><button type="button" aria-label="Close automations" onClick={() => setAutomationsOpen(false)}>×</button></div><p>Save automation drafts. Live scheduling and background execution require the automation service to be configured.</p><form onSubmit={saveAutomationDraft}><label htmlFor="studio-automation-name">Automation name</label><input id="studio-automation-name" value={automationName} onChange={(event) => setAutomationName(event.target.value)} placeholder="Review open pull requests" required /><label htmlFor="studio-automation-schedule">Schedule</label><select id="studio-automation-schedule" value={automationSchedule} onChange={(event) => setAutomationSchedule(event.target.value)}><option>Daily</option><option>Weekly</option><option>On repository update</option><option>Manual</option></select><button type="submit" disabled={!automationName.trim()}>Save automation draft</button></form></section></div>}
+      {githubOpen && <div className="studio-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGithubOpen(false); }}><section className="studio-feature-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-github-title"><div className="studio-dialog-heading"><strong id="studio-github-title">Connect GitHub</strong><button type="button" aria-label="Close GitHub connection dialog" onClick={() => setGithubOpen(false)}>×</button></div><p>GitHub repository access requires a configured ODEI GitHub OAuth application or GitHub App installation. This deployment has not supplied that connection, so no repository permissions are requested here.</p><button type="button" onClick={() => { setGithubOpen(false); onOpenWorkspace(); }}>Open local workspace instead</button><button type="button" className="studio-secondary-action" onClick={() => window.open("https://github.com/settings/apps", "_blank", "noopener,noreferrer")}>Review GitHub app settings ↗</button></section></div>}
     </section>
   );
 }
