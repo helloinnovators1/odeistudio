@@ -45,6 +45,14 @@ export default function ODEIStudioHome({
   const [voiceMessage, setVoiceMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => () => recognitionRef.current?.stop(), []);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("odei-selected-model") === "ODEI NEXUS") setSelectedModel("ODEI NEXUS");
+    } catch { /* Storage may be disabled; keep the configured default. */ }
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem("odei-selected-model", selectedModel); } catch { /* Model selection remains usable without storage. */ }
+  }, [selectedModel]);
 
   function openIndependentIDE() {
     const url = new URL(window.location.href);
