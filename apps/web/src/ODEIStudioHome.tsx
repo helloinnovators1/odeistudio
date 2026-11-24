@@ -177,12 +177,16 @@ export default function ODEIStudioHome({
 
   function saveAutomationDraft(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!automationName.trim()) return; const key = "odei-automation-drafts"; let items: string[] = []; try { items = JSON.parse(window.localStorage.getItem(key) || "[]") as string[]; } catch { items = []; } window.localStorage.setItem(key, JSON.stringify([automationName.trim() + " · " + automationSchedule, ...items].slice(0, 10))); setAutomationName(""); setVoiceMessage("Automation draft saved locally; live scheduling is not configured."); }
   function chooseContext(path: string) {
-    setSelectedContextPaths((current) => {
-      if (current.includes(path)) return current.filter((item) => item !== path);
-      if (current.length >= 5) { setVoiceMessage("Select up to five workspace files for NEXUS context."); return current; }
+    if (selectedContextPaths.includes(path)) {
+      setSelectedContextPaths((current) => current.filter((item) => item !== path));
+    } else {
+      if (selectedContextPaths.length >= 5) {
+        setVoiceMessage("Select up to five workspace files for NEXUS context.");
+        return;
+      }
+      setSelectedContextPaths((current) => [...current, path]);
       setPrompt((value) => value + (value.trim() ? " " : "") + "@" + path + " ");
-      return [...current, path];
-    });
+    }
     document.getElementById("studio-home-prompt")?.focus();
   }
   function chooseSuggestion(action: (typeof suggestions)[number]["action"], title: string) {
