@@ -14,6 +14,7 @@ import secrets
 import sqlite3
 import stat
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -97,7 +98,7 @@ class DurableWorkspaceJournal:
 
     def _initialize(self) -> None:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.executescript(_SCHEMA)
         except (OSError, sqlite3.Error) as exc:
             raise WorkspaceJournalError("Could not initialize the durable workspace journal") from exc
@@ -137,7 +138,7 @@ class DurableWorkspaceJournal:
         transaction_id = secrets.token_urlsafe(24)
         now = time.time()
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 connection.execute(
                     "INSERT INTO patch_transactions "
                     "(transaction_id, root_key, state, created_at, updated_at, payload_json) "
@@ -156,7 +157,7 @@ class DurableWorkspaceJournal:
         if len(receipt_json.encode("utf-8")) > 64 * 1024:
             raise ValueError("Transaction receipt exceeds its size limit")
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 cursor = connection.execute(
                     "UPDATE patch_transactions SET state=?, updated_at=?, "
                     "payload_json=CASE WHEN ?='conflict' THEN payload_json ELSE '[]' END, "
@@ -171,7 +172,7 @@ class DurableWorkspaceJournal:
     def pending(self, root_key: str) -> list[dict[str, Any]]:
         """Return verified pending records for one exact selected workspace identity."""
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection:
                 rows = connection.execute(
                     "SELECT transaction_id, payload_json FROM patch_transactions "
                     "WHERE root_key=? AND state IN ('pending', 'conflict') ORDER BY created_at",
