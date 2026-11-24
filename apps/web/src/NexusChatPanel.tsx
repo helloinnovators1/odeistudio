@@ -38,6 +38,7 @@ import {
 } from "./nexus-patch-proposals";
 import { getMadExecutionMetrics, listMadIncidents, transitionMadIncident, type MadIncident, type MadMetrics } from "./mad-operations";
 import { RequestGeneration } from "./request-generation";
+import { buildNexusLocalDemoReply } from "./nexus-demo";
 import { isNexusContextPathAllowed, loadNexusWorkspaceExcerpts } from "./nexus-context";
 import { approveMacEnvironment, createMacEnvironmentDraft, getMacEnvironment, promoteMacEnvironment, rollbackMacEnvironment, submitMacEnvironment, updateMacEnvironmentDraft, type MacEnvironmentRecord } from "./mac-environments";
 import "./nexus-chat-panel.css";
@@ -99,6 +100,9 @@ export default function NexusChatPanel({
   const [desktopSettingsLoaded, setDesktopSettingsLoaded] = useState(!isDesktopHost);
   const authAvailable = Boolean(config.auth) && (!isDesktopHost || (desktopSettingsLoaded && desktopAuthEnabled));
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
+  // When ODID is not configured, expose a clearly isolated local-only chat harness.
+  // It never fabricates an identity or calls the authenticated API.
+  const [demoMode, setDemoMode] = useState(!config.auth && !isDesktopHost);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [organizations, setOrganizations] = useState<NexusOrganization[]>([]);
@@ -928,6 +932,7 @@ export default function NexusChatPanel({
   }
 
   function signOut() {
+    setDemoMode(false);
     macRequestGenerationRef.current.invalidate();
     setMacBusy(false);
     projectLoadGenerationRef.current.invalidate();
@@ -1056,8 +1061,19 @@ export default function NexusChatPanel({
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (mode === "plan") { void planTask(); return; }
     const content = draft.trim();
+    if (demoMode) {
+      if (!content || !consent || sending || content.length > 8_000) return;
+      const userMessage: TranscriptMessage = { id: newMessageId(), role: "user", content, mode };
+      const demoReply = buildNexusLocalDemoReply(mode);
+      setMessages((current) => [...current, userMessage, { id: newMessageId(), role: "assistant" as const, content: demoReply, mode }].slice(-20));
+      setDraft("");
+      setConsent(false);
+      setChatError("");
+      setNotice("Local demo only · messages are not sent to an AI model or saved.");
+      return;
+    }
+    if (mode === "plan") { void planTask(); return; }
     if (!access || !projectId || !consent || !content || sending || conversationBusy || !config.apiBaseUrl) return;
     if (content.length > 8_000) {
       setChatError("Messages are limited to 8,000 characters.");
@@ -1214,12 +1230,13 @@ export default function NexusChatPanel({
         <div><span className="pane-kicker">Tab · ODEI NEXUS</span><strong>{selectedProject?.name ?? "AI Chat"}</strong></div>
         <div className="nexus-header-actions">
           {access && projectId && <button className="nexus-link-button" type="button" aria-label="New NEXUS conversation" title="New conversation" disabled={sending || conversationBusy} onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setConsent(false); setNotice("New conversation ready. Send a message to create it."); }}>＋</button>}
+          {demoMode && <button className="nexus-link-button" type="button" onClick={() => { setDemoMode(false); setMessages([]); setDraft(""); setConsent(false); setNotice("Local demo closed. Configure ODID to sign in."); }}>Exit demo</button>}
           {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>
       </div>
 
-      {!access && (
+      {!access && !demoMode && (
         <section className="nexus-connection">
           <div className="nexus-mark">N</div>
           <h2>Connect NEXUS</h2>
@@ -1247,6 +1264,7 @@ export default function NexusChatPanel({
               <span><strong>ODEI Studio desktop · ODID sign-in</strong><small>{!desktopSettingsLoaded ? "Loading secure desktop setting…" : desktopAuthEnabled ? "Enabled on this desktop" : "Disabled by default"}</small></span>
             </label>
           )}
+          <button className="nexus-secondary-button" type="button" onClick={() => { setDemoMode(true); setMessages([]); setNotice("Local demo only · no API calls."); }}>Open local demo chat</button>
           {config.missing.length > 0 && (
             <div className="nexus-config-warning" role="status">
               Authentication is safely disabled until these deployment settings are configured:
@@ -1403,6 +1421,7 @@ export default function NexusChatPanel({
       )}
 
       <div className="nexus-transcript" role="log" aria-label="Conversation" aria-live="polite">
+      {demoMode && <div className="nexus-demo-banner" role="status"><strong>LOCAL DEMO MODE</strong><span>Chat UI testing only. No sign-in, backend, AI model, repository, tools, or external network requests.</span><small>To enable real NEXUS access, configure: {config.missing.join(", ") || "the ODID/API deployment settings"}.</small></div>}
       {access && macOpen && (
         <section className="mac-environment-panel" aria-label="MAC environment governance">
           <div className="nexus-task-heading">
@@ -1518,7 +1537,7 @@ export default function NexusChatPanel({
           <div className="nexus-empty-state">
             <div className="nexus-mark">N</div>
             <h2>Your coding agent</h2>
-            <p>{selectedProject ? "Ask NEXUS to explain your project, inspect explicitly selected files, prepare review-only proposals, plan tasks or run separately approved executions." : notice}</p>
+            <p>{demoMode ? "Send a test message to exercise the NEXUS composer and transcript. Responses are local UI fixtures, not generated by an AI model." : selectedProject ? "Ask NEXUS to explain your project, inspect explicitly selected files, prepare review-only proposals, plan tasks or run separately approved executions." : notice}</p>
           </div>
         )}
         {messages.map((message) => (
@@ -1720,15 +1739,15 @@ export default function NexusChatPanel({
       </div>
 
       <div className="nexus-composer-wrap">
-        {access && projectId ? (
+        {(access && projectId) || demoMode ? (
           <>
-            {activeFile && (
+            {!demoMode && activeFile && (
               <label className="nexus-attach-toggle">
                 <input type="checkbox" checked={attachActiveFile} disabled={!isNexusContextPathAllowed(activeFile.path) || (!attachActiveFile && selectedContextCount >= 5 && !selectedContextPaths.includes(activeFile.path))} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
                 Attach active file excerpt: {activeFile.path}{!isNexusContextPathAllowed(activeFile.path) ? " · excluded from AI context for security" : ""}
               </label>
             )}
-            {workspaceContext && availableContextFiles.length > 0 && (
+            {!demoMode && workspaceContext && availableContextFiles.length > 0 && (
               <details className="nexus-context-picker">
                 <summary>Select workspace files to attach ({selectedContextCount}/5)</summary>
                 <p className="nexus-muted">Only checked files are read and sent. Hidden files and the rest of the workspace are not included automatically.</p>
@@ -1818,12 +1837,12 @@ export default function NexusChatPanel({
             )}
             <label className="nexus-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              I consent to sending this request{selectedContextCount > 0 ? ` and ${selectedContextCount} explicitly selected file excerpt(s)` : ""} to the configured cloud AI provider.
+              {demoMode ? "I understand this is a local UI test; my message will not be sent to an AI model or external service." : `I consent to sending this request${selectedContextCount > 0 ? ` and ${selectedContextCount} explicitly selected file excerpt(s)` : ""} to the configured cloud AI provider.`}
             </label>
             <form className="chat-composer" onSubmit={(event) => void submitMessage(event)}>
               <textarea
                 aria-label="NEXUS message"
-                placeholder="Ask NEXUS about this project…"
+                placeholder={demoMode ? "Type a message to test the NEXUS chat…" : "Ask NEXUS about this project…"}
                 rows={3}
                 maxLength={8_000}
                 value={draft}
@@ -1837,12 +1856,12 @@ export default function NexusChatPanel({
                 }}
               />
               <div>
-                <span>Chat · inspect · plan · propose · approved execution</span>
+                <span>{demoMode ? "Local UI test · no API calls" : "Chat · inspect · plan · propose · approved execution"}</span>
                 {sending
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>{inspectionRunning ? "Cancel inspection" : "Stop"}</button>
                   : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy || taskBusy}>Send</button>}
                 <button type="button" className="nexus-secondary-button" onClick={() => void planTask()}
-                  disabled={!draft.trim() || !consent || conversationBusy || sending || taskBusy}>
+                  disabled={demoMode || !draft.trim() || !consent || conversationBusy || sending || taskBusy} title={demoMode ? "Task planning requires authenticated API access" : "Plan task"}>
                   {taskBusy ? "Working…" : "Plan task"}
                 </button>
               </div>
