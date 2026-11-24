@@ -698,6 +698,8 @@ def _read_windows_file(root_handle, parts: tuple[str, ...]) -> str | None:
     try:
         if metadata.st_size > 1_000_000:
             raise UnsafeWindowsPath("Target file exceeds the safe read limit")
+        if getattr(metadata, "st_nlink", 1) != 1:
+            raise UnsafeWindowsPath("Hard-linked patch targets are not permitted")
         data = bytearray()
         while len(data) <= 1_000_000:
             chunk = os.read(descriptor, min(65_536, 1_000_001 - len(data)))
