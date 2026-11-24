@@ -232,6 +232,23 @@ class MongoParallelJobStore:
                 return self._from_doc(claimed)
         return None
 
+    async def heartbeat(
+        self, *, organization_id: str, job_id: str, worker_id: str,
+        lease_token: str, lease_seconds: int = 60,
+    ) -> None:
+        if isinstance(lease_seconds, bool) or not 5 <= lease_seconds <= 600:
+            raise ValueError("lease_seconds must be between 5 and 600")
+        now = datetime.now(timezone.utc)
+        result = await self._jobs.update_one(
+            {"organization_id": organization_id, "job_id": job_id,
+             "worker_id": worker_id, "lease_token": lease_token,
+             "status": "leased", "lease_expires_at": {"$gt": now}},
+            {"$set": {"lease_expires_at": now + timedelta(seconds=lease_seconds),
+                      "updated_at": now}},
+        )
+        if result.modified_count != 1:
+            raise ParallelJobConflict("worker lease is missing, expired or no longer owned")
+
     async def checkpoint(
         self, *, organization_id: str, job_id: str, worker_id: str,
         lease_token: str, expected_version: int, checkpoint: dict[str, Any],
