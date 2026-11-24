@@ -74,7 +74,7 @@ class ParallelJobWorker:
         payload = row.get("payload", {})
         if not isinstance(payload, dict):
             await self._finish(job, "failed")
-            raise ValueError("persisted job payload is invalid")
+            raise TypeError("persisted job payload is invalid")
 
         checkpoint = row.get("checkpoint")
         digest = row.get("checkpoint_sha256")
