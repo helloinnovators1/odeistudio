@@ -52,7 +52,7 @@ test("NEXUS opens a local-only chat harness without calling authenticated servic
   await expect(panel.getByRole("button", { name: "Exit demo" })).toBeVisible();
   await expect(panel).toContainText("Local UI test · no API calls");
   page.on("request", (request) => {
-    if (/\\/api\\//i.test(new URL(request.url()).pathname)) apiRequests.push(request.url());
+    if (new URL(request.url()).pathname.includes("/api/")) apiRequests.push(request.url());
   });
 
   await panel.getByRole("checkbox", { name: /local UI test/i }).check();
