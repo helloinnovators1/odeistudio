@@ -1066,7 +1066,7 @@ export default function NexusChatPanel({
       if (!content || !consent || sending || content.length > 8_000) return;
       const userMessage: TranscriptMessage = { id: newMessageId(), role: "user", content, mode };
       const demoReply = buildNexusLocalDemoReply(mode);
-      setMessages((current) => [...current, userMessage, { id: newMessageId(), role: "assistant", content: demoReply, mode }].slice(-20));
+      setMessages((current) => [...current, userMessage, { id: newMessageId(), role: "assistant" as const, content: demoReply, mode }].slice(-20));
       setDraft("");
       setConsent(false);
       setChatError("");
