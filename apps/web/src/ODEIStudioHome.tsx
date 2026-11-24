@@ -1,5 +1,7 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import "./studio-home.css";
+
+interface SpeechRecognitionLike { continuous: boolean; interimResults: boolean; lang: string; onresult: ((event: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string; isFinal: boolean }>> }) => void) | null; onerror: ((event: { error?: string }) => void) | null; onend: (() => void) | null; start(): void; stop(): void; }
 
 interface Props {
   onOpenWorkspace: () => void;
@@ -21,6 +23,8 @@ export default function ODEIStudioHome({
 }: Props) {
   const [prompt, setPrompt] = useState("");
   const [composerMode, setComposerMode] = useState<"ask" | "plan" | "agent" | "debug">("ask");
+  const [dictating, setDictating] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [activeSection, setActiveSection] = useState("New Chat");
   const [minimized, setMinimized] = useState(false);
   const [maximized, setMaximized] = useState(false);
@@ -40,6 +44,7 @@ export default function ODEIStudioHome({
   const [automationSchedule, setAutomationSchedule] = useState("Daily");
   const [voiceMessage, setVoiceMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => () => recognitionRef.current?.stop(), []);
 
   function openIndependentIDE() {
     const url = new URL(window.location.href);
@@ -136,6 +141,19 @@ export default function ODEIStudioHome({
     setAttachments([]);
     setVoiceMessage("");
     onStartChat(message, composerMode);
+  }
+
+  function toggleDictation() {
+    if (dictating) { recognitionRef.current?.stop(); setDictating(false); return; }
+    const speechWindow = window as Window & { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) { setVoiceMessage("Speech recognition is unavailable in this browser. Allow microphone access in a supported browser."); return; }
+    try {
+      const recognition = new SpeechRecognition(); recognition.lang = navigator.language || "en-US"; recognition.continuous = true; recognition.interimResults = true;
+      recognition.onresult = (event) => { const finalText = Array.from(event.results).slice(event.resultIndex).filter((result) => result[0]?.isFinal).map((result) => result[0]?.transcript || "").join(" ").trim(); if (finalText) setPrompt((current) => (current.trim() ? current.trim() + " " : "") + finalText); };
+      recognition.onerror = (event) => { setVoiceMessage(event.error === "not-allowed" ? "Microphone permission was denied." : "Dictation stopped: " + (event.error || "unknown error")); setDictating(false); };
+      recognition.onend = () => setDictating(false); recognitionRef.current = recognition; recognition.start(); setDictating(true); setVoiceMessage("Listening… speak to dictate into your prompt.");
+    } catch { setVoiceMessage("Could not start microphone dictation. Check browser microphone permissions."); setDictating(false); }
   }
 
   function saveAutomationDraft(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!automationName.trim()) return; const key = "odei-automation-drafts"; let items: string[] = []; try { items = JSON.parse(window.localStorage.getItem(key) || "[]") as string[]; } catch { items = []; } window.localStorage.setItem(key, JSON.stringify([automationName.trim() + " · " + automationSchedule, ...items].slice(0, 10))); setAutomationName(""); setVoiceMessage("Automation draft saved locally; live scheduling is not configured."); }
@@ -236,7 +254,7 @@ export default function ODEIStudioHome({
               <label className="studio-sr-only" htmlFor="studio-home-prompt">Describe what you want to build</label>
               <textarea id="studio-home-prompt" rows={3} maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "@") setContextOpen(true); }} placeholder="Plan, Build, / for skills, @ for context" />{attachments.length > 0 && <div className="studio-attachment-list">{attachments.map((file, index) => <span key={file.name + index}>{file.name}<button type="button" aria-label={"Remove " + file.name} onClick={() => setAttachments((items) => items.filter((_, i) => i !== index))}>×</button></span>)}</div>}{contextOpen && <div className="studio-composer-popover studio-context-picker"><strong>ADD CONTEXT</strong><button type="button" onClick={() => chooseContext("workspace")}>Current workspace</button><button type="button" onClick={() => chooseContext("files")}>Files and folders</button><button type="button" onClick={() => chooseContext("terminal")}>Terminal context</button><button type="button" onClick={() => chooseContext("git-changes")}>Git changes</button><button type="button" onClick={() => chooseContext("browser")}>Browser context</button></div>}
               <div className="studio-prompt-toolbar">
-                <div className="studio-composer-actions"><button type="button" className="studio-add-context" title="Attach files" aria-label="Attach files" onClick={() => fileInputRef.current?.click()}>＋</button><input ref={fileInputRef} className="studio-sr-only" type="file" multiple accept=".txt,.md,.mdx,.json,.jsonc,.yaml,.yml,.toml,.ini,.csv,.xml,.html,.htm,.css,.scss,.less,.js,.jsx,.ts,.tsx,.py,.go,.rs,.java,.kt,.c,.h,.cpp,.hpp,.cs,.php,.rb,.sh,.sql,.graphql,.prisma" onChange={(event) => { void handleAttachmentChange(event); }} /><button type="button" className="studio-tool-button" title="Add context" aria-label="Add context" onClick={() => setContextOpen((open) => !open)}>＠</button></div><select className="studio-mode-select" aria-label="Agent mode" value={composerMode} onChange={(event) => setComposerMode(event.target.value as "ask" | "plan" | "agent" | "debug")}><option value="ask">Ask</option><option value="plan">Plan</option><option value="agent">Build</option><option value="debug">Debug</option></select><span className="studio-prompt-hint" role="status">{voiceMessage || " "}</span><div className="studio-model-anchor"><button type="button" className="studio-model-indicator" aria-expanded={modelOpen} onClick={() => setModelOpen((open) => !open)}><i />{selectedModel}⌄</button>{modelOpen && <div className="studio-composer-popover studio-model-picker"><strong>MODEL</strong><button type="button" onClick={() => { setSelectedModel("ODEI NEXUS"); setModelOpen(false); }}>ODEI NEXUS <small>Configured assistant</small></button><button type="button" disabled>Grok 4.7 High <small>Provider not configured</small></button></div>}</div><button type="button" className="studio-tool-button" title="Microphone dictation" aria-label="Microphone dictation" onClick={() => setVoiceMessage("Microphone dictation requires browser speech-recognition support and permission.")}>🎙</button><button type="button" className="studio-voice-button" title="Voice" aria-label="Voice" onClick={() => setVoiceMessage("Voice sessions require a configured realtime speech provider.")}>◖)))</button><button className="studio-send-button" type="submit" disabled={!prompt.trim()} aria-label="Start with NEXUS">↑</button>
+                <div className="studio-composer-actions"><button type="button" className="studio-add-context" title="Attach files" aria-label="Attach files" onClick={() => fileInputRef.current?.click()}>＋</button><input ref={fileInputRef} className="studio-sr-only" type="file" multiple accept=".txt,.md,.mdx,.json,.jsonc,.yaml,.yml,.toml,.ini,.csv,.xml,.html,.htm,.css,.scss,.less,.js,.jsx,.ts,.tsx,.py,.go,.rs,.java,.kt,.c,.h,.cpp,.hpp,.cs,.php,.rb,.sh,.sql,.graphql,.prisma" onChange={(event) => { void handleAttachmentChange(event); }} /><button type="button" className="studio-tool-button" title="Add context" aria-label="Add context" onClick={() => setContextOpen((open) => !open)}>＠</button></div><select className="studio-mode-select" aria-label="Agent mode" value={composerMode} onChange={(event) => setComposerMode(event.target.value as "ask" | "plan" | "agent" | "debug")}><option value="ask">Ask</option><option value="plan">Plan</option><option value="agent">Build</option><option value="debug">Debug</option></select><span className="studio-prompt-hint" role="status">{voiceMessage || " "}</span><div className="studio-model-anchor"><button type="button" className="studio-model-indicator" aria-expanded={modelOpen} onClick={() => setModelOpen((open) => !open)}><i />{selectedModel}⌄</button>{modelOpen && <div className="studio-composer-popover studio-model-picker"><strong>MODEL</strong><button type="button" onClick={() => { setSelectedModel("ODEI NEXUS"); setModelOpen(false); }}>ODEI NEXUS <small>Configured assistant</small></button><button type="button" disabled>Grok 4.7 High <small>Provider not configured</small></button></div>}</div><button type="button" className="studio-tool-button" title={dictating ? "Stop microphone dictation" : "Start microphone dictation"} aria-label={dictating ? "Stop microphone dictation" : "Microphone dictation"} aria-pressed={dictating} onClick={toggleDictation}>{dictating ? "■" : "🎙"}</button><button type="button" className="studio-voice-button" title="Voice" aria-label="Voice" onClick={() => setVoiceMessage("Voice sessions require a configured realtime speech provider.")}>◖)))</button><button className="studio-send-button" type="submit" disabled={!prompt.trim()} aria-label="Start with NEXUS">↑</button>
               </div>
             </form>
 
