@@ -126,6 +126,7 @@ class MongoRepositoryIndexStore:
         chunks: list[dict[str, Any]],
         embedding_model: str,
         chunk_limit_reached: bool,
+        analysis_truncated: bool,
         mongo_client: Any,
         audit_store: MongoAuditEventStore,
         principal: Principal,
@@ -182,6 +183,7 @@ class MongoRepositoryIndexStore:
                 "chunk_count": len(chunks),
                 "embedding_model": embedding_model,
                 "chunk_limit_reached": chunk_limit_reached,
+                "analysis_truncated": analysis_truncated,
             }
             async with mongo_client.start_session() as session:
                 async def transaction(active_session):
@@ -246,6 +248,7 @@ class MongoRepositoryIndexStore:
             "chunk_count": state["chunk_count"],
             "embedding_model": state["embedding_model"],
             "chunk_limit_reached": state["chunk_limit_reached"],
+            "analysis_truncated": state.get("analysis_truncated", False),
         }
 
     async def search_semantic(
