@@ -159,8 +159,14 @@ export default function ODEIStudioHome({
   function saveAutomationDraft(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!automationName.trim()) return; const key = "odei-automation-drafts"; let items: string[] = []; try { items = JSON.parse(window.localStorage.getItem(key) || "[]") as string[]; } catch { items = []; } window.localStorage.setItem(key, JSON.stringify([automationName.trim() + " · " + automationSchedule, ...items].slice(0, 10))); setAutomationName(""); setVoiceMessage("Automation draft saved locally; live scheduling is not configured."); }
   function chooseContext(value: string) { setPrompt((current) => current + (current ? " " : "") + "@" + value + " "); setContextOpen(false); document.getElementById("studio-home-prompt")?.focus(); }
   function chooseSuggestion(action: (typeof suggestions)[number]["action"], title: string) {
-    if (action === "workspace") onOpenWorkspace();
-    else onStartChat(action === "plan" ? prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable." : prompt.trim() || title);
+    if (action === "workspace") { onOpenWorkspace(); return; }
+    const mode = action === "plan" ? "plan" : title === "Debug an issue" ? "debug" : "ask";
+    const fallback = title === "Review my database"
+      ? "Review this repository database schema, migrations, indexes and access-control rules. Identify relevant files and report evidence and risks without changing anything."
+      : action === "plan"
+        ? "Help me plan a new project. Clarify its goal, constraints, architecture and first deliverable."
+        : "Debug this issue. Inspect the relevant code, trace the root cause and propose a safe fix."; 
+    onStartChat(prompt.trim() || fallback, mode);
   }
 
   return (
@@ -258,7 +264,7 @@ export default function ODEIStudioHome({
               </div>
             </form>
 
-            <div className="studio-quick-actions"><button onClick={() => onStartChat(prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable.")}>Plan New Idea <kbd>⇧Tab</kbd></button><button onClick={() => onStartChat((prompt.trim() + "\n\nWork on independent tasks in parallel where safe.").trim())}>Multitask</button></div>
+            <div className="studio-quick-actions"><button onClick={() => onStartChat(prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable.", "plan")}>Plan New Idea <kbd>⇧Tab</kbd></button><button onClick={() => onStartChat((prompt.trim() + "\n\nWork on independent tasks in parallel where safe.").trim())}>Multitask</button></div>
 
             <div className="studio-suggestions" aria-label="Suggested starting points">
               {suggestions.map((item) => (
