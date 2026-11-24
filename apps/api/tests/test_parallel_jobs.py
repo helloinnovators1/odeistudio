@@ -1,5 +1,3 @@
-from datetime import datetime, timedelta, timezone
-
 import pytest
 
 from odei_api.services.parallel_jobs import (
