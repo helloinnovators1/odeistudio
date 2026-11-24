@@ -1265,3 +1265,48 @@ def test_project_file_read_rejects_concurrent_in_place_modification(tmp_path, mo
     monkeypatch.setattr(project_files.os, "fstat", racing_fstat)
     with pytest.raises(project_files.UnsafeProjectPath, match="changed while being read"):
         project_files._read_open_descriptor(descriptor, metadata, 100)
+
+
+
+def test_companion_search_cache_invalidates_changed_and_deleted_files(tmp_path):
+    client, registry, _pairing, code = _build_client(tmp_path)
+    project = tmp_path / "project"
+    source = project / "src" / "live.py"
+    source.parent.mkdir()
+    source.write_text("needle_old = True\n", encoding="utf-8")
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
+
+        first = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_old"}, headers=headers,
+        )
+        assert first.status_code == 200
+        assert len(first.json()["matches"]) == 1
+
+        source.write_text("needle_new = True\n", encoding="utf-8")
+        changed = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_new"}, headers=headers,
+        )
+        assert changed.status_code == 200
+        assert len(changed.json()["matches"]) == 1
+        stale = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_old"}, headers=headers,
+        )
+        assert stale.status_code == 200
+        assert stale.json()["matches"] == []
+
+        source.unlink()
+        deleted = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_new"}, headers=headers,
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["matches"] == []
+    finally:
+        registry.close()
