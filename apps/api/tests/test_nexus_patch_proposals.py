@@ -152,6 +152,8 @@ def test_patch_proposal_is_persisted_redacted_and_owner_approved(patch_state):
     assert body["status"] == "pending"
     assert body["application_enabled"] is False
     assert body["files"][0]["operation"] == "update"
+    assert audit.events[0]["metadata"]["mode"] == "agent"
+    assert audit.events[1]["metadata"]["mode"] == "agent"
     assert "print('new')" in body["files"][0]["content"]
 
     listed = client.get(
