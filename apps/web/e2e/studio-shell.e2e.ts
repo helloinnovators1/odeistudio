@@ -20,8 +20,9 @@ test("ODEI Studio Window is the first screen and opens the workspace", async ({ 
   await expect(ide.locator(".ide-titlebar")).toBeVisible();
   const panel = ide.locator('aside[aria-label="NEXUS AI chat panel"]');
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Sign in with ODID" })).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Sign in with ODID" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "Exit demo" })).toBeVisible();
+  await expect(panel.getByRole("textbox", { name: "NEXUS message" })).toBeVisible();
+  await expect(panel).toContainText("Local UI test · no API calls");
 });
 
 test("NEXUS keyboard shortcut opens the chat panel", async ({ page }) => {
@@ -40,16 +41,25 @@ test("the workspace shell has no horizontal overflow at 320px", async ({ page })
   expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
 });
 
-test("NEXUS exposes a named panel and a safe unauthenticated configuration state", async ({ page }) => {
+test("NEXUS opens a local-only chat harness without calling authenticated services", async ({ page }) => {
+  const apiRequests: string[] = [];
   await page.goto("/");
   await page.locator(".studio-quick-actions button").nth(1).click();
   await page.getByRole("button", { name: "NEXUS ⌘ / Ctrl + I" }).click();
 
   const panel = page.getByRole("complementary", { name: "NEXUS AI chat panel" });
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole("heading", { name: "Connect NEXUS" })).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Sign in with ODID" })).toBeDisabled();
-  await expect(panel.getByRole("status")).toContainText("Authentication is safely disabled");
+  await expect(panel.getByRole("button", { name: "Exit demo" })).toBeVisible();
+  await expect(panel).toContainText("Local UI test · no API calls");
+  page.on("request", (request) => {
+    if (/\\/api\\//i.test(new URL(request.url()).pathname)) apiRequests.push(request.url());
+  });
+
+  await panel.getByRole("checkbox", { name: /local UI test/i }).check();
+  await panel.getByRole("textbox", { name: "NEXUS message" }).fill("Test the local NEXUS chat");
+  await panel.getByRole("button", { name: "Send" }).click();
+  await expect(panel).toContainText("Local chat interface test completed.");
+  expect(apiRequests).toEqual([]);
 });
 
 test("workspace and NEXUS remain within common narrow and desktop viewports", async ({ page }) => {
