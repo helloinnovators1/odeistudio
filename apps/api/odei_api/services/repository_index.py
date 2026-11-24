@@ -268,6 +268,10 @@ class RepositoryIndex:
             "index_revision": self._revision,
         }
 
+    def iter_files(self) -> tuple[IndexedFile, ...]:
+        """Return immutable indexed records for trusted persistence adapters."""
+        return tuple(self._files[path] for path in sorted(self._files))
+
     def clear(self) -> None:
         """Drop all indexed source text and advance the revision."""
         self._files.clear()
