@@ -46,6 +46,11 @@ from odei_api.services.workspace_handles import (
     WorkspaceNotFound,
 )
 from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
+from odei_api.services.workspace_transaction_journal import (
+    DurableWorkspaceJournal,
+    WorkspaceJournalError,
+    default_journal_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -874,7 +879,12 @@ def main() -> int:
         print("No project folders selected.")
         return 1
 
-    registry = WorkspaceHandleRegistry()
+    try:
+        journal = DurableWorkspaceJournal(default_journal_path())
+    except WorkspaceJournalError as exc:
+        print(f"Could not initialize the durable workspace transaction journal: {exc}", file=sys.stderr)
+        return 2
+    registry = WorkspaceHandleRegistry(journal=journal)
     workspace_ids: list[str] = []
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
