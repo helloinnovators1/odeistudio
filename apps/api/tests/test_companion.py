@@ -869,8 +869,8 @@ def test_workspace_handle_reports_incomplete_batch_compensation(tmp_path, monkey
 
 
 def test_apply_patch_request_accepts_bounded_multi_file_batch_and_rejects_duplicates():
-    from pydantic import ValidationError
     from odei_api.companion import ApplyPatchRequest
+    from pydantic import ValidationError
 
     base = {"organization_id": "org-1", "project_id": "project-1",
             "proposal_id": "proposal-1", "proposal_version": 1,
