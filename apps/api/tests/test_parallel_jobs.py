@@ -49,7 +49,7 @@ class Collection:
             elif isinstance(value, dict) and "$gt" in value:
                 rows = [r for r in rows if r.get(key) and r[key] > value["$gt"]]
             elif value is not None and not isinstance(value, dict):
-                rows = [r for r in rows if r.get(key) == value]
+                rows = [r for r in rows if (value in r.get(key, []) if isinstance(r.get(key), list) else r.get(key) == value)]
         return Cursor(rows)
     async def find_one(self, query):
         rows = await self.find(query).to_list(100)
