@@ -93,7 +93,7 @@ class MongoParallelJobStore:
         now = datetime.now(timezone.utc)
         group = {
             "_id": f"{organization_id}:{project_id}:{group_id}", "group_id": group_id, "organization_id": organization_id, "project_id": project_id,
-            "status": "queued", "job_count": len(jobs), "created_at": now, "updated_at": now,
+            "status": "creating", "job_count": len(jobs), "created_at": now, "updated_at": now,
         }
         documents = []
         for index, item in enumerate(jobs):
@@ -113,7 +113,7 @@ class MongoParallelJobStore:
                 "_id": uuid4().hex, "job_id": job_id, "group_id": group_id,
                 "organization_id": organization_id, "project_id": project_id,
                 "payload": payload, "depends_on": dependencies,
-                "status": "queued" if not dependencies else "blocked",
+                "status": "staging", "initial_status": "queued" if not dependencies else "blocked",
                 "version": 0, "attempt": 0, "max_attempts": max_attempts,
                 "checkpoint": None, "checkpoint_sha256": None,
                 "worker_id": None, "lease_token": None, "lease_expires_at": None,
@@ -143,15 +143,35 @@ class MongoParallelJobStore:
         await self._groups.insert_one(group)
         try:
             await self._jobs.insert_many(documents, ordered=True)
+            for row in documents:
+                await self._events.insert_one({
+                    "organization_id": organization_id, "job_id": row["job_id"], "version": 0,
+                    "event": "job.queued" if row["initial_status"] == "queued" else "job.blocked",
+                    "group_id": group_id, "occurred_at": now,
+                })
+            for row in documents:
+                activated = await self._jobs.update_one(
+                    {"organization_id": organization_id, "job_id": row["job_id"], "status": "staging"},
+                    {"$set": {"status": row["initial_status"], "updated_at": now},
+                     "$unset": {"initial_status": ""}},
+                )
+                if not activated.modified_count:
+                    raise ParallelJobConflict("job group activation failed")
+            await self._groups.update_one(
+                {"_id": group["_id"], "organization_id": organization_id},
+                {"$set": {"status": "queued", "updated_at": now}},
+            )
         except Exception:
-            await self._groups.delete_one({"_id": f"{organization_id}:{project_id}:{group_id}", "organization_id": organization_id})
+            for row in documents:
+                await self._jobs.delete_one({"_id": row["_id"]})
+                await self._events.delete_one({
+                    "organization_id": organization_id, "job_id": row["job_id"], "version": 0,
+                })
+            await self._groups.delete_one({"_id": group["_id"], "organization_id": organization_id})
             raise
         for row in documents:
-            await self._events.insert_one({
-                "organization_id": organization_id, "job_id": row["job_id"], "version": 0,
-                "event": "job.queued" if row["status"] == "queued" else "job.blocked",
-                "group_id": group_id, "occurred_at": now,
-            })
+            row["status"] = row["initial_status"]
+            row.pop("initial_status", None)
         return [self._from_doc(row) for row in documents]
 
     async def claim_next(self, *, worker_id: str, lease_seconds: int = 60) -> ParallelJob | None:
