@@ -300,7 +300,7 @@ function validateConversation(value: unknown): NexusConversation {
       (message.role !== "user" && message.role !== "assistant") ||
       typeof message.content !== "string" || message.content.length > 16_000 ||
       (message.mode !== undefined && !["ask", "plan", "agent", "debug"].includes(String(message.mode))) ||
-      typeof message.created_at !== "string
+      typeof message.created_at !== "string"
     ) throw new NexusChatTransportError("NEXUS returned an invalid conversation message.", 200);
     return message as unknown as NexusConversationMessage;
   });

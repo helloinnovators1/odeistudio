@@ -87,7 +87,7 @@ class ConversationStore:
         del self.documents[conversation_id]
         return True
 
-    async def append(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id, role, content, expected_version=None):
+    async def append(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id, role, content, expected_version=None, mode=None):
         item = await self.get_for_owner(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=owner_issuer, owner_subject=owner_subject,
@@ -97,6 +97,7 @@ class ConversationStore:
             return None
         message = {
             "message_id": uuid4().hex, "role": role, "content": content,
+            **({"mode": mode} if mode is not None else {}),
             "created_at": datetime.now(timezone.utc),
         }
         item["messages"].append(message)
