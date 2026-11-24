@@ -1146,7 +1146,7 @@ def test_companion_search_returns_bounded_literal_matches_with_provenance(tmp_pa
     project = tmp_path / "project"
     (project / "src").mkdir()
     (project / "src" / "module.py").write_text(
-        "alpha = 1\\nNeedleValue = 2\\nneedlevalue = 3\\n", encoding="utf-8"
+        "alpha = 1\nNeedleValue = 2\nneedlevalue = 3\n", encoding="utf-8"
     )
     (project / ".env").write_text("NeedleValue=secret", encoding="utf-8")
     try:
@@ -1163,7 +1163,7 @@ def test_companion_search_returns_bounded_literal_matches_with_provenance(tmp_pa
             ("src/module.py", 2), ("src/module.py", 3),
         ]
         assert payload["matches"][0]["content_sha256"] == hashlib.sha256(
-            b"alpha = 1\\nNeedleValue = 2\\nneedlevalue = 3\\n"
+            b"alpha = 1\nNeedleValue = 2\nneedlevalue = 3\n"
         ).hexdigest()
         assert payload["matches"][0]["index_version"] == "literal-search-v1"
         assert payload["scanned_files"] >= 1
