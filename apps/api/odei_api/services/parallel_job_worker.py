@@ -43,6 +43,7 @@ class ParallelJobWorker:
         lease_seconds: int = 60,
         heartbeat_seconds: int = 15,
         retry_base_seconds: int = 5,
+        heartbeats: Any | None = None,
     ) -> None:
         if not 5 <= lease_seconds <= 600:
             raise ValueError("lease_seconds must be between 5 and 600")
@@ -58,6 +59,7 @@ class ParallelJobWorker:
         self.lease_seconds = lease_seconds
         self.heartbeat_seconds = heartbeat_seconds
         self.retry_base_seconds = retry_base_seconds
+        self.heartbeats = heartbeats
 
     async def run_once(self) -> str | None:
         job = await self.store.claim_next(
@@ -87,6 +89,8 @@ class ParallelJobWorker:
         heartbeat_task = asyncio.create_task(self._heartbeat(job, lease_token, stopped))
         outcome = "failed"
         retry_delay: int | None = None
+        shutdown_cancelled = False
+        await self._publish_heartbeat("busy")
 
         async def save_checkpoint(value: dict[str, Any]) -> None:
             nonlocal current_version
@@ -128,7 +132,7 @@ class ParallelJobWorker:
         except asyncio.CancelledError:
             # Process shutdown is not a user cancellation. Release for another worker.
             retry_delay = 0
-            raise
+            shutdown_cancelled = True
         except ParallelJobConflict:
             outcome = "lease_lost"
         except Exception as exc:
@@ -144,6 +148,7 @@ class ParallelJobWorker:
                 await heartbeat_task
             except asyncio.CancelledError:
                 pass
+            await self._publish_heartbeat("idle")
 
         try:
             if retry_delay is not None:
@@ -152,6 +157,8 @@ class ParallelJobWorker:
                     worker_id=self.worker_id, lease_token=lease_token,
                     expected_version=current_version, delay_seconds=retry_delay,
                 )
+                if shutdown_cancelled:
+                    raise asyncio.CancelledError
                 return "retry_scheduled"
             if outcome == "lease_lost":
                 return outcome
@@ -164,6 +171,14 @@ class ParallelJobWorker:
             logger.warning("Parallel job finalization lost lease ownership (job_id=%s)", job.id)
             return "lease_lost"
         return outcome
+
+    async def _publish_heartbeat(self, status: str) -> None:
+        if self.heartbeats is None:
+            return
+        try:
+            await self.heartbeats.heartbeat(worker_id=self.worker_id, status=status)
+        except Exception as exc:
+            logger.warning("Parallel worker heartbeat failed (error=%s)", type(exc).__name__)
 
     async def _finish(
         self, job: ParallelJob, lease_token: str, expected_version: int, outcome: str,
@@ -196,7 +211,15 @@ class ParallelJobWorker:
     async def serve(self, *, idle_seconds: float = 1.0) -> None:
         if not 0.1 <= idle_seconds <= 30:
             raise ValueError("idle_seconds must be between 0.1 and 30")
-        while True:
-            result = await self.run_once()
-            if result is None:
-                await asyncio.sleep(idle_seconds)
+        try:
+            await self._publish_heartbeat("idle")
+            while True:
+                result = await self.run_once()
+                if result is None:
+                    await asyncio.sleep(idle_seconds)
+        finally:
+            if self.heartbeats is not None:
+                try:
+                    await self.heartbeats.mark_stopped(worker_id=self.worker_id)
+                except Exception as exc:
+                    logger.warning("Parallel worker shutdown heartbeat failed (error=%s)", type(exc).__name__)
