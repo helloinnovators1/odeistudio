@@ -21,6 +21,9 @@ _JS_IMPORTS = (
 _MAX_SYMBOLS_PER_FILE = 2_000
 _MAX_REFERENCES_PER_FILE = 5_000
 _MAX_IMPORTS_PER_FILE = 500
+_MAX_TOTAL_SYMBOLS = 25_000
+_MAX_TOTAL_REFERENCES = 50_000
+_MAX_TOTAL_IMPORTS = 10_000
 _MAX_CHUNK_CHARS = 3_000
 
 
@@ -149,6 +152,10 @@ def analyze_repository(files: list[dict[str, Any]], *, max_chunks: int = 500) ->
         raise ValueError("max_chunks must be between 1 and 2000")
     analyses: dict[str, dict[str, Any]] = {}
     global_names: set[str] = set()
+    symbol_total = 0
+    reference_candidates_total = 0
+    import_total = 0
+    analysis_truncated = False
     for record in files:
         path, content = record.get("path"), record.get("content")
         if not isinstance(path, str) or not isinstance(content, str):
@@ -161,13 +168,24 @@ def analyze_repository(files: list[dict[str, Any]], *, max_chunks: int = 500) ->
             loaded = []
         else:
             symbols, imports, loaded = [], [], []
+        symbol_remaining = max(0, _MAX_TOTAL_SYMBOLS - symbol_total)
+        import_remaining = max(0, _MAX_TOTAL_IMPORTS - import_total)
+        reference_remaining = max(0, _MAX_TOTAL_REFERENCES - reference_candidates_total)
+        if len(symbols) > symbol_remaining or len(imports) > import_remaining or len(loaded) > reference_remaining:
+            analysis_truncated = True
+        symbols = symbols[:symbol_remaining]
+        loaded = loaded[:reference_remaining]
+        bounded_imports = list(dict.fromkeys(imports))[:import_remaining]
+        symbol_total += len(symbols)
+        reference_candidates_total += len(loaded)
+        import_total += len(bounded_imports)
         for symbol in symbols:
             symbol["path"] = path
             global_names.add(symbol["name"])
         analyses[path] = {
             "symbols": symbols,
             "loaded": loaded,
-            "imports": list(dict.fromkeys(imports))[:_MAX_IMPORTS_PER_FILE],
+            "imports": bounded_imports,
             "chunks": _chunks(content),
             "content": content,
         }
@@ -190,9 +208,11 @@ def analyze_repository(files: list[dict[str, Any]], *, max_chunks: int = 500) ->
         if suffix == ".py":
             candidates = analysis["loaded"]
         else:
-            candidates = []
-            for line_number, line in enumerate(lines, start=1):
-                candidates.extend((match.group(0), line_number) for match in _IDENTIFIER.finditer(line))
+            candidates = (
+                (match.group(0), line_number)
+                for line_number, line in enumerate(lines, start=1)
+                for match in _IDENTIFIER.finditer(line)
+            )
         seen: set[tuple[str, int]] = set()
         for name, line_number in candidates:
             key = (name, line_number)
@@ -204,7 +224,12 @@ def analyze_repository(files: list[dict[str, Any]], *, max_chunks: int = 500) ->
                 continue
             seen.add(key)
             refs.append({"name": name, "path": path, "line": line_number})
-            if len(refs) >= _MAX_REFERENCES_PER_FILE:
+            if (
+                len(refs) >= _MAX_REFERENCES_PER_FILE
+                or sum(len(items) for items in references_by_file.values()) + len(refs)
+                >= _MAX_TOTAL_REFERENCES
+            ):
+                analysis_truncated = True
                 break
         references_by_file[path] = refs
 
@@ -233,4 +258,5 @@ def analyze_repository(files: list[dict[str, Any]], *, max_chunks: int = 500) ->
         "chunk_limit_reached": sum(
             len(analysis["chunks"]) for analysis in analyses.values()
         ) > len(chunks),
+        "analysis_truncated": analysis_truncated,
     }
