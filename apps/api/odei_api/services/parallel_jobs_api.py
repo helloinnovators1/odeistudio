@@ -137,7 +137,7 @@ async def get_parallel_job(
     return {
         "job_id": job.id, "group_id": job.group_id, "status": job.status,
         "version": job.version, "attempt": job.attempt, "max_attempts": job.max_attempts,
-        "checkpoint": job.checkpoint, "checkpoint_sha256": job.checkpoint_sha256,
+        "has_checkpoint": job.checkpoint is not None, "checkpoint_sha256": job.checkpoint_sha256,
     }
 
 
