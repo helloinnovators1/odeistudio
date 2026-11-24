@@ -291,7 +291,7 @@ class MongoParallelJobStore:
         checkpoint = row.get("checkpoint")
         digest = row.get("checkpoint_sha256")
         if checkpoint is not None:
-            safe, actual_digest = _checkpoint(checkpoint)
+            _, actual_digest = _checkpoint(checkpoint)
             if actual_digest != digest:
                 raise ParallelJobConflict("persisted checkpoint integrity verification failed")
         return {
