@@ -315,7 +315,10 @@ async def refresh_repository_index(
                     config = get_settings()
                     if config.openai_api_key is None or not config.openai_api_key.get_secret_value():
                         raise ModelConfigurationError("Embedding API key is not configured")
-                    client = OpenAI(api_key=config.openai_api_key.get_secret_value())
+                    client = OpenAI(
+                        api_key=config.openai_api_key.get_secret_value(),
+                        timeout=30.0, max_retries=1,
+                    )
                     try:
                         chunks = await _embed_new_chunks(chunks, existing_chunks, client=client)
                     finally:
