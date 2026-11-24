@@ -377,3 +377,101 @@ def apply_file_patch_batch(
         "rollback_required": False,
         "files": results,
     }
+
+
+class WorkspacePatchRecoveryRequired(RuntimeError):
+    """A pending transaction conflicts with current workspace contents."""
+
+
+def recover_pending_patch_transactions(
+    grant: Any, journal: Any, root_key: str
+) -> list[dict[str, Any]]:
+    """Recover pending batches through the selected native root handle.
+
+    Each target is restored only when its current hash is either the recorded
+    pre-transaction hash or the approved post-transaction hash. Any third value
+    is treated as an external edit and blocks recovery without overwriting it.
+    """
+    recovered: list[dict[str, Any]] = []
+    for transaction in journal.pending(root_key):
+        transaction_id = transaction["transaction_id"]
+        restored_paths: list[str] = []
+        conflicts: list[str] = []
+        for entry in reversed(transaction["files"]):
+            item = entry["patch"]
+            before = entry["before"]
+            parsed = _validate_file(item)
+            operation, base_hash, result_hash = parsed[1], parsed[2], parsed[3]
+            try:
+                current = _read_for_batch(grant, item, parsed)
+                current_hash = (
+                    hashlib.sha256(current.encode("utf-8")).hexdigest()
+                    if current is not None else None
+                )
+                inverse = None
+                if operation == "create":
+                    if current is None:
+                        continue
+                    if current_hash != result_hash:
+                        conflicts.append(item["path"])
+                        continue
+                    inverse = {
+                        "path": item["path"], "operation": "delete",
+                        "base_sha256": result_hash, "result_sha256": None,
+                        "content": None,
+                    }
+                elif operation == "update":
+                    if before is None:
+                        conflicts.append(item["path"])
+                        continue
+                    if current_hash == base_hash:
+                        continue
+                    if current_hash != result_hash:
+                        conflicts.append(item["path"])
+                        continue
+                    inverse = {
+                        "path": item["path"], "operation": "update",
+                        "base_sha256": result_hash,
+                        "result_sha256": hashlib.sha256(before.encode("utf-8")).hexdigest(),
+                        "content": before,
+                    }
+                else:  # delete
+                    if before is None:
+                        conflicts.append(item["path"])
+                        continue
+                    if current is not None:
+                        if current_hash == base_hash:
+                            continue
+                        conflicts.append(item["path"])
+                        continue
+                    inverse = {
+                        "path": item["path"], "operation": "create",
+                        "base_sha256": None,
+                        "result_sha256": hashlib.sha256(before.encode("utf-8")).hexdigest(),
+                        "content": before,
+                    }
+                if inverse is not None:
+                    apply_single_file_patch(grant, inverse)
+                    restored_paths.append(item["path"])
+            except (OSError, ValueError, WorkspacePatchApplyError):
+                conflicts.append(item["path"])
+
+        if conflicts:
+            journal.finish(
+                transaction_id, state="conflict",
+                receipt={"recovery_conflicts": sorted(set(conflicts)),
+                         "restored_paths": restored_paths},
+            )
+            raise WorkspacePatchRecoveryRequired(
+                "A pending workspace transaction conflicts with external file changes: "
+                + ", ".join(sorted(set(conflicts)))
+            )
+        journal.finish(
+            transaction_id, state="recovered",
+            receipt={"recovered": True, "restored_paths": restored_paths},
+        )
+        recovered.append({
+            "transaction_id": transaction_id,
+            "restored_paths": restored_paths,
+        })
+    return recovered
