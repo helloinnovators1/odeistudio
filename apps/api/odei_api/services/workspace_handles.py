@@ -7,6 +7,7 @@ write operations remain relative to retained native root handles.
 """
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import os
 import secrets
@@ -17,6 +18,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+from odei_api.services.workspace_transaction_journal import workspace_root_key
 
 from odei_api.services.project_files import (
     DEFAULT_MAX_FILES,
@@ -48,14 +52,16 @@ class _WorkspaceGrant:
     lock: threading.RLock = field(default_factory=threading.RLock)
     search_cache: OrderedDict[str, tuple[str, tuple[str, ...], int]] = field(default_factory=OrderedDict)
     search_cache_bytes: int = 0
+    root_key: str = ""
 
 
 class WorkspaceHandleRegistry:
     """Own and revoke native handles for explicitly selected workspace roots."""
 
-    def __init__(self) -> None:
+    def __init__(self, journal: Any | None = None) -> None:
         self._lock = threading.RLock()
         self._grants: dict[str, _WorkspaceGrant] = {}
+        self._journal = journal
 
     def register_selected_root(
         self, selected_path: str | Path, *, allow_patch_apply: bool = False
@@ -108,6 +114,37 @@ class WorkspaceHandleRegistry:
             )
         else:
             raise WorkspaceHandleError("This platform has no supported workspace handle")
+
+        try:
+            if grant.platform == "posix":
+                root_stat = os.fstat(int(grant.handle))
+                identity = f"posix:{root_stat.st_dev}:{root_stat.st_ino}"
+            else:
+                class _FileIdInfo(ctypes.Structure):
+                    _fields_ = [
+                        ("VolumeSerialNumber", ctypes.c_ulonglong),
+                        ("FileId", ctypes.c_ubyte * 16),
+                    ]
+                info = _FileIdInfo()
+                if not grant.kernel32.GetFileInformationByHandleEx(
+                    grant.handle, 18, ctypes.byref(info), ctypes.sizeof(info)
+                ):
+                    raise OSError(ctypes.get_last_error(), "Could not identify selected workspace root")
+                identity = (
+                    f"windows:{info.VolumeSerialNumber}:"
+                    + bytes(info.FileId).hex()
+                )
+            grant.root_key = workspace_root_key(selected_path, identity)
+            if self._journal is not None:
+                from odei_api.services.workspace_patch_apply import recover_pending_patch_transactions
+                recover_pending_patch_transactions(grant, self._journal, grant.root_key)
+        except Exception:
+            if grant.platform == "nt":
+                from odei_api.services.windows_file_handles import close_directory_handle
+                close_directory_handle(grant.kernel32, grant.handle)
+            else:
+                os.close(int(grant.handle))
+            raise
 
         workspace_id = secrets.token_urlsafe(32)
         with self._lock:
@@ -282,7 +319,9 @@ class WorkspaceHandleRegistry:
         with self._borrow(workspace_id) as grant:
             if not grant.allow_patch_apply:
                 raise WorkspaceHandleError("Workspace was opened read-only")
-            return apply_file_patch_batch(grant, files)
+            return apply_file_patch_batch(
+                grant, files, journal=self._journal, root_key=grant.root_key
+            )
 
     def revoke(self, workspace_id: str) -> bool:
         with self._lock:
