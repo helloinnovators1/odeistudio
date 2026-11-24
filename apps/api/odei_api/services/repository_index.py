@@ -13,7 +13,7 @@ import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 _MAX_FILES = 5_000
 _MAX_FILE_BYTES = 1_048_576
@@ -88,9 +88,7 @@ def _excluded(relative: Path, *, is_directory: bool) -> bool:
         return True
     if name.startswith("service-account") and name.endswith(".json"):
         return True
-    if name.endswith("-credentials.json"):
-        return True
-    return False
+    return name.endswith("-credentials.json")
 
 
 def _contains_secret(content: str) -> bool:
