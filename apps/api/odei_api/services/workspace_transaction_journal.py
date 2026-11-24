@@ -194,5 +194,24 @@ class DurableWorkspaceJournal:
                 raise WorkspaceJournalError("Pending workspace journal record is corrupt") from exc
         return results
 
+    def receipt(self, root_key: str, transaction_id: str) -> dict[str, Any] | None:
+        """Read one transaction receipt only within the matching selected root."""
+        if not isinstance(transaction_id, str) or not 1 <= len(transaction_id) <= 128:
+            raise ValueError("Transaction ID is invalid")
+        try:
+            with closing(self._connect()) as connection:
+                row = connection.execute(
+                    "SELECT state, receipt_json FROM patch_transactions "
+                    "WHERE root_key=? AND transaction_id=?",
+                    (root_key, transaction_id),
+                ).fetchone()
+        except sqlite3.Error as exc:
+            raise WorkspaceJournalError("Could not read workspace transaction receipt") from exc
+        if row is None:
+            return None
+        receipt = json.loads(row["receipt_json"]) if row["receipt_json"] else None
+        return {"transaction_id": transaction_id, "state": row["state"], "receipt": receipt}
+
     def close(self) -> None:
         """Connections are short-lived; provided for lifecycle symmetry."""
+
