@@ -6,6 +6,7 @@ relative to held directory handles; no caller-supplied absolute paths are used.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import stat
@@ -17,6 +18,8 @@ from odei_api.services.patch_proposals import (
     PatchProposalError,
     validate_patch_path,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspacePatchApplyError(ValueError):
@@ -314,13 +317,11 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
                 rolled_back.append(item["path"])
             except Exception as rollback_error:
                 rollback_failures.append(item["path"])
-                logger_message = (
-                    f"Compensation failed for {item['path']}: "
-                    f"{type(rollback_error).__name__}"
-                )
                 # Do not include file contents, absolute paths or secrets.
-                import logging
-                logging.getLogger(__name__).error(logger_message)
+                logger.error(
+                    "Compensation failed for %s (%s)",
+                    item["path"], type(rollback_error).__name__,
+                )
         raise WorkspacePatchBatchError(
             "Patch batch failed; " + (
                 "all earlier file operations were rolled back"

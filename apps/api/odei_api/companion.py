@@ -40,12 +40,12 @@ from odei_api.services.patch_proposals import (
     build_patch_proposal,
     validate_patch_path,
 )
-from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
 from odei_api.services.workspace_handles import (
     WorkspaceHandleError,
     WorkspaceHandleRegistry,
     WorkspaceNotFound,
 )
+from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
 
 logger = logging.getLogger(__name__)
 
