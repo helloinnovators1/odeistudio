@@ -203,7 +203,9 @@ class WorkspaceHandleRegistry:
                         )
                 except (OSError, ValueError):
                     skipped_files += 1
-                    grant.search_cache.pop(item.path, None)
+                    stale = grant.search_cache.pop(item.path, None)
+                    if stale is not None:
+                        grant.search_cache_bytes -= stale[2]
                     continue
                 scanned_files += 1
                 digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
