@@ -91,7 +91,6 @@ class DurableWorkspaceJournal:
         connection.execute("PRAGMA busy_timeout = 10000")
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA synchronous = FULL")
-        connection.execute("PRAGMA journal_mode = WAL")
         if os.name != "nt":
             os.chmod(self.path, 0o600)
         return connection
@@ -99,6 +98,7 @@ class DurableWorkspaceJournal:
     def _initialize(self) -> None:
         try:
             with closing(self._connect()) as connection:
+                connection.execute("PRAGMA journal_mode = WAL")
                 connection.executescript(_SCHEMA)
         except (OSError, sqlite3.Error) as exc:
             raise WorkspaceJournalError("Could not initialize the durable workspace journal") from exc
