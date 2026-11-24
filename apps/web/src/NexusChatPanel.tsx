@@ -1012,10 +1012,11 @@ export default function NexusChatPanel({
   async function applyApprovedPatchProposal() {
     if (!access || !config.apiBaseUrl || !workspaceContext || !selectedPatch
       || selectedPatch.status !== "approved" || !selectedPatch.can_decide
-      || selectedPatch.files.length !== 1 || patchBusy) return;
-    const file = selectedPatch.files[0];
-    if (!file || !window.confirm(
-      `Apply the approved ${file.operation} operation to "${file.path}" in the selected local workspace? This changes the local file and cannot currently be rolled back automatically.`,
+      || selectedPatch.files.length < 1 || selectedPatch.files.length > 20 || patchBusy) return;
+    const files = selectedPatch.files;
+    const fileSummary = files.map((file) => `• ${file.operation.toUpperCase()} ${file.path}`).join("\\n");
+    if (!window.confirm(
+      `Apply all ${files.length} approved file operation(s) to the selected local workspace?\\n\\n${fileSummary}\\n\\nEach file operation is atomic. If a later operation fails, NEXUS attempts hash-guarded rollback of earlier operations. A process crash or failed rollback can still require manual recovery.`,
     )) return;
     setPatchBusy(true);
     setPatchError("");
@@ -1033,14 +1034,14 @@ export default function NexusChatPanel({
         {
           organizationId, projectId, proposalId: selectedPatch.proposal_id,
           proposalVersion: selectedPatch.version, challenge: challenge.challenge,
-          capability: capability.capability, file,
+          capability: capability.capability, files,
         },
       );
-      const applied = result.files[0];
-      if (!applied || !applied.durability_confirmed) {
-        setNotice("The companion reported the operation, but could not confirm durable storage. Inspect the workspace before continuing.");
+      const durable = result.files.every((file) => file.durability_confirmed);
+      if (!durable) {
+        setNotice(`NEXUS applied ${result.files.length} file operation(s), but one or more directory flushes could not be confirmed. Inspect the workspace before continuing.`);
       } else {
-        setNotice(`Applied the approved ${file.operation} operation to ${file.path}. The local companion confirmed durable storage. Automatic rollback is not available yet.`);
+        setNotice(`Applied all ${result.files.length} approved file operation(s). Individual file writes were atomic; compensation is attempted if a later operation fails. A durable crash-recovery journal is not yet implemented.`);
       }
     } catch (cause) {
       setPatchError(errorMessage(cause));
@@ -1541,17 +1542,15 @@ export default function NexusChatPanel({
             {selectedPatch.status === "pending" && !selectedPatch.can_decide && (
               <p className="nexus-task-safety">Awaiting a project-owner decision.</p>
             )}
-            {selectedPatch.status === "approved" && selectedPatch.can_decide && workspaceContext && selectedPatch.files.length === 1 ? (
+            {selectedPatch.status === "approved" && selectedPatch.can_decide && workspaceContext && selectedPatch.files.length > 0 ? (
               <button type="button" className="nexus-secondary-button" disabled={patchBusy}
                 onClick={() => void applyApprovedPatchProposal()}>
-                {patchBusy ? "Applying…" : "Apply approved change to selected workspace"}
+                {patchBusy ? "Applying…" : `Apply all ${selectedPatch.files.length} approved file changes`}
               </button>
-            ) : selectedPatch.status === "approved" && selectedPatch.files.length > 1 ? (
-              <p className="nexus-task-safety">This proposal contains multiple files. Local application is disabled until atomic multi-file apply and rollback are implemented.</p>
             ) : selectedPatch.status === "approved" && !workspaceContext ? (
               <p className="nexus-task-safety">Pair the local companion and select the target workspace before applying this approved change.</p>
             ) : null}
-            <p className="nexus-task-safety">Local writes occur only after explicit confirmation, a fresh session-bound companion challenge and a short-lived owner-signed capability. Automatic rollback is not yet available.</p>
+            <p className="nexus-task-safety">Local writes require explicit confirmation, a fresh session-bound companion challenge and a short-lived owner-signed capability. Each file write is atomic; failed batches attempt reverse-order compensation. Crash-safe journal recovery is still pending.</p>
             <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
           </section>
         )}

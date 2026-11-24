@@ -122,6 +122,8 @@ export interface CompanionApplyResult {
   proposal_id: string;
   proposal_version: number;
   applied: true;
+  transaction_semantics: "per-file-atomic-with-compensating-rollback";
+  rollback_required: false;
   files: Array<{
     path: string;
     operation: "create" | "update" | "delete";
@@ -164,7 +166,7 @@ export async function applyApprovedWorkspacePatch(
     proposalVersion: number;
     challenge: string;
     capability: string;
-    file: PatchPreviewFile;
+    files: PatchPreviewFile[];
   },
   fetcher: typeof fetch = fetch,
 ): Promise<CompanionApplyResult> {
@@ -172,17 +174,29 @@ export async function applyApprovedWorkspacePatch(
   if (!id || id.length > 128 || !request.organizationId || !request.projectId ||
       !request.proposalId || !Number.isInteger(request.proposalVersion) ||
       request.proposalVersion < 0 || !/^[A-Za-z0-9_-]{32,128}$/.test(request.challenge) ||
-      !request.capability || request.capability.length > 8_192) {
-    throw new TypeError("A valid approved patch capability and selected workspace are required.");
+      !request.capability || request.capability.length > 8_192 ||
+      !Array.isArray(request.files) || request.files.length < 1 || request.files.length > 20) {
+    throw new TypeError("A valid approved patch capability, selected workspace and bounded file batch are required.");
   }
-  if (
-    !request.file || !["create", "update", "delete"].includes(request.file.operation) ||
-    typeof request.file.path !== "string" || !request.file.path ||
-    (request.file.content !== null && typeof request.file.content !== "string") ||
-    (request.file.base_sha256 !== null && !/^[0-9a-f]{64}$/.test(request.file.base_sha256)) ||
-    (request.file.result_sha256 !== null && !/^[0-9a-f]{64}$/.test(request.file.result_sha256))
-  ) {
-    throw new TypeError("The approved patch file is invalid.");
+  let totalBytes = 0;
+  for (const file of request.files) {
+    if (
+      !file || !["create", "update", "delete"].includes(file.operation) ||
+      typeof file.path !== "string" || !file.path ||
+      (file.content !== null && typeof file.content !== "string") ||
+      (file.base_sha256 !== null && !/^[0-9a-f]{64}$/.test(file.base_sha256)) ||
+      (file.result_sha256 !== null && !/^[0-9a-f]{64}$/.test(file.result_sha256))
+    ) {
+      throw new TypeError("An approved patch file is invalid.");
+    }
+    totalBytes += file.content === null ? 0 : new TextEncoder().encode(file.content).byteLength;
+  }
+  const paths = request.files.map((file) => file.path.toLocaleLowerCase("en-US"));
+  if (new Set(paths).size !== paths.length) {
+    throw new TypeError("The approved patch batch contains duplicate paths.");
+  }
+  if (totalBytes > 5 * 1024 * 1024) {
+    throw new TypeError("The approved patch batch exceeds the aggregate content limit.");
   }
   const result = await call<CompanionApplyResult>(
     "/v1/workspaces/" + encodeURIComponent(id) + "/apply-patch",
@@ -196,13 +210,13 @@ export async function applyApprovedWorkspacePatch(
         proposal_version: request.proposalVersion,
         companion_challenge: request.challenge,
         capability: request.capability,
-        files: [{
-          path: request.file.path,
-          operation: request.file.operation,
-          base_sha256: request.file.base_sha256,
-          result_sha256: request.file.result_sha256,
-          content: request.file.content,
-        }],
+        files: request.files.map((file) => ({
+          path: file.path,
+          operation: file.operation,
+          base_sha256: file.base_sha256,
+          result_sha256: file.result_sha256,
+          content: file.content,
+        })),
       },
     },
     fetcher,
@@ -212,13 +226,20 @@ export async function applyApprovedWorkspacePatch(
     result.proposal_id !== request.proposalId ||
     result.proposal_version !== request.proposalVersion ||
     result.applied !== true ||
-    !Array.isArray(result.files) || result.files.length !== 1 ||
-    result.files[0].path !== request.file.path ||
-    result.files[0].operation !== request.file.operation ||
-    result.files[0].applied !== true ||
-    typeof result.files[0].durability_confirmed !== "boolean"
+    result.transaction_semantics !== "per-file-atomic-with-compensating-rollback" ||
+    result.rollback_required !== false ||
+    !Array.isArray(result.files) || result.files.length !== request.files.length ||
+    result.files.some((file, index) => {
+      const expected = request.files[index];
+      return !expected ||
+        file.path !== expected.path ||
+        file.operation !== expected.operation ||
+        file.result_sha256 !== (expected.result_sha256 ?? "") ||
+        file.applied !== true ||
+        typeof file.durability_confirmed !== "boolean";
+    })
   ) {
-    throw new Error("Companion returned an invalid patch application result.");
+    throw new Error("Companion returned an invalid multi-file patch application result.");
   }
   return result;
 }
