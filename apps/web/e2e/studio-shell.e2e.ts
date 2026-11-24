@@ -45,7 +45,7 @@ test("NEXUS opens a local-only chat harness without calling authenticated servic
   const apiRequests: string[] = [];
   await page.goto("/");
   await page.locator(".studio-quick-actions button").nth(1).click();
-  await page.getByRole("button", { name: "NEXUS ⌘ / Ctrl + I" }).click();
+  // The Multitask quick action already opens NEXUS; do not toggle it closed again.
 
   const panel = page.getByRole("complementary", { name: "NEXUS AI chat panel" });
   await expect(panel).toBeVisible();
