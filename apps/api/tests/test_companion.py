@@ -1141,6 +1141,50 @@ def test_windows_patch_read_rejects_file_modified_during_snapshot(tmp_path, monk
         windows_file_handles._read_windows_file(None, ("target.txt",))
 
 
+
+
+def test_companion_file_read_rejects_stale_context_hash_and_returns_current_provenance(tmp_path):
+    client, registry, _pairing, code = _build_client(tmp_path)
+    project_file = tmp_path / "project" / "main.py"
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
+        original = project_file.read_text(encoding="utf-8")
+        original_hash = hashlib.sha256(original.encode("utf-8")).hexdigest()
+
+        current = client.get(
+            f"/v1/workspaces/{workspace_id}/file",
+            params={"path": "main.py", "expected_sha256": original_hash},
+            headers=headers,
+        )
+        assert current.status_code == 200
+        assert current.json()["content_sha256"] == original_hash
+        assert current.json()["content"] == original
+
+        project_file.write_text("print('changed elsewhere')", encoding="utf-8")
+        stale = client.get(
+            f"/v1/workspaces/{workspace_id}/file",
+            params={"path": "main.py", "expected_sha256": original_hash},
+            headers=headers,
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "WORKSPACE_FILE_STALE"
+        assert "content" not in stale.json()
+
+        refreshed_content = project_file.read_text(encoding="utf-8")
+        refreshed_hash = hashlib.sha256(refreshed_content.encode("utf-8")).hexdigest()
+        refreshed = client.get(
+            f"/v1/workspaces/{workspace_id}/file",
+            params={"path": "main.py", "expected_sha256": refreshed_hash},
+            headers=headers,
+        )
+        assert refreshed.status_code == 200
+        assert refreshed.json()["content_sha256"] == refreshed_hash
+    finally:
+        registry.close()
+
 def test_companion_search_returns_bounded_literal_matches_with_provenance(tmp_path):
     client, registry, _pairing, code = _build_client(tmp_path)
     project = tmp_path / "project"
@@ -1191,3 +1235,122 @@ def test_companion_search_enforces_query_and_result_bounds(tmp_path):
     finally:
         registry.close()
 
+
+
+
+def test_project_file_read_rejects_concurrent_in_place_modification(tmp_path, monkeypatch):
+    from odei_api.services import project_files
+
+    target = tmp_path / "main.py"
+    target.write_bytes(b"before")
+    descriptor = os.open(target, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+    metadata = os.fstat(descriptor)
+    real_fstat = os.fstat
+    calls = {"count": 0}
+
+    def racing_fstat(fd):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            writer = os.open(target, os.O_WRONLY | getattr(os, "O_BINARY", 0))
+            try:
+                os.write(writer, b"change")
+            finally:
+                os.close(writer)
+            os.utime(
+                target,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1_000_000_000),
+            )
+        return real_fstat(fd)
+
+    monkeypatch.setattr(project_files.os, "fstat", racing_fstat)
+    with pytest.raises(project_files.UnsafeProjectPath, match="changed while being read"):
+        project_files._read_open_descriptor(descriptor, metadata, 100)
+
+
+
+def test_companion_search_cache_invalidates_changed_and_deleted_files(tmp_path):
+    client, registry, _pairing, code = _build_client(tmp_path)
+    project = tmp_path / "project"
+    source = project / "src" / "live.py"
+    source.parent.mkdir()
+    source.write_text("needle_old = True\n", encoding="utf-8")
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get(
+            "/v1/workspaces", headers=headers
+        ).json()["workspaces"][0]["workspace_id"]
+
+        first = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_old"}, headers=headers,
+        )
+        assert first.status_code == 200
+        assert len(first.json()["matches"]) == 1
+
+        source.write_text("needle_new = True\n", encoding="utf-8")
+        changed = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_new"}, headers=headers,
+        )
+        assert changed.status_code == 200
+        assert len(changed.json()["matches"]) == 1
+        stale = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_old"}, headers=headers,
+        )
+        assert stale.status_code == 200
+        assert stale.json()["matches"] == []
+
+        source.unlink()
+        deleted = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needle_new"}, headers=headers,
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["matches"] == []
+    finally:
+        registry.close()
+
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX hard-link protection")
+def test_posix_patch_read_rejects_hard_linked_target(tmp_path):
+    from odei_api.services import workspace_patch_apply
+
+    target = tmp_path / "target.txt"
+    alias = tmp_path / "alias.txt"
+    target.write_text("sensitive", encoding="utf-8")
+    os.link(target, alias)
+    parent_fd = os.open(
+        tmp_path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    )
+    try:
+        with pytest.raises(
+            workspace_patch_apply.WorkspacePatchApplyError,
+            match="Hard-linked patch targets",
+        ):
+            workspace_patch_apply._read_posix(parent_fd, "target.txt")
+        assert alias.read_text(encoding="utf-8") == "sensitive"
+    finally:
+        os.close(parent_fd)
+
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows hard-link protection")
+def test_windows_patch_read_rejects_hard_linked_target(tmp_path):
+    from odei_api.services import windows_file_handles
+
+    target = tmp_path / "target.txt"
+    alias = tmp_path / "alias.txt"
+    target.write_text("sensitive", encoding="utf-8")
+    os.link(target, alias)
+    kernel32, root_handle = windows_file_handles.open_directory_handle(tmp_path)
+    try:
+        with pytest.raises(
+            windows_file_handles.UnsafeWindowsPath,
+            match="Hard-linked patch targets",
+        ):
+            windows_file_handles._read_windows_file(root_handle, ("target.txt",))
+        assert alias.read_text(encoding="utf-8") == "sensitive"
+    finally:
+        windows_file_handles.close_directory_handle(kernel32, root_handle)
