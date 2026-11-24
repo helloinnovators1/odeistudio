@@ -206,3 +206,24 @@ def test_crash_recovery_preserves_external_edits_and_blocks_workspace_open(tmp_p
         assert not (project / "created.txt").exists()
     finally:
         restarted_registry.close()
+
+
+def test_conflicted_transaction_keeps_recovery_payload_and_scoped_receipt(tmp_path):
+    journal = DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    root_key = "e" * 64
+    patch = _patch("main.py", "before", "after")
+    transaction_id = journal.prepare(root_key, [patch], ["before"])
+    journal.finish(
+        transaction_id, state="conflict",
+        receipt={"recovery_conflicts": ["main.py"]},
+    )
+
+    pending = journal.pending(root_key)
+    assert pending[0]["transaction_id"] == transaction_id
+    assert pending[0]["files"] == [{"patch": patch, "before": "before"}]
+    assert journal.receipt(root_key, transaction_id) == {
+        "transaction_id": transaction_id,
+        "state": "conflict",
+        "receipt": {"recovery_conflicts": ["main.py"]},
+    }
+    assert journal.receipt("f" * 64, transaction_id) is None
