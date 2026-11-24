@@ -515,6 +515,7 @@ def test_nexus_chat_persists_user_and_assistant_turns_in_conversation(route_stat
     assert response.json()["conversation_id"] == item["conversation_id"]
     stored = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
+    assert [message["mode"] for message in stored["messages"]] == ["ask", "ask"]
     assert stored["messages"][1]["content"] == "I will use the saved context."
 
 
@@ -590,6 +591,7 @@ def test_nexus_stream_endpoint_persists_and_emits_redacted_sse_deltas(route_stat
     assert "super_secret_token_12345" not in response.text
     saved = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in saved["messages"]] == ["user", "assistant"]
+    assert [message["mode"] for message in saved["messages"]] == ["ask", "ask"]
     assert "[REDACTED]" in saved["messages"][-1]["content"]
     assert audit.events[-1]["outcome"] == "success"
 
@@ -669,6 +671,7 @@ def test_nexus_inspection_uses_only_attached_excerpt_tools_and_persists_result(r
     assert body["conversation_persisted"] is True
     stored = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
+    assert [message["mode"] for message in stored["messages"]] == ["agent", "agent"]
     assert stored["messages"][-1]["content"] == "The attached file defines hello()."
     assert audit.events[-1]["metadata"]["tool_call_count"] == 2
 
