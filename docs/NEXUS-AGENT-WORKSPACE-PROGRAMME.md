@@ -49,7 +49,8 @@ The UI mode label is never an authorization boundary. The API must enforce mode 
 
 ### P1 — coherent interaction model
 - [x] Initial explicit Ask / Plan / Agent / Debug selector, server-side route/runtime boundaries, persisted mode per conversation turn, transcript restoration/display, and initial centralized mode capability policy.
-- [x] Enforce the Agent-only execution.run capability at the execution API boundary; approved local apply remains separately signed, owner-approved and workspace-bound.\n- [ ] Extend capability policy to integrations and host capabilities; complete unified context picker and provenance preview.
+- [x] Enforce the Agent-only execution.run capability at the execution API boundary; approved local apply remains separately signed, owner-approved and workspace-bound.
+- [ ] Extend capability policy to integrations and host capabilities; complete unified context picker and provenance preview.
 - [ ] Deliver unified context picker and provenance preview.
 - Standardize tool event schema and streamed execution timeline.
 - Add per-hunk review and durable crash-recoverable multi-file transactions. The companion now accepts signed batches of up to 20 files, preflights all base hashes, applies each file atomically, and attempts reverse-order hash-guarded compensation on failure. This is not a crash-atomic filesystem transaction: a durable journal and restart recovery remain required before claiming full transactional guarantees.

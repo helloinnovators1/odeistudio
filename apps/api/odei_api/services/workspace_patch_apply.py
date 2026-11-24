@@ -1,7 +1,8 @@
-"""One-file atomic patch application beneath a retained workspace root handle.
+"""Atomic local patch operations beneath a retained workspace root handle.
 
-The companion accepts only a signed, single-file capability. Paths are resolved
-relative to held directory handles; no caller-supplied absolute paths are used.
+The companion accepts only signed, owner-approved file batches. Each file
+operation is atomic; batches use hash-guarded compensation if a later step fails.
+Paths are resolved relative to held directory handles, never caller paths.
 """
 from __future__ import annotations
 
