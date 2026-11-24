@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
@@ -130,14 +129,11 @@ async def _embed_new_chunks(
         (item.get("path"), item.get("chunk_index"), item.get("sha256")): item.get("embedding")
         for item in existing_chunks
     }
-    result: list[dict] = []
     missing: list[dict] = []
     for chunk in chunks:
         key = (chunk["path"], chunk["chunk_index"], chunk["sha256"])
         vector = existing.get(key)
-        if isinstance(vector, list) and len(vector) == 1536:
-            result.append({**chunk, "embedding": vector})
-        else:
+        if not (isinstance(vector, list) and len(vector) == 1536):
             missing.append(chunk)
     embedded: dict[tuple[str, int, str], list[float]] = {}
     for start in range(0, len(missing), _EMBEDDING_BATCH_SIZE):
@@ -267,7 +263,9 @@ async def refresh_repository_index(
                 "content": item._content,
             } for item in indexed_records]
             file_hashes = {item["path"]: item["sha256"] for item in files}
-            analysis = analyze_repository(files, max_chunks=_MAX_SEMANTIC_CHUNKS)
+            analysis = await run_in_threadpool(
+                analyze_repository, files, max_chunks=_MAX_SEMANTIC_CHUNKS
+            )
             symbols = [
                 {**item, "sha256": file_hashes[item["path"]]}
                 for item in analysis["symbols"]
@@ -288,18 +286,28 @@ async def refresh_repository_index(
                 existing_chunks = await store.get_active_chunks(
                     organization_id=organization_id, project_id=project_id,
                 )
-                client = None
-                if chunks:
+                reusable = {
+                    (item.get("path"), item.get("chunk_index"), item.get("sha256"))
+                    for item in existing_chunks
+                    if isinstance(item.get("embedding"), list) and len(item["embedding"]) == 1536
+                }
+                chunks_requiring_embedding = [
+                    item for item in chunks
+                    if (item["path"], item["chunk_index"], item["sha256"]) not in reusable
+                ]
+                if chunks_requiring_embedding:
+                    config = get_settings()
+                    if config.openai_api_key is None or not config.openai_api_key.get_secret_value():
+                        raise ModelConfigurationError("Embedding API key is not configured")
+                    client = OpenAI(api_key=config.openai_api_key.get_secret_value())
                     try:
-                        from odei_api.config import get_settings
-                        config = get_settings()
-                        if config.openai_api_key is None or not config.openai_api_key.get_secret_value():
-                            raise ModelConfigurationError("Embedding API key is not configured")
-                        client = OpenAI(api_key=config.openai_api_key.get_secret_value())
                         chunks = await _embed_new_chunks(chunks, existing_chunks, client=client)
                     finally:
-                        if client is not None:
-                            client.close()
+                        client.close()
+                else:
+                    chunks = await _embed_new_chunks(
+                        chunks, existing_chunks, client=None
+                    )
                 state = await store.publish(
                     organization_id=organization_id, project_id=project_id,
                     snapshot=snapshot, files=files, symbols=symbols,
