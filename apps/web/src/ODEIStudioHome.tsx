@@ -273,7 +273,7 @@ export default function ODEIStudioHome({
               </div>
             </form>
 
-            <div className="studio-quick-actions"><button onClick={() => onStartChat(prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable.", "plan")}>Plan New Idea <kbd>⇧Tab</kbd></button><button onClick={() => onStartChat((prompt.trim() + "\n\nWork on independent tasks in parallel where safe.").trim())}>Multitask</button></div>
+            <div className="studio-quick-actions"><button onClick={() => onStartChat(prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable.", "plan")}>Plan New Idea <kbd>⇧Tab</kbd></button><button onClick={() => onStartChat((prompt.trim() + "\n\nCreate a multi-track plan, identify independent workstreams, dependencies, risks and safe sequencing.").trim(), "plan")}>Multitask</button></div>
 
             <div className="studio-suggestions" aria-label="Suggested starting points">
               {suggestions.map((item) => (
