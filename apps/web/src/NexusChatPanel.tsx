@@ -1196,6 +1196,13 @@ export default function NexusChatPanel({
   const filteredContextFiles = normalizedContextSearch
     ? availableContextFiles.filter((file) => file.path.toLocaleLowerCase("en-US").includes(normalizedContextSearch))
     : availableContextFiles;
+  const availableContextFolders = [...new Set(availableContextFiles.flatMap((file) => {
+    const segments = file.path.split("/");
+    return segments.slice(0, -1).map((_segment, index) => segments.slice(0, index + 1).join("/"));
+  }))].sort((left, right) => left.localeCompare(right));
+  const filteredContextFolders = normalizedContextSearch
+    ? availableContextFolders.filter((folder) => folder.toLocaleLowerCase("en-US").includes(normalizedContextSearch))
+    : availableContextFolders;
 
   return (
     <aside className={`nexus-pane${isOpen ? "" : " nexus-pane-hidden"}`} aria-label="NEXUS AI chat panel">
@@ -1728,6 +1735,48 @@ export default function NexusChatPanel({
                   value={contextSearch}
                   onChange={(event) => setContextSearch(event.target.value)}
                 />
+                {filteredContextFolders.length > 0 && (
+                  <div className="nexus-context-folders">
+                    <p className="nexus-muted">Folders · selecting a folder adds its eligible files</p>
+                    {filteredContextFolders.map((folder) => {
+                      const folderPaths = availableContextFiles
+                        .filter((file) => file.path.startsWith(`${folder}/`))
+                        .map((file) => file.path);
+                      const activePath = attachActiveFile && activeFile ? activeFile.path : "";
+                      const selectedFolderCount = folderPaths.filter((path) =>
+                        selectedContextPaths.includes(path) || path === activePath
+                      ).length;
+                      const hasSelection = selectedFolderCount > 0;
+                      return (
+                        <label className="nexus-attach-toggle" key={`folder:${folder}`}>
+                          <input
+                            type="checkbox"
+                            checked={hasSelection}
+                            disabled={!hasSelection && selectedContextCount >= 5}
+                            onChange={(event) => {
+                              if (!event.target.checked) {
+                                setSelectedContextPaths((current) => current.filter((path) => !folderPaths.includes(path)));
+                                return;
+                              }
+                              const existing = new Set([
+                                ...selectedContextPaths,
+                                ...(activePath ? [activePath] : []),
+                              ]);
+                              const remaining = Math.max(0, 5 - existing.size);
+                              const candidates = folderPaths.filter((path) => !existing.has(path));
+                              const additions = candidates.slice(0, remaining);
+                              setSelectedContextPaths([...selectedContextPaths, ...additions]);
+                              if (additions.length < candidates.length) {
+                                setNotice("Folder context was limited to the five-file selection cap. Narrow the folder or remove another selection.");
+                              }
+                            }}
+                          />
+                          {folder}/ <span className="nexus-muted">({selectedFolderCount}/{folderPaths.length} selected)</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
                 {filteredContextFiles.length === 0 ? (
                   <p className="nexus-muted">No eligible files match this search.</p>
                 ) : filteredContextFiles.map((file) => (
