@@ -552,25 +552,30 @@ async def semantic_repository_search(
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
     try:
+        state = await store.get_state(
+            organization_id=organization_id, project_id=project_id,
+        )
+        if state is None:
+            raise HTTPException(status_code=404, detail={"code": "REPOSITORY_INDEX_NOT_FOUND"})
         config = get_settings()
         if config.openai_api_key is None or not config.openai_api_key.get_secret_value():
             raise ModelConfigurationError("Embedding API key is not configured")
-        client = OpenAI(api_key=config.openai_api_key.get_secret_value())
+        client = OpenAI(
+            api_key=config.openai_api_key.get_secret_value(),
+            timeout=30.0, max_retries=1,
+        )
         try:
             vectors = await run_in_threadpool(
                 _embedding_batch, client, [payload.query]
             )
         finally:
             client.close()
-        state = await store.get_state(
-            organization_id=organization_id, project_id=project_id,
-        )
-        if state is None:
-            raise HTTPException(status_code=404, detail={"code": "REPOSITORY_INDEX_NOT_FOUND"})
         results = await store.search_semantic(
             organization_id=organization_id, project_id=project_id,
             query_embedding=vectors[0], limit=payload.limit,
         )
+    except HTTPException:
+        raise
     except ModelConfigurationError as exc:
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED"}) from exc
     except PyMongoError as exc:
