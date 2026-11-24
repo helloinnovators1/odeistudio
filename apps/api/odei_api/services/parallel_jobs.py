@@ -184,18 +184,22 @@ class MongoParallelJobStore:
             "status": "leased", "lease_expires_at": {"$lte": now},
         }).limit(100).to_list(length=100)
         for row in expired:
-            retry = row["attempt"] < row["max_attempts"]
+            cancelled = bool(row.get("cancel_requested"))
+            retry = row["attempt"] < row["max_attempts"] and not cancelled
+            next_status = "cancelled" if cancelled else "queued" if retry else "failed"
             update = await self._jobs.update_one(
                 {"_id": row["_id"], "version": row["version"], "lease_expires_at": {"$lte": now}},
-                {"$set": {"status": "queued" if retry else "failed",
+                {"$set": {"status": next_status,
                           "worker_id": None, "lease_token": None, "lease_expires_at": None,
                           "available_at": now, "updated_at": now},
+                 "$unset": {"cancel_requested": ""},
                  "$inc": {"version": 1}},
             )
             if update.modified_count:
                 await self._events.insert_one({
                     "organization_id": row["organization_id"], "job_id": row["job_id"],
-                    "version": row["version"] + 1, "event": "job.lease_expired",
+                    "version": row["version"] + 1,
+                    "event": "job.cancelled" if cancelled else "job.retry_scheduled" if retry else "job.failed",
                     "occurred_at": now,
                 })
         candidates = await self._jobs.find({
@@ -270,6 +274,74 @@ class MongoParallelJobStore:
             "event": "job.checkpointed", "checkpoint_sha256": digest, "occurred_at": now,
         })
         return self._from_doc(row)
+
+    async def get_claimed(
+        self, *, organization_id: str, project_id: str, job_id: str,
+        worker_id: str, lease_token: str,
+    ) -> dict[str, Any] | None:
+        """Return private execution data only while the exact worker lease is active."""
+        now = datetime.now(timezone.utc)
+        row = await self._jobs.find_one({
+            "organization_id": organization_id, "project_id": project_id,
+            "job_id": job_id, "worker_id": worker_id, "lease_token": lease_token,
+            "status": "leased", "lease_expires_at": {"$gt": now},
+        })
+        if row is None:
+            return None
+        checkpoint = row.get("checkpoint")
+        digest = row.get("checkpoint_sha256")
+        if checkpoint is not None:
+            safe, actual_digest = _checkpoint(checkpoint)
+            if actual_digest != digest:
+                raise ParallelJobConflict("persisted checkpoint integrity verification failed")
+        return {
+            "payload": row.get("payload", {}),
+            "checkpoint": checkpoint,
+            "cancel_requested": bool(row.get("cancel_requested", False)),
+            "version": row["version"],
+        }
+
+    async def retry(
+        self, *, organization_id: str, job_id: str, worker_id: str,
+        lease_token: str, expected_version: int, delay_seconds: int = 5,
+    ) -> ParallelJob:
+        """Release a transiently failed job for bounded exponential retry."""
+        if isinstance(delay_seconds, bool) or not 0 <= delay_seconds <= 900:
+            raise ValueError("retry delay must be between 0 and 900 seconds")
+        now = datetime.now(timezone.utc)
+        current = await self._jobs.find_one({
+            "organization_id": organization_id, "job_id": job_id,
+            "worker_id": worker_id, "lease_token": lease_token,
+            "status": "leased", "version": expected_version,
+            "lease_expires_at": {"$gt": now},
+        })
+        if current is None:
+            raise ParallelJobConflict("worker lease changed before retry scheduling")
+        cancelled = bool(current.get("cancel_requested"))
+        retryable = current["attempt"] < current["max_attempts"] and not cancelled
+        outcome = "cancelled" if cancelled else "queued" if retryable else "failed"
+        updated = await self._jobs.find_one_and_update(
+            {"_id": current["_id"], "organization_id": organization_id,
+             "version": expected_version, "worker_id": worker_id,
+             "lease_token": lease_token, "status": "leased",
+             "lease_expires_at": {"$gt": now}},
+            {"$set": {"status": outcome, "worker_id": None, "lease_token": None,
+                      "lease_expires_at": None,
+                      "available_at": now + timedelta(seconds=delay_seconds),
+                      "updated_at": now},
+             "$unset": {"cancel_requested": ""},
+             "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated is None:
+            raise ParallelJobConflict("job changed while retry was being scheduled")
+        await self._events.insert_one({
+            "organization_id": organization_id, "job_id": job_id,
+            "version": updated["version"],
+            "event": "job.retry_scheduled" if outcome == "queued" else f"job.{outcome}",
+            "attempt": updated["attempt"], "occurred_at": now,
+        })
+        return self._from_doc(updated)
 
     async def finish(
         self, *, organization_id: str, job_id: str, worker_id: str,
