@@ -632,6 +632,13 @@ def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
             "result_sha256": hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
             "content": replacement,
         }
+        second_content = "new README"
+        second_item = {
+            "path": "README.md", "operation": "create",
+            "base_sha256": None,
+            "result_sha256": hashlib.sha256(second_content.encode("utf-8")).hexdigest(),
+            "content": second_content,
+        }
         token, _, _ = issue_patch_apply_capability(
             settings=settings,
             principal_issuer="https://identity.odei.example",
@@ -641,7 +648,7 @@ def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
             workspace_id=workspace_id,
             proposal_id="proposal-1",
             proposal_version=1,
-            files=[file_item],
+            files=[file_item, second_item],
             challenge=challenge,
         )
         request = {
@@ -651,7 +658,7 @@ def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
             "proposal_version": 1,
             "companion_challenge": challenge,
             "capability": token,
-            "files": [file_item],
+            "files": [file_item, second_item],
         }
         response = client.post(
             f"/v1/workspaces/{workspace_id}/apply-patch",
@@ -660,8 +667,11 @@ def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
         )
         assert response.status_code == 200, response.text
         assert response.json()["applied"] is True
-        assert isinstance(response.json()["files"][0]["durability_confirmed"], bool)
+        assert len(response.json()["files"]) == 2
+        assert all(isinstance(item["durability_confirmed"], bool) for item in response.json()["files"])
+        assert response.json()["transaction_semantics"] == "per-file-atomic-with-compensating-rollback"
         assert registry.read_text(workspace_id, "main.py") == replacement
+        assert registry.read_text(workspace_id, "README.md") == second_content
         replay = client.post(
             f"/v1/workspaces/{workspace_id}/apply-patch",
             headers=headers,
@@ -749,6 +759,132 @@ def test_workspace_handle_applies_root_create_and_delete_atomically(tmp_path):
     finally:
         registry.close()
 
+
+
+
+def test_workspace_handle_applies_multi_file_batch_with_hash_guarded_operations(tmp_path):
+    selected = tmp_path / "project"
+    selected.mkdir()
+    original = "print('before')"
+    (selected / "main.py").write_text(original, encoding="utf-8")
+    (selected / "remove.txt").write_text("remove me", encoding="utf-8")
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
+    try:
+        replacement = "print('after')"
+        created = "new file"
+        result = registry.apply_patch_batch(workspace_id, [
+            {"path": "main.py", "operation": "update",
+             "base_sha256": hashlib.sha256(original.encode()).hexdigest(),
+             "result_sha256": hashlib.sha256(replacement.encode()).hexdigest(),
+             "content": replacement},
+            {"path": "new.txt", "operation": "create", "base_sha256": None,
+             "result_sha256": hashlib.sha256(created.encode()).hexdigest(),
+             "content": created},
+            {"path": "remove.txt", "operation": "delete",
+             "base_sha256": hashlib.sha256(b"remove me").hexdigest(),
+             "result_sha256": None, "content": None},
+        ])
+        assert result["applied"] is True
+        assert result["transaction_semantics"] == "per-file-atomic-with-compensating-rollback"
+        assert len(result["files"]) == 3
+        assert registry.read_text(workspace_id, "main.py") == replacement
+        assert registry.read_text(workspace_id, "new.txt") == created
+        assert not (selected / "remove.txt").exists()
+    finally:
+        registry.close()
+
+
+def test_workspace_handle_compensates_prior_files_when_later_operation_fails(tmp_path, monkeypatch):
+    from odei_api.services import workspace_patch_apply
+
+    selected = tmp_path / "project"
+    selected.mkdir()
+    original = "before"
+    (selected / "main.py").write_text(original, encoding="utf-8")
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
+    real_apply = workspace_patch_apply.apply_single_file_patch
+    calls = {"count": 0}
+
+    def fail_second(grant, item):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise workspace_patch_apply.WorkspacePatchApplyError("injected failure")
+        return real_apply(grant, item)
+
+    monkeypatch.setattr(workspace_patch_apply, "apply_single_file_patch", fail_second)
+    try:
+        replacement = "after"
+        with pytest.raises(workspace_patch_apply.WorkspacePatchBatchError) as caught:
+            registry.apply_patch_batch(workspace_id, [
+                {"path": "main.py", "operation": "update",
+                 "base_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                 "result_sha256": hashlib.sha256(replacement.encode()).hexdigest(),
+                 "content": replacement},
+                {"path": "new.txt", "operation": "create", "base_sha256": None,
+                 "result_sha256": hashlib.sha256(b"new").hexdigest(), "content": "new"},
+            ])
+        assert caught.value.rollback_complete is True
+        assert caught.value.applied_paths == ["main.py"]
+        assert caught.value.rolled_back_paths == ["main.py"]
+        assert registry.read_text(workspace_id, "main.py") == original
+        assert not (selected / "new.txt").exists()
+    finally:
+        registry.close()
+
+
+def test_workspace_handle_reports_incomplete_batch_compensation(tmp_path, monkeypatch):
+    from odei_api.services import workspace_patch_apply
+
+    selected = tmp_path / "project"
+    selected.mkdir()
+    (selected / "main.py").write_text("before", encoding="utf-8")
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
+    real_apply = workspace_patch_apply.apply_single_file_patch
+    calls = {"count": 0}
+
+    def fail_apply_and_rollback(grant, item):
+        calls["count"] += 1
+        if calls["count"] in {2, 3}:
+            raise workspace_patch_apply.WorkspacePatchApplyError("injected failure")
+        return real_apply(grant, item)
+
+    monkeypatch.setattr(workspace_patch_apply, "apply_single_file_patch", fail_apply_and_rollback)
+    try:
+        with pytest.raises(workspace_patch_apply.WorkspacePatchBatchError) as caught:
+            registry.apply_patch_batch(workspace_id, [
+                {"path": "main.py", "operation": "update",
+                 "base_sha256": hashlib.sha256(b"before").hexdigest(),
+                 "result_sha256": hashlib.sha256(b"after").hexdigest(), "content": "after"},
+                {"path": "new.txt", "operation": "create", "base_sha256": None,
+                 "result_sha256": hashlib.sha256(b"new").hexdigest(), "content": "new"},
+            ])
+        assert caught.value.rollback_complete is False
+        assert caught.value.rollback_failures == ["main.py"]
+        assert registry.read_text(workspace_id, "main.py") == "after"
+    finally:
+        registry.close()
+
+
+def test_apply_patch_request_accepts_bounded_multi_file_batch_and_rejects_duplicates():
+    from pydantic import ValidationError
+    from odei_api.companion import ApplyPatchRequest
+
+    base = {"organization_id": "org-1", "project_id": "project-1",
+            "proposal_id": "proposal-1", "proposal_version": 1,
+            "companion_challenge": "c" * 32, "capability": "signed-capability"}
+    files = [
+        {"path": "a.py", "operation": "create", "base_sha256": None,
+         "result_sha256": hashlib.sha256(b"a").hexdigest(), "content": "a"},
+        {"path": "b.py", "operation": "create", "base_sha256": None,
+         "result_sha256": hashlib.sha256(b"b").hexdigest(), "content": "b"},
+    ]
+    parsed = ApplyPatchRequest.model_validate({**base, "files": files})
+    assert len(parsed.files) == 2
+    with pytest.raises(ValidationError, match="duplicate"):
+        ApplyPatchRequest.model_validate({**base, "files": [files[0], {**files[1], "path": "A.PY"}]})
 
 def test_unconfigured_companion_stays_read_only_and_cannot_issue_apply_challenges(tmp_path):
     client, registry, _pairing, code = _build_client(tmp_path)

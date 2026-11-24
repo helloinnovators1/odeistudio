@@ -174,6 +174,19 @@ class WorkspaceHandleRegistry:
                 raise WorkspaceHandleError("Workspace was opened read-only")
             return apply_single_file_patch(grant, file)
 
+    def apply_patch_batch(self, workspace_id: str, files: list[dict]) -> dict:
+        """Apply a signed multi-file batch under one workspace lock.
+
+        Individual filesystem operations are atomic; a later failure triggers
+        reverse-order, hash-guarded compensation before this lock is released.
+        """
+        from odei_api.services.workspace_patch_apply import apply_file_patch_batch
+
+        with self._borrow(workspace_id) as grant:
+            if not grant.allow_patch_apply:
+                raise WorkspaceHandleError("Workspace was opened read-only")
+            return apply_file_patch_batch(grant, files)
+
     def revoke(self, workspace_id: str) -> bool:
         with self._lock:
             grant = self._grants.pop(workspace_id, None)

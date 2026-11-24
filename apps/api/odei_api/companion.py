@@ -40,6 +40,7 @@ from odei_api.services.patch_proposals import (
     build_patch_proposal,
     validate_patch_path,
 )
+from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
 from odei_api.services.workspace_handles import (
     WorkspaceHandleError,
     WorkspaceHandleRegistry,
@@ -118,7 +119,20 @@ class ApplyPatchRequest(BaseModel):
     proposal_version: StrictInt = Field(ge=0)
     companion_challenge: StrictStr = Field(min_length=32, max_length=128)
     capability: StrictStr = Field(min_length=1, max_length=8192)
-    files: list[ApplyPatchFile] = Field(min_length=1, max_length=1)
+    files: list[ApplyPatchFile] = Field(min_length=1, max_length=MAX_PATCH_FILES)
+
+    @model_validator(mode="after")
+    def validate_batch_paths(self):
+        paths = [item.path.casefold() for item in self.files]
+        if len(set(paths)) != len(paths):
+            raise ValueError("Patch batch contains duplicate paths")
+        total_bytes = sum(
+            len(item.content.encode("utf-8"))
+            for item in self.files if item.content is not None
+        )
+        if total_bytes > MAX_TOTAL_BYTES:
+            raise ValueError("Patch batch exceeds the aggregate content limit")
+        return self
 
 
 class ApplyChallengeManager:
@@ -444,7 +458,7 @@ def create_companion_app(
             payload.companion_challenge, workspace_id, session_token
         ):
             raise HTTPException(status_code=401, detail="Companion apply challenge is invalid, expired or already used")
-        file_item = payload.files[0].model_dump()
+        file_items = [item.model_dump() for item in payload.files]
         try:
             verify_patch_apply_capability(
                 payload.capability,
@@ -455,7 +469,7 @@ def create_companion_app(
                 workspace_id=workspace_id,
                 proposal_id=payload.proposal_id,
                 proposal_version=payload.proposal_version,
-                files=[file_item],
+                files=file_items,
                 challenge=payload.companion_challenge,
                 replay_cache=capability_replays,
             )
@@ -467,12 +481,31 @@ def create_companion_app(
             raise HTTPException(status_code=403, detail="Patch approval capability is invalid") from exc
         try:
             applied = await run_in_threadpool(
-                registry.apply_patch, workspace_id, file_item
+                registry.apply_patch_batch, workspace_id, file_items
             )
         except WorkspaceNotFound as exc:
             raise HTTPException(status_code=404, detail="The selected workspace is no longer available") from exc
         except WorkspaceHandleError as exc:
             raise HTTPException(status_code=409, detail="The selected workspace is not enabled for patch application") from exc
+        except WorkspacePatchBatchError as exc:
+            logger.error(
+                "Patch batch failed (rollback_complete=%s; applied=%s; rolled_back=%s; rollback_failures=%s)",
+                exc.rollback_complete, len(exc.applied_paths), len(exc.rolled_back_paths),
+                len(exc.rollback_failures),
+            )
+            if exc.rollback_complete:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "PATCH_BATCH_ROLLED_BACK", "message": "Patch batch failed; prior file operations were rolled back."},
+                ) from exc
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "code": "PATCH_BATCH_RECOVERY_REQUIRED",
+                    "message": "Patch batch failed and automatic rollback was incomplete. Inspect the listed workspace paths before retrying.",
+                    "rollback_failures": exc.rollback_failures,
+                },
+            ) from exc
         except (ValueError, OSError) as exc:
             cause = exc.__cause__
             logger.warning(
@@ -489,8 +522,7 @@ def create_companion_app(
             "workspace_id": workspace_id,
             "proposal_id": payload.proposal_id,
             "proposal_version": payload.proposal_version,
-            "applied": True,
-            "files": [applied],
+            **applied,
         }
 
     @app.get("/v1/workspaces/{workspace_id}/files")
