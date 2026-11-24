@@ -6,10 +6,11 @@ import re
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path as ApiPath, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import Path as ApiPath
 from openai import OpenAI
-from pymongo.errors import PyMongoError
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pymongo.errors import PyMongoError
 from starlette.concurrency import run_in_threadpool
 
 from odei_api.config import get_settings
