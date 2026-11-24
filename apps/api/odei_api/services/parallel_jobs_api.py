@@ -107,9 +107,15 @@ async def create_parallel_job_group(
                     "code": "INVALID_NEXUS_EXECUTION_REFERENCE",
                     "message": "Execution run reference is invalid.",
                 })
-            execution_run = await run_store.get(
-                organization_id=organization_id, run_id=execution_run_id,
-            )
+            try:
+                execution_run = await run_store.get(
+                    organization_id=organization_id, run_id=execution_run_id,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail={
+                    "code": "INVALID_NEXUS_EXECUTION_REFERENCE",
+                    "message": "Execution run reference is invalid.",
+                }) from exc
             if (
                 execution_run is None
                 or execution_run.project_id != project_id
