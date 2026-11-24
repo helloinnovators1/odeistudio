@@ -70,7 +70,7 @@ async def _main() -> None:
                 pass
         serving = asyncio.create_task(worker.serve())
         stopping = asyncio.create_task(stop.wait())
-        done, pending = await asyncio.wait(
+        done, _pending = await asyncio.wait(
             {serving, stopping}, return_when=asyncio.FIRST_COMPLETED,
         )
         if serving in done:
