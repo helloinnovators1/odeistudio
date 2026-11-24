@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
+from odei_api.services.nexus_parallel_execution import NexusParallelExecutionHandler
 from odei_api.services.parallel_job_worker import ParallelJobWorker
+from odei_api.services.parallel_job_worker import RetryableParallelJobError
 from odei_api.services.parallel_jobs import (
     GitWorktreeManager,
     MongoParallelJobStore,
@@ -219,6 +222,9 @@ async def test_parallel_worker_restores_checkpoint_and_persists_new_progress():
             assert kwargs["worker_id"] == "worker-a"
             return initial
 
+        async def get_claimed(self, **kwargs):
+            return {"payload": {"task": "continue safely"}, "checkpoint": {"step": 2}, "version": 4}
+
         async def checkpoint(self, **kwargs):
             self.saved = kwargs["checkpoint"]
             return ParallelJob(
@@ -306,4 +312,133 @@ def test_safe_worktree_merge_back_uses_expected_base_compare_and_swap(tmp_path):
         merger.merge_back(
             target_branch="main", expected_base_commit=base,
             worker_commit=worker_commit,
+        )
+
+
+@pytest.mark.asyncio
+async def test_parallel_job_retry_is_bounded_and_respects_cancellation():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="retry-group",
+        jobs=[{"job_id": "retry-job"}], max_attempts=2,
+    )
+    first = await store.claim_next(worker_id="worker-a")
+    retried = await store.retry(
+        organization_id="org", job_id=first.id, worker_id="worker-a",
+        lease_token=first.lease_token, expected_version=first.version,
+        delay_seconds=0,
+    )
+    assert retried.status == "queued"
+    assert retried.attempt == 1
+    second = await store.claim_next(worker_id="worker-b")
+    terminal = await store.retry(
+        organization_id="org", job_id=second.id, worker_id="worker-b",
+        lease_token=second.lease_token, expected_version=second.version,
+        delay_seconds=0,
+    )
+    assert terminal.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_nexus_parallel_handler_resumes_existing_execution_run():
+    from odei_api.services.execution_runs import ExecutionRunStatus
+
+    class Runs:
+        def __init__(self):
+            self.reads = 0
+
+        async def get(self, *, organization_id, run_id):
+            self.reads += 1
+            status = (
+                ExecutionRunStatus.QUEUED
+                if self.reads == 1 else ExecutionRunStatus.COMPLETED
+            )
+            return SimpleNamespace(
+                id=run_id, organization_id=organization_id, project_id="project",
+                task_id="task", requester_issuer="https://identity.example",
+                requester_subject="subject-1", status=status, version=self.reads,
+                cancel_requested=False,
+            )
+
+    saved = []
+    async def save_checkpoint(value):
+        saved.append(value)
+
+    async def not_cancelled():
+        return False
+
+    job = ParallelJob(
+        id="orchestrator-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker", lease_token="lease",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+    handler = NexusParallelExecutionHandler(
+        runs=Runs(), audit=object(), tasks=object(), task_events=object(),
+        poll_seconds=0.25,
+    )
+    result = await handler(
+        job,
+        {
+            "execution_run_id": "execution-1",
+            "requested_by_issuer": "https://identity.example",
+            "requested_by_subject": "subject-1",
+        },
+        None, save_checkpoint, not_cancelled,
+    )
+    assert result == {"outcome": "completed", "execution_run_id": "execution-1"}
+    assert saved == [
+        {
+            "execution_run_id": "execution-1",
+            "execution_run_version": 1,
+            "execution_run_status": "queued",
+        },
+        {
+            "execution_run_id": "execution-1",
+            "execution_run_version": 2,
+            "execution_run_status": "completed",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_nexus_parallel_handler_rejects_cross_project_and_requester_runs():
+    from odei_api.services.execution_runs import ExecutionRunStatus
+
+    class Runs:
+        async def get(self, *, organization_id, run_id):
+            return SimpleNamespace(
+                id=run_id, organization_id=organization_id, project_id="other-project",
+                task_id="task", requester_issuer="https://identity.example",
+                requester_subject="subject-1", status=ExecutionRunStatus.QUEUED,
+                version=1, cancel_requested=False,
+            )
+
+    async def save_checkpoint(_):
+        return None
+
+    async def not_cancelled():
+        return False
+
+    job = ParallelJob(
+        id="scoped-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker", lease_token="lease",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+    handler = NexusParallelExecutionHandler(
+        runs=Runs(), audit=object(), tasks=object(), task_events=object(),
+    )
+    with pytest.raises(ValueError, match="outside this project"):
+        await handler(
+            job,
+            {
+                "execution_run_id": "execution-1",
+                "requested_by_issuer": "https://identity.example",
+                "requested_by_subject": "subject-1",
+            },
+            None, save_checkpoint, not_cancelled,
         )
