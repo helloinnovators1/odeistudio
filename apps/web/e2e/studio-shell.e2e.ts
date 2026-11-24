@@ -5,7 +5,13 @@ test("ODEI Studio Window is the first screen and opens the workspace", async ({ 
   await expect(page).toHaveTitle("ODEI Studio Window");
   await expect(page.getByRole("region", { name: "ODEI Studio Window" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "What are we building today?" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Automations Coming soon" })).toBeDisabled();
+  await page.getByRole("button", { name: "Automations" }).click();
+  const automations = page.getByRole("dialog", { name: "Automations" });
+  await expect(automations).toBeVisible();
+  await expect(automations).toContainText("Live scheduling and background execution require the automation service to be configured.");
+  await automations.getByLabel("Automation name").fill("Review open pull requests");
+  await automations.getByRole("button", { name: "Save automation draft" }).click();
+  await expect(page.getByRole("status")).toContainText("Automation draft saved locally; live scheduling is not configured.");
   const popupPromise = page.context().waitForEvent("page");
   await page.getByRole("button", { name: "Open IDE in independent window" }).click();
   const ide = await popupPromise;
