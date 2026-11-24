@@ -137,7 +137,7 @@ class ParallelJobWorker:
             shutdown_cancelled = True
         except ParallelJobConflict:
             outcome = "lease_lost"
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
             logger.warning(
                 "Parallel job handler failed (job_id=%s, error=%s)",
                 job.id, type(exc).__name__,
