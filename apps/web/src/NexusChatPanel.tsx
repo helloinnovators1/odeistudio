@@ -99,6 +99,9 @@ export default function NexusChatPanel({
   const [desktopSettingsLoaded, setDesktopSettingsLoaded] = useState(!isDesktopHost);
   const authAvailable = Boolean(config.auth) && (!isDesktopHost || (desktopSettingsLoaded && desktopAuthEnabled));
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
+  // When ODID is not configured, expose a clearly isolated local-only chat harness.
+  // It never fabricates an identity or calls the authenticated API.
+  const [demoMode, setDemoMode] = useState(!config.auth && !isDesktopHost);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [organizations, setOrganizations] = useState<NexusOrganization[]>([]);
@@ -928,6 +931,7 @@ export default function NexusChatPanel({
   }
 
   function signOut() {
+    setDemoMode(false);
     macRequestGenerationRef.current.invalidate();
     setMacBusy(false);
     projectLoadGenerationRef.current.invalidate();
@@ -1056,8 +1060,21 @@ export default function NexusChatPanel({
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (mode === "plan") { void planTask(); return; }
     const content = draft.trim();
+    if (demoMode) {
+      if (!content || !consent || sending || content.length > 8_000) return;
+      const userMessage: TranscriptMessage = { id: newMessageId(), role: "user", content, mode };
+      let demoReply = "Local chat interface test completed. Your message was kept only in this page\u2019s memory. No identity provider, API, model, repository, or external service was contacted.";
+      if (mode === "plan") demoReply = "Plan-mode UI is available to exercise, but task planning is disabled in local demo mode. Connect ODID and an authorized project to test real planning.";
+      if (mode === "agent" || mode === "debug") demoReply = `The ${mode} interface is receiving messages correctly. Local demo mode does not inspect files, call tools, execute commands, or access a repository. Connect ODID and an authorized project to test those governed capabilities.`;
+      setMessages((current) => [...current, userMessage, { id: newMessageId(), role: "assistant", content: demoReply, mode }].slice(-20));
+      setDraft("");
+      setConsent(false);
+      setChatError("");
+      setNotice("Local demo only · messages are not sent to an AI model or saved.");
+      return;
+    }
+    if (mode === "plan") { void planTask(); return; }
     if (!access || !projectId || !consent || !content || sending || conversationBusy || !config.apiBaseUrl) return;
     if (content.length > 8_000) {
       setChatError("Messages are limited to 8,000 characters.");
@@ -1214,12 +1231,12 @@ export default function NexusChatPanel({
         <div><span className="pane-kicker">Tab · ODEI NEXUS</span><strong>{selectedProject?.name ?? "AI Chat"}</strong></div>
         <div className="nexus-header-actions">
           {access && projectId && <button className="nexus-link-button" type="button" aria-label="New NEXUS conversation" title="New conversation" disabled={sending || conversationBusy} onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setConsent(false); setNotice("New conversation ready. Send a message to create it."); }}>＋</button>}
-          {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
+          {demoMode && <button className="nexus-link-button" type="button" onClick={() => { setDemoMode(false); setMessages([]); setDraft(""); setConsent(false); setNotice("Local demo closed. Configure ODID to sign in."); }}>Exit demo</button>}\n          {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>
       </div>
 
-      {!access && (
+      {!access && !demoMode && (
         <section className="nexus-connection">
           <div className="nexus-mark">N</div>
           <h2>Connect NEXUS</h2>
@@ -1518,7 +1535,7 @@ export default function NexusChatPanel({
           <div className="nexus-empty-state">
             <div className="nexus-mark">N</div>
             <h2>Your coding agent</h2>
-            <p>{selectedProject ? "Ask NEXUS to explain your project, inspect explicitly selected files, prepare review-only proposals, plan tasks or run separately approved executions." : notice}</p>
+            <p>{demoMode ? "Send a test message to exercise the NEXUS composer and transcript. Responses are local UI fixtures, not generated by an AI model." : selectedProject ? "Ask NEXUS to explain your project, inspect explicitly selected files, prepare review-only proposals, plan tasks or run separately approved executions." : notice}</p>
           </div>
         )}
         {messages.map((message) => (
@@ -1837,7 +1854,7 @@ export default function NexusChatPanel({
                 }}
               />
               <div>
-                <span>Chat · inspect · plan · propose · approved execution</span>
+                <span>{demoMode ? "Local UI test · no API calls" : "Chat · inspect · plan · propose · approved execution"}</span>
                 {sending
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>{inspectionRunning ? "Cancel inspection" : "Stop"}</button>
                   : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy || taskBusy}>Send</button>}
