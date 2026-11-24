@@ -312,7 +312,7 @@ class MongoParallelJobStore:
         leased = await self._jobs.update_many(
             {"organization_id": organization_id, "project_id": project_id,
              "group_id": group_id, "status": "leased"},
-            {"$set": {"cancel_requested": True, "updated_at": now}, "$inc": {"version": 1}},
+            {"$set": {"cancel_requested": True, "updated_at": now}},
         )
         return queued.modified_count + leased.modified_count
 
