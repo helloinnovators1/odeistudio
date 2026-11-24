@@ -256,3 +256,56 @@ async def test_parallel_worker_restores_checkpoint_and_persists_new_progress():
     assert store.saved == {"step": 3, "result": "partial"}
     assert store.finished["expected_version"] == 5
     assert store.finished["outcome"] == "completed"
+
+
+def test_safe_worktree_merge_back_uses_expected_base_compare_and_swap(tmp_path):
+    import subprocess
+
+    from odei_api.services.safe_worktree_merge import (
+        SafeWorktreeMerger,
+        WorktreeMergeConflict,
+    )
+
+    repository = tmp_path / "merge-repo"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-b", "main", str(repository)], check=True, capture_output=True)
+    (repository / "README.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "."], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "-c", "user.name=Test", "-c",
+         "user.email=test@example.com", "commit", "-m", "base"],
+        check=True, capture_output=True,
+    )
+    base = subprocess.check_output(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True,
+    ).strip()
+    worktree = tmp_path / "worker"
+    subprocess.run(
+        ["git", "-C", str(repository), "worktree", "add", "--detach", str(worktree), base],
+        check=True, capture_output=True,
+    )
+    (worktree / "feature.txt").write_text("isolated change\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(worktree), "add", "."], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(worktree), "-c", "user.name=Test", "-c",
+         "user.email=test@example.com", "commit", "-m", "worker change"],
+        check=True, capture_output=True,
+    )
+    worker_commit = subprocess.check_output(
+        ["git", "-C", str(worktree), "rev-parse", "HEAD"], text=True,
+    ).strip()
+
+    merger = SafeWorktreeMerger(repository)
+    merge_commit = merger.merge_back(
+        target_branch="main", expected_base_commit=base,
+        worker_commit=worker_commit,
+    )
+    assert subprocess.check_output(
+        ["git", "-C", str(repository), "rev-parse", "main"], text=True,
+    ).strip() == merge_commit
+    assert (repository / "feature.txt").read_text(encoding="utf-8") == "isolated change\n"
+    with pytest.raises(WorktreeMergeConflict, match="moved"):
+        merger.merge_back(
+            target_branch="main", expected_base_commit=base,
+            worker_commit=worker_commit,
+        )
