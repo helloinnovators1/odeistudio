@@ -58,6 +58,9 @@ test("NEXUS opens a local-only chat harness without calling authenticated servic
   const consent = panel.getByRole("checkbox", { name: /local UI test/i });
   await consent.check();
   await expect(consent).toBeChecked();
+  // The Multitask launcher opens NEXUS in Plan mode; select Ask so this test
+  // verifies the local chat fixture rather than the intentionally disabled planner.
+  await panel.getByRole("combobox", { name: "NEXUS mode" }).selectOption("ask");
   const composer = panel.getByRole("textbox", { name: "NEXUS message" });
   await expect(composer).toBeEnabled();
   await composer.fill("Test the local NEXUS chat");
