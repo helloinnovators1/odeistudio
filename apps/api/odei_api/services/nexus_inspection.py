@@ -13,8 +13,8 @@ from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.agent_runtime import AgentRuntimeError, run_nexus_agent
 from odei_api.services.conversation_store import ConversationStoreError
-from odei_api.services.nexus_patch_proposals import _audit_proposal
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
+from odei_api.services.nexus_patch_proposals import _audit_proposal
 from odei_api.services.nexus_tasks import (
     NexusChatRequest,
     _append_nexus_chat_audit,

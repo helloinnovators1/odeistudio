@@ -5,9 +5,9 @@ import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
-from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 
 MAX_AGENT_TASK_CHARS = 8_000
 MAX_AGENT_TURNS = 6
