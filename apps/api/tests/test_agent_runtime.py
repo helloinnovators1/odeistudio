@@ -253,3 +253,62 @@ def test_agent_cancellation_is_checked_between_tool_calls(tmp_path):
         assert len(client.responses.calls) == 1
     finally:
         registry.close()
+
+
+def test_agent_emits_redacted_lifecycle_and_tool_audit_events(tmp_path):
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    events = []
+    client = FakeClient([
+        _response([
+            SimpleNamespace(
+                type="function_call", name="list_project_files",
+                arguments="{}", call_id="audit_call_1",
+            )
+        ]),
+        _response([SimpleNamespace(type="message")], "Inspection completed."),
+    ])
+    try:
+        result = run_nexus_agent(
+            client, model="test-model", task="Inspect workspace",
+            workspace_tools=tools, cloud_model_consent=True,
+            event_sink=events.append,
+        )
+        names = [event["event"] for event in events]
+        assert names == [
+            "agent.run.started",
+            "agent.provider.requested",
+            "agent.tool.started",
+            "agent.tool.completed",
+            "agent.provider.requested",
+            "agent.run.completed",
+        ]
+        assert result.tool_calls == 1
+        assert events[2]["tool_name"] == "list_project_files"
+        assert events[-1]["tool_calls"] == 1
+        assert all("arguments" not in event and "output" not in event for event in events)
+        assert all(event["model"] == "test-model" for event in events)
+    finally:
+        registry.close()
+
+
+def test_agent_fails_closed_when_audit_event_delivery_fails(tmp_path):
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    tools = ReadOnlyWorkspaceTools(registry, workspace_id)
+    client = FakeClient([_response([SimpleNamespace(type="message")], "Should not run.")])
+
+    def broken_audit_sink(_event):
+        raise OSError("audit store unavailable")
+
+    try:
+        with pytest.raises(AgentRuntimeError, match="audit event delivery failed"):
+            run_nexus_agent(
+                client, model="test-model", task="Inspect workspace",
+                workspace_tools=tools, cloud_model_consent=True,
+                event_sink=broken_audit_sink,
+            )
+        assert client.responses.calls == []
+    finally:
+        registry.close()
