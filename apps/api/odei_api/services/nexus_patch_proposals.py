@@ -214,6 +214,7 @@ async def _audit_proposal(
     proposal_id: str, action: str, outcome: str,
     *, project_id: str, file_count: int = 0, version: int | None = None,
     proposal_count: int = 0, decision: str | None = None,
+    mode: str | None = None,
 ) -> None:
     audit = getattr(request.app.state, "audit_event_store", None)
     if audit is None:
@@ -225,6 +226,8 @@ async def _audit_proposal(
         metadata["proposal_count"] = proposal_count
     if decision is not None:
         metadata["decision"] = decision
+    if mode is not None:
+        metadata["mode"] = mode
     try:
         await audit.append(
             organization_id=organization_id,
