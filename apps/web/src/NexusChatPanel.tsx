@@ -1231,7 +1231,8 @@ export default function NexusChatPanel({
         <div><span className="pane-kicker">Tab · ODEI NEXUS</span><strong>{selectedProject?.name ?? "AI Chat"}</strong></div>
         <div className="nexus-header-actions">
           {access && projectId && <button className="nexus-link-button" type="button" aria-label="New NEXUS conversation" title="New conversation" disabled={sending || conversationBusy} onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setConsent(false); setNotice("New conversation ready. Send a message to create it."); }}>＋</button>}
-          {demoMode && <button className="nexus-link-button" type="button" onClick={() => { setDemoMode(false); setMessages([]); setDraft(""); setConsent(false); setNotice("Local demo closed. Configure ODID to sign in."); }}>Exit demo</button>}\n          {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
+          {demoMode && <button className="nexus-link-button" type="button" onClick={() => { setDemoMode(false); setMessages([]); setDraft(""); setConsent(false); setNotice("Local demo closed. Configure ODID to sign in."); }}>Exit demo</button>}
+          {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>
       </div>
@@ -1420,6 +1421,7 @@ export default function NexusChatPanel({
       )}
 
       <div className="nexus-transcript" role="log" aria-label="Conversation" aria-live="polite">
+      {demoMode && <div className="nexus-demo-banner" role="status"><strong>LOCAL DEMO MODE</strong><span>Chat UI testing only. No sign-in, backend, AI model, repository, tools, or external network requests.</span></div>}
       {access && macOpen && (
         <section className="mac-environment-panel" aria-label="MAC environment governance">
           <div className="nexus-task-heading">
@@ -1737,7 +1739,7 @@ export default function NexusChatPanel({
       </div>
 
       <div className="nexus-composer-wrap">
-        {access && projectId ? (
+        {(access && projectId) || demoMode ? (
           <>
             {activeFile && (
               <label className="nexus-attach-toggle">
@@ -1835,12 +1837,12 @@ export default function NexusChatPanel({
             )}
             <label className="nexus-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              I consent to sending this request{selectedContextCount > 0 ? ` and ${selectedContextCount} explicitly selected file excerpt(s)` : ""} to the configured cloud AI provider.
+              {demoMode ? "I understand this is a local UI test; my message will not be sent to an AI model or external service." : `I consent to sending this request${selectedContextCount > 0 ? ` and ${selectedContextCount} explicitly selected file excerpt(s)` : ""} to the configured cloud AI provider.`}
             </label>
             <form className="chat-composer" onSubmit={(event) => void submitMessage(event)}>
               <textarea
                 aria-label="NEXUS message"
-                placeholder="Ask NEXUS about this project…"
+                placeholder={demoMode ? "Type a message to test the NEXUS chat…" : "Ask NEXUS about this project…"}
                 rows={3}
                 maxLength={8_000}
                 value={draft}
@@ -1859,7 +1861,7 @@ export default function NexusChatPanel({
                   ? <button type="button" onClick={() => abortRef.current?.abort()}>{inspectionRunning ? "Cancel inspection" : "Stop"}</button>
                   : <button type="submit" disabled={!draft.trim() || !consent || conversationBusy || taskBusy}>Send</button>}
                 <button type="button" className="nexus-secondary-button" onClick={() => void planTask()}
-                  disabled={!draft.trim() || !consent || conversationBusy || sending || taskBusy}>
+                  disabled={demoMode || !draft.trim() || !consent || conversationBusy || sending || taskBusy} title={demoMode ? "Task planning requires authenticated API access" : "Plan task"}>
                   {taskBusy ? "Working…" : "Plan task"}
                 </button>
               </div>
