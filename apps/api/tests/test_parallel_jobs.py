@@ -492,3 +492,45 @@ async def test_nexus_parallel_handler_propagates_job_cancellation_to_execution_r
     )
     assert runs.cancelled is True
     assert result == {"outcome": "cancelled", "execution_run_id": "execution-1"}
+
+
+@pytest.mark.asyncio
+async def test_worker_schedules_retry_for_transient_nexus_state_failure():
+    initial = ParallelJob(
+        id="transient-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker-a", lease_token="lease-token",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+
+    class Store:
+        def __init__(self):
+            self.retry_args = None
+
+        async def claim_next(self, **kwargs):
+            return initial
+
+        async def get_claimed(self, **kwargs):
+            return {"payload": {"execution_run_id": "run"}, "checkpoint": None, "version": 1}
+
+        async def heartbeat(self, **kwargs):
+            return None
+
+        async def retry(self, **kwargs):
+            self.retry_args = kwargs
+
+        async def finish(self, **kwargs):
+            raise AssertionError("transient errors must not be finalized as failed")
+
+    async def handler(*_args):
+        raise RetryableParallelJobError("temporary database outage")
+
+    store = Store()
+    worker = ParallelJobWorker(
+        store, worker_id="worker-a", handler=handler,
+        lease_seconds=30, heartbeat_seconds=5, retry_base_seconds=0,
+    )
+    assert await worker.run_once() == "retry_scheduled"
+    assert store.retry_args["expected_version"] == 1
+    assert store.retry_args["delay_seconds"] == 0
