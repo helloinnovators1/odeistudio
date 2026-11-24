@@ -186,6 +186,7 @@ def test_crash_recovery_preserves_external_edits_and_blocks_workspace_open(tmp_p
     project = tmp_path / "project"
     project.mkdir()
     (project / "main.py").write_text("before", encoding="utf-8")
+    (project / "deleted.txt").write_text("preserve me", encoding="utf-8")
     journal = DurableWorkspaceJournal(tmp_path / "state" / "journal.sqlite3")
     registry = WorkspaceHandleRegistry(journal=journal)
     workspace_id = registry.register_selected_root(project, allow_patch_apply=True)
