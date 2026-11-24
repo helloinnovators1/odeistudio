@@ -868,6 +868,46 @@ def test_workspace_handle_reports_incomplete_batch_compensation(tmp_path, monkey
         registry.close()
 
 
+
+
+def test_workspace_handle_detects_external_edit_before_batch_success(tmp_path, monkeypatch):
+    from odei_api.services import workspace_patch_apply
+
+    selected = tmp_path / "project"
+    selected.mkdir()
+    (selected / "main.py").write_text("before", encoding="utf-8")
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
+    real_apply = workspace_patch_apply.apply_single_file_patch
+    mutated = {"done": False}
+
+    def edit_after_apply(grant, item):
+        result = real_apply(grant, item)
+        if not mutated["done"]:
+            mutated["done"] = True
+            (selected / "main.py").write_text("external edit", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(
+        workspace_patch_apply, "apply_single_file_patch", edit_after_apply
+    )
+    try:
+        with pytest.raises(workspace_patch_apply.WorkspacePatchBatchError) as caught:
+            registry.apply_patch_batch(workspace_id, [
+                {
+                    "path": "main.py",
+                    "operation": "update",
+                    "base_sha256": hashlib.sha256(b"before").hexdigest(),
+                    "result_sha256": hashlib.sha256(b"approved result").hexdigest(),
+                    "content": "approved result",
+                },
+            ])
+        assert caught.value.rollback_complete is False
+        assert caught.value.rollback_failures == ["main.py"]
+        assert registry.read_text(workspace_id, "main.py") == "external edit"
+    finally:
+        registry.close()
+
 def test_apply_patch_request_accepts_bounded_multi_file_batch_and_rejects_duplicates():
     from pydantic import ValidationError
 
