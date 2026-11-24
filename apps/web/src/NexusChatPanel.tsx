@@ -118,6 +118,7 @@ export default function NexusChatPanel({
   const [attachActiveFile, setAttachActiveFile] = useState(false);
   const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
   const [useAttachedTools, setUseAttachedTools] = useState(false);
+  const [mode, setMode] = useState<"ask" | "plan" | "agent" | "debug">("ask");
   const [inspectionRunning, setInspectionRunning] = useState(false);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
@@ -1047,6 +1048,7 @@ export default function NexusChatPanel({
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (mode === "plan") { void planTask(); return; }
     const content = draft.trim();
     if (!access || !projectId || !consent || !content || sending || conversationBusy || !config.apiBaseUrl) return;
     if (content.length > 8_000) {
@@ -1087,7 +1089,12 @@ export default function NexusChatPanel({
     setDraft("");
     setConsent(false);
     setChatError("");
-    const isInspection = useAttachedTools && excerpt.length > 0;
+    const isInspection = (mode === "agent" || useAttachedTools) && excerpt.length > 0;
+    if ((mode === "agent" || useAttachedTools) && excerpt.length === 0) {
+      setChatError("Agent inspection requires at least one explicitly selected file excerpt.");
+      setSending(false);
+      return;
+    }
     setInspectionRunning(isInspection);
     try {
       let activeConversationId = conversationId;
@@ -1107,6 +1114,7 @@ export default function NexusChatPanel({
           messages: next.map(({ role, content: text }) => ({ role, content: text })),
           workspaceFiles: excerpt,
           cloudModelConsent: true,
+          mode: "agent",
           signal: controller.signal,
         });
         setMessages((current) => [...current, {
@@ -1143,6 +1151,7 @@ export default function NexusChatPanel({
         messages: next.map(({ role, content: text }) => ({ role, content: text })),
         workspaceFiles: excerpt,
         cloudModelConsent: true,
+        mode: mode === "debug" ? "debug" : "ask",
         signal: controller.signal,
       }, (delta) => {
         setMessages((current) => {
@@ -1721,6 +1730,16 @@ export default function NexusChatPanel({
                 {workspaceContext.files.filter((file) => isNexusContextPathAllowed(file.path)).length > 100 && <p className="nexus-muted">Showing the first 100 workspace entries. Narrow the workspace in the editor to select other files.</p>}
               </details>
             )}
+            <label className="nexus-attach-toggle nexus-tools-toggle">
+              <span>Mode</span>
+              <select aria-label="NEXUS mode" value={mode} disabled={sending || taskBusy}
+                onChange={(event) => { const next = event.target.value as "ask" | "plan" | "agent" | "debug"; setMode(next); setUseAttachedTools(next === "agent"); }}>
+                <option value="ask">Ask · read only</option>
+                <option value="plan">Plan · approval required</option>
+                <option value="agent">Agent · inspect and propose</option>
+                <option value="debug">Debug · diagnostics only</option>
+              </select>
+            </label>
             {selectedContextCount > 0 && (
               <label className="nexus-attach-toggle nexus-tools-toggle">
                 <input type="checkbox" checked={useAttachedTools}

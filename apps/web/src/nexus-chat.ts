@@ -18,6 +18,7 @@ export interface NexusChatRequest {
   cloudModelConsent: true;
   signal?: AbortSignal;
   conversationId?: string;
+  mode?: "ask" | "debug" | "agent";
 }
 
 export interface NexusChatResponse {
@@ -127,6 +128,7 @@ export async function sendNexusChat(
         messages: request.messages,
         workspace_files: request.workspaceFiles ?? [],
         cloud_model_consent: true,
+        mode: request.mode ?? "ask",
         ...(request.conversationId ? { conversation_id: request.conversationId } : {}),
       }),
       cache: "no-store",
@@ -425,6 +427,7 @@ export async function sendNexusChatStream(
         workspace_files: workspaceFiles,
         cloud_model_consent: true,
         conversation_id: conversationId,
+        mode: request.mode ?? "ask",
       }),
       cache: "no-store",
       credentials: "omit",
@@ -603,6 +606,7 @@ export async function sendNexusChatInspection(
         workspace_files: workspaceFiles,
         cloud_model_consent: true,
         conversation_id: conversationId,
+        mode: "agent",
       }),
       cache: "no-store",
       credentials: "omit",

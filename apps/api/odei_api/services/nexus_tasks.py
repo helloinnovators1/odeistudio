@@ -10,6 +10,7 @@ import json
 import logging
 import queue
 import threading
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -51,6 +52,7 @@ class NexusChatRequest(BaseModel):
     workspace_files: list[dict[str, StrictStr]] = Field(default_factory=list, max_length=5)
     cloud_model_consent: StrictBool
     conversation_id: StrictStr | None = Field(default=None, min_length=1, max_length=128)
+    mode: Literal["ask", "debug", "agent"] = "ask"
 
 
 async def _append_nexus_chat_audit(
@@ -464,6 +466,8 @@ async def nexus_project_chat_stream(
     """Stream redacted model deltas over SSE and persist the completed assistant turn."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    if payload.mode not in {"ask", "debug"}:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."})
     if payload.cloud_model_consent is not True:
         raise HTTPException(status_code=400, detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending chat or workspace data to the cloud model."})
     if payload.conversation_id is None:
@@ -532,7 +536,7 @@ async def nexus_project_chat_stream(
         try:
             for delta in stream_nexus_chat(
                 client, model=model, messages=model_messages,
-                workspace_files=payload.workspace_files,
+                workspace_files=payload.workspace_files, mode=payload.mode,
             ):
                 if not publish("delta", delta):
                     return
@@ -656,6 +660,8 @@ async def nexus_project_chat(
             status_code=422,
             detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."},
         )
+    if payload.mode not in {"ask", "debug"}:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."})
     if payload.cloud_model_consent is not True:
         raise HTTPException(
             status_code=400,
@@ -716,6 +722,7 @@ async def nexus_project_chat(
             model=model,
             messages=model_messages,
             workspace_files=payload.workspace_files,
+            mode=payload.mode,
         )
     except ModelConfigurationError as exc:
         await _append_nexus_chat_audit(
