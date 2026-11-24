@@ -181,3 +181,78 @@ async def test_worker_can_renew_only_its_current_lease():
             organization_id="org", job_id=job.id, worker_id="worker-b",
             lease_token=job.lease_token, lease_seconds=90,
         )
+
+
+@pytest.mark.asyncio
+async def test_parallel_worker_restores_checkpoint_and_persists_new_progress():
+    from datetime import datetime, timezone
+
+    from odei_api.services.parallel_jobs import ParallelJob
+    from odei_api.services.parallel_job_worker import ParallelJobWorker
+
+    initial = ParallelJob(
+        id="resume-job", group_id="resume-group", organization_id="org",
+        project_id="project", status="leased", version=4, attempt=2,
+        max_attempts=3, checkpoint={"step": 2}, checkpoint_sha256=None,
+        worker_id="worker-a", lease_token="lease-token",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+
+    class JobRows:
+        async def find_one(self, query):
+            assert query["lease_token"] == "lease-token"
+            return {
+                "payload": {"task": "continue safely"},
+                "checkpoint": {"step": 2},
+                "checkpoint_sha256": __import__("hashlib").sha256(
+                    b'{"step":2}'
+                ).hexdigest(),
+            }
+
+    class Store:
+        _jobs = JobRows()
+
+        def __init__(self):
+            self.saved = None
+            self.finished = None
+
+        async def claim_next(self, **kwargs):
+            assert kwargs["worker_id"] == "worker-a"
+            return initial
+
+        async def checkpoint(self, **kwargs):
+            self.saved = kwargs["checkpoint"]
+            return ParallelJob(
+                **{**initial.__dict__, "version": kwargs["expected_version"] + 1,
+                   "checkpoint": kwargs["checkpoint"]}
+            )
+
+        async def cancellation_requested(self, **kwargs):
+            return False
+
+        async def finish(self, **kwargs):
+            self.finished = kwargs
+            return None
+
+        async def heartbeat(self, **kwargs):
+            return None
+
+    seen = {}
+    async def handler(job, payload, checkpoint, save_checkpoint, is_cancelled):
+        seen.update(payload=payload, checkpoint=checkpoint)
+        assert await is_cancelled() is False
+        await save_checkpoint({"step": 3, "result": "partial"})
+
+    store = Store()
+    worker = ParallelJobWorker(
+        store, worker_id="worker-a", handler=handler,
+        lease_seconds=30, heartbeat_seconds=5,
+    )
+    assert await worker.run_once() == "completed"
+    assert seen == {
+        "payload": {"task": "continue safely"},
+        "checkpoint": {"step": 2},
+    }
+    assert store.saved == {"step": 3, "result": "partial"}
+    assert store.finished["expected_version"] == 5
+    assert store.finished["outcome"] == "completed"
