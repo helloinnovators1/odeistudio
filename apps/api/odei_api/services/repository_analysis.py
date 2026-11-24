@@ -154,6 +154,7 @@ def analyze_repository(files: list[dict[str, Any]], *, max_chunks: int = 500) ->
     global_names: set[str] = set()
     symbol_total = 0
     reference_candidates_total = 0
+    reference_total = 0
     import_total = 0
     analysis_truncated = False
     for record in files:
