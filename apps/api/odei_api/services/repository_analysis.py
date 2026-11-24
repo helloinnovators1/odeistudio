@@ -223,15 +223,12 @@ def analyze_repository(files: list[dict[str, Any]], *, max_chunks: int = 500) ->
                 or (path, line_number, name) in definition_lines
             ):
                 continue
-            seen.add(key)
-            refs.append({"name": name, "path": path, "line": line_number})
-            if (
-                len(refs) >= _MAX_REFERENCES_PER_FILE
-                or sum(len(items) for items in references_by_file.values()) + len(refs)
-                >= _MAX_TOTAL_REFERENCES
-            ):
+            if len(refs) >= _MAX_REFERENCES_PER_FILE or reference_total >= _MAX_TOTAL_REFERENCES:
                 analysis_truncated = True
                 break
+            seen.add(key)
+            refs.append({"name": name, "path": path, "line": line_number})
+            reference_total += 1
         references_by_file[path] = refs
 
     chunks: list[dict[str, Any]] = []
