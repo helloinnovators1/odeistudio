@@ -52,6 +52,7 @@ interface Props {
 
 interface TranscriptMessage extends NexusChatMessage {
   id: string;
+  mode?: "ask" | "plan" | "agent" | "debug";
 }
 
 function environmentConfig(): { auth: ODidOAuthConfig | null; apiBaseUrl: string; missing: string[] } {
@@ -260,7 +261,7 @@ export default function NexusChatPanel({
           const latest = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, items[0].conversation_id);
           if (!active) return;
           setConversationId(latest.conversation_id);
-          setMessages(latest.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+          setMessages(latest.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content, mode: message.mode })));
           setNotice("Loaded your most recent saved conversation.");
         } else { setNotice("No saved conversations in this project. Start a new conversation."); }
       })
@@ -1088,7 +1089,7 @@ export default function NexusChatPanel({
     }
     const next: TranscriptMessage[] = [
       ...messages,
-      { id: newMessageId(), role: "user" as const, content },
+      { id: newMessageId(), role: "user" as const, content, mode },
     ].slice(-20);
     setMessages(next);
     setDraft("");
@@ -1118,7 +1119,7 @@ export default function NexusChatPanel({
           signal: controller.signal,
         });
         setMessages((current) => [...current, {
-          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer,
+          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer, mode: "agent",
         }].slice(-20));
         if (inspected.patch_proposal) {
           setPatchProposals((items) => [
@@ -1157,7 +1158,7 @@ export default function NexusChatPanel({
         setMessages((current) => {
           if (!assistantStarted) {
             assistantStarted = true;
-            return [...current, { id: assistantId, role: "assistant" as const, content: delta }].slice(-20);
+            return [...current, { id: assistantId, role: "assistant" as const, content: delta, mode: mode === "debug" ? "debug" as const : "ask" as const }].slice(-20);
           }
           return current.map((message) => message.id === assistantId
             ? { ...message, content: message.content + delta }
@@ -1346,7 +1347,7 @@ export default function NexusChatPanel({
                   try {
                     const item = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access!.accessToken, selected);
                     setConversationId(item.conversation_id);
-                    setMessages(item.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+                    setMessages(item.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content, mode: message.mode })));
                     setChatError("");
                   } catch (cause) { setChatError(errorMessage(cause)); }
                   finally { setConversationBusy(false); }
@@ -1503,7 +1504,7 @@ export default function NexusChatPanel({
         )}
         {messages.map((message) => (
           <article key={message.id} className={`nexus-message nexus-message-${message.role}`}>
-            <strong>{message.role === "user" ? "YOU" : "NEXUS"}</strong>
+            <strong>{message.role === "user" ? "YOU" : "NEXUS"}{message.mode ? <small className="nexus-message-mode">{message.mode.toUpperCase()}</small> : null}</strong>
             <p>{message.content}</p>
           </article>
         ))}
