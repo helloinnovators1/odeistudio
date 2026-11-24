@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.project_files import ProjectFile
 from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
@@ -28,11 +29,16 @@ class ToolExecutionError(ValueError):
 class ReadOnlyWorkspaceTools:
     """Expose bounded list/read/search operations for one approved workspace."""
 
-    def __init__(self, registry: WorkspaceHandleRegistry, workspace_id: str) -> None:
+    def __init__(self, registry: WorkspaceHandleRegistry, workspace_id: str, *, mode: str = "agent") -> None:
         if not workspace_id.strip():
             raise ValueError("workspace_id must not be empty")
+        try:
+            NexusCapabilityPolicy.require(mode, "workspace.read")
+        except NexusCapabilityDenied as exc:
+            raise ToolExecutionError("The selected mode cannot access workspace tools") from exc
         self._registry = registry
         self._workspace_id = workspace_id
+        self._mode = mode
 
     @staticmethod
     def schemas() -> list[dict[str, Any]]:

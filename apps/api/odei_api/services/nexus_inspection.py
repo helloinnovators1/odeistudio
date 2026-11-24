@@ -13,6 +13,7 @@ from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.agent_runtime import AgentRuntimeError, run_nexus_agent
 from odei_api.services.conversation_store import ConversationStoreError
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_patch_proposals import _audit_proposal
 from odei_api.services.nexus_tasks import (
     NexusChatRequest,
@@ -46,6 +47,10 @@ async def inspect_attached_project_excerpts(
     """Run bounded tools against attached excerpts and persist review-only proposals."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "workspace.inspect")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "Attached-file inspection is available only in Agent mode."}) from exc
     if payload.cloud_model_consent is not True:
         raise HTTPException(status_code=400, detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending chat or workspace data to the cloud model."})
     if payload.conversation_id is None:
@@ -89,7 +94,7 @@ async def inspect_attached_project_excerpts(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
             conversation_id=conversation_id, role="user",
-            content=payload.messages[-1]["content"],
+            content=payload.messages[-1]["content"], mode=payload.mode,
             expected_version=conversation["version"],
         )
         if user_turn is None:
@@ -103,7 +108,7 @@ async def inspect_attached_project_excerpts(
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
         outcome="started", message_count=message_count,
-        file_count=len(payload.workspace_files),
+        file_count=len(payload.workspace_files), mode=payload.mode,
     )
     try:
         client, model = get_openai_client()
@@ -116,14 +121,14 @@ async def inspect_attached_project_excerpts(
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=message_count,
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
     except (AgentRuntimeError, SelectedExcerptToolError, ValueError) as exc:
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=message_count,
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=422, detail={"code": "NEXUS_INSPECTION_FAILED", "message": "NEXUS could not safely inspect the attached excerpts."}) from exc
     except Exception as exc:
@@ -131,13 +136,23 @@ async def inspect_attached_project_excerpts(
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=message_count,
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=502, detail={"code": "NEXUS_INSPECTION_UNAVAILABLE", "message": "NEXUS inspection is temporarily unavailable."}) from exc
 
     patch_proposal = None
     proposed_changes = tools.proposed_changes
     if proposed_changes:
+        try:
+            NexusCapabilityPolicy.require(payload.mode, "patch.propose")
+        except NexusCapabilityDenied as exc:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "NEXUS_MODE_CAPABILITY_DENIED",
+                    "message": "The current NEXUS mode cannot create patch proposals.",
+                },
+            ) from exc
         proposal_store = getattr(request.app.state, "patch_proposal_store", None)
         if proposal_store is None:
             raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is not configured."})
@@ -161,7 +176,7 @@ async def inspect_attached_project_excerpts(
         await _audit_proposal(
             request, principal, organization_id, proposal_id,
             "nexus.patch_proposal.create", "started",
-            project_id=project_id, file_count=len(proposal_files),
+            project_id=project_id, file_count=len(proposal_files), mode=payload.mode,
         )
         try:
             created_proposal = await proposal_store.create(
@@ -174,7 +189,7 @@ async def inspect_attached_project_excerpts(
         await _audit_proposal(
             request, principal, organization_id, proposal_id,
             "nexus.patch_proposal.create", "success",
-            project_id=project_id, file_count=len(proposal_files), version=0,
+            project_id=project_id, file_count=len(proposal_files), version=0, mode=payload.mode,
         )
         patch_proposal = {
             "proposal_id": created_proposal["proposal_id"],
@@ -196,7 +211,7 @@ async def inspect_attached_project_excerpts(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
             conversation_id=conversation_id, role="assistant",
-            content=result.answer, expected_version=user_turn["version"],
+            content=result.answer, mode=payload.mode, expected_version=user_turn["version"],
         )
         if saved is None:
             raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "The conversation changed while NEXUS was inspecting files. Reload history before continuing."})
@@ -208,7 +223,7 @@ async def inspect_attached_project_excerpts(
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
         outcome="success", message_count=message_count,
-        file_count=len(payload.workspace_files), model=result.model,
+        file_count=len(payload.workspace_files), mode=payload.mode, model=result.model,
         tool_calls=result.tool_calls,
     )
     return {

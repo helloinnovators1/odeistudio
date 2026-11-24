@@ -81,7 +81,7 @@ describe("NEXUS execution API client", () => {
     const init = fetcher.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(init.body));
     expect(body).toMatchObject({
-      profile_id: "python-tests", expected_task_version: 7,
+      profile_id: "python-tests", mode: "agent", expected_task_version: 7,
       workspace_upload_consent: true, execution_consent: true,
       snapshot_zip_base64: "UEsDBA==",
     });

@@ -15,3 +15,130 @@
 .patch-diff-wrap{margin-top:14px;border:1px solid #394452;border-radius:6px;overflow:hidden}
 .patch-diff-wrap>strong{display:block;padding:8px 10px;background:#202833;color:#b9c4d1;font-size:9px;letter-spacing:.1em}
 .patch-diff{max-height:300px;overflow:auto;margin:0;padding:12px;background:#0d1219;color:#dce2e9;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+
+.ide-menubar{position:relative}.ide-menu-items{display:flex;align-items:center;gap:2px}.ide-menu-items button{padding:5px 8px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit}.ide-menu-items button:hover,.ide-menu-items button[aria-expanded=true]{background:#303a46;color:#fff}.ide-menu-popover{position:absolute;z-index:60;top:100%;left:8px;min-width:210px;padding:6px;border:1px solid #3a4652;border-radius:7px;background:#1b222c;box-shadow:0 18px 45px #0009}.ide-menu-popover button{display:block;width:100%;padding:9px 10px;border:0;border-radius:4px;background:transparent;color:#d5dee7;text-align:left;font:inherit}.ide-menu-popover button:hover{background:#2a3541}
+
+/* OIPTECH Core reference workbench layout */
+.ide-reference .ide-titlebar{height:38px;flex-basis:38px;gap:12px;padding:0 10px;background:#f2f3f5;color:#5b626b;border-bottom:1px solid #cfd2d6}
+.ide-reference .brand-lockup{min-width:150px;gap:8px;color:#5a626b}
+.ide-reference .brand-lockup .brand-mark{width:22px;height:22px;background:#dce1e5;color:#59616a;border-radius:5px;font-size:12px}
+.ide-reference .brand-lockup b{font-size:12px;letter-spacing:0;font-weight:500}
+.ide-reference .brand-lockup small,.ide-reference .titlebar-project{display:none}
+.ide-reference .titlebar-actions{gap:6px}
+.ide-reference .titlebar-actions .toolbar-button{padding:5px 10px;background:#087cc1;color:white;border-radius:14px;font-size:11px;font-weight:650}
+.ide-reference .titlebar-actions .toolbar-button[aria-label="Open settings"]{background:transparent;color:#6b737d}
+.ide-reference .ide-menubar{height:34px;flex-basis:34px;background:#f6f7f8;color:#656d76;border-bottom:1px solid #d8dade;gap:12px;padding:0 14px}
+.ide-reference .ide-menu-items button{color:#616972;font-size:12px}
+.ide-reference .access-pill{border:0;color:#65717c}
+.ide-reference .welcome-strip,.ide-reference .connection-status{display:none}
+.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:46px 250px minmax(0,1fr) 440px;background:#fff}
+.ide-reference .activity-rail{display:flex;grid-column:1;grid-row:1}
+.ide-reference .explorer-pane{grid-column:2;grid-row:1;border-right:1px solid #d6d9dd;background:#f5f6f7;color:#4e555d}
+.ide-reference .pane-heading{height:34px;flex-basis:34px;border-bottom:0;color:#4d555e}
+.ide-reference .pane-empty{color:#747d87}
+.ide-reference .explorer-pane select,.ide-reference .file-filter{background:#fff;color:#404850;border-color:#d1d5da}
+.ide-reference .file-row{color:#4f5861;font-size:11px}
+.ide-reference .file-row:hover,.ide-reference .file-row.active{background:#e6e9ed}
+.ide-reference .file-row .file-glyph{color:#707b85}
+.ide-reference .editor-column{grid-column:3;grid-row:1;background:#fff;color:#454c54}
+.ide-reference .editor-actionbar{height:30px;flex-basis:30px;background:#f7f8f9;border-bottom:1px solid #d9dce0}
+.ide-reference .editor-tabs{height:34px;flex-basis:34px;background:#f4f5f6;border-bottom:1px solid #d5d8dc}
+.ide-reference .editor-tab{background:#f0f1f3;border-right:1px solid #d5d8dc}
+.ide-reference .editor-tab.active{background:#fff;border-top:0;border-bottom:2px solid #1685c4}
+.ide-reference .editor-tab button{color:#59616b}
+.ide-reference .editor-tab.active button{color:#333b44}
+.ide-reference .editor-tab-action{align-self:center;margin-left:4px;padding:3px 7px;border:0;background:transparent;color:#68727d}
+.ide-reference .browser-tab-menu{position:absolute;z-index:80;top:72px;left:calc(305px + 220px);min-width:180px;padding:6px;background:#fff;border:1px solid #d6d9dd;box-shadow:0 8px 25px #0002}
+.ide-reference .browser-tab-menu button{display:block;width:100%;padding:8px;border:0;background:transparent;color:#4d5660;text-align:left}
+.ide-reference .browser-tab-menu button:hover{background:#edf0f3}
+.ide-reference .editor-surface{background:#fff}
+.ide-reference .editor-welcome{color:#6b747e}
+.ide-reference .editor-welcome h2{color:#404850}
+.ide-reference .bottom-panel{height:118px;flex-basis:118px;background:#f7f8f9;border-top:1px solid #d7dade}
+.ide-reference .bottom-tabs{border-bottom:1px solid #d7dade}
+.ide-reference .bottom-tabs button{color:#737c86}
+.ide-reference .bottom-tabs button.active{color:#303942;border-bottom-color:#1685c4}
+.ide-reference .bottom-content{color:#606a74}
+.ide-reference .statusbar{height:23px;flex-basis:23px;background:#f0f2f4;color:#69727c;border-top:1px solid #d5d9dd}
+.ide-reference .nexus-pane{grid-column:4;grid-row:1;background:#fff;color:#3e454d;border-left:1px solid #d5d8dc}
+.ide-reference .nexus-pane .pane-heading{background:#fff;border-bottom:1px solid #e0e2e5;color:#424a53}
+.ide-reference .chat-composer{background:#fff;border-top:1px solid #e0e2e5}
+.ide-reference .chat-composer textarea{background:#fff;color:#414950;border-color:#d5d9de}
+.ide-reference .chat-empty h2{color:#3f4750}
+.ide-reference .chat-empty p{color:#707983}
+.embedded-browser{height:100%;min-height:0;display:flex;flex-direction:column;background:#fff}
+.browser-toolbar{height:34px;flex:0 0 34px;display:flex;align-items:center;gap:4px;padding:0 8px;border-bottom:1px solid #e1e3e6;background:#fafbfc}
+.browser-toolbar button{width:25px;height:25px;padding:0;border:0;background:transparent;color:#65717d;font-size:16px}
+.browser-toolbar button:disabled{opacity:.35}
+.browser-toolbar input{min-width:0;flex:1;height:25px;padding:0 10px;border:1px solid #e0e3e7;border-radius:13px;background:#fff;color:#626b74;font-size:11px}
+.browser-frame{width:100%;height:100%;min-height:0;flex:1;border:0;background:#fff}
+.browser-tools-note{padding:7px 10px;background:#fff8df;color:#6f5a20;font-size:10px}
+@media(max-width:900px){.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:42px 210px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}.ide-reference .activity-rail{grid-column:1;grid-row:1}.ide-reference .explorer-pane{grid-column:2;grid-row:1}.ide-reference .editor-column{grid-column:3;grid-row:1}.ide-reference .nexus-pane{grid-column:2 / -1;grid-row:2;min-height:280px}}
+@media(max-width:650px){.ide-reference .ide-titlebar{padding:0 6px}.ide-reference .brand-lockup{min-width:0}.ide-reference .titlebar-actions .toolbar-button{font-size:9px;padding:4px 6px}.ide-reference .ide-menubar{overflow-x:auto}.ide-reference .workbench,.ide-reference .workbench.chat-right{grid-template-columns:1fr;grid-template-rows:40px 180px minmax(400px,1fr) auto}.ide-reference .activity-rail{grid-column:1;grid-row:1;flex-direction:row;justify-content:flex-start;padding:0 8px}.ide-reference .explorer-pane{grid-column:1;grid-row:2}.ide-reference .editor-column{grid-column:1;grid-row:3}.ide-reference .nexus-pane{grid-column:1;grid-row:4}}
+
+.ide-reference .ide-titlebar{position:relative}
+.ide-reference .ide-menubar{position:absolute;top:0;left:165px;right:360px;z-index:4;height:38px;min-height:38px;flex-basis:38px;overflow:visible;background:transparent;border:0;padding:0 4px;gap:0}
+.ide-reference .ide-menu-items{height:100%;gap:0}
+.ide-reference .ide-menu-items button{height:100%;padding:0 8px;font-size:12px}
+.ide-reference .ide-titlebar-actions{z-index:5}
+.ide-reference .titlebar-actions .toolbar-button[aria-label="Open settings"]{display:none}
+.ide-reference .ide-native-controls{display:flex;align-items:stretch;height:38px;margin-left:8px}
+.ide-reference .ide-native-controls button{width:42px;padding:0;border:0;border-radius:0;background:transparent;color:#616a74;font-size:16px}
+.ide-reference .ide-native-controls button:hover{background:#e2e5e8}
+.ide-reference .ide-native-controls button:last-child:hover{background:#d9434d;color:white}
+.ide-reference .ide-minimized-overlay{position:absolute;z-index:100;inset:72px 0 23px;display:flex;align-items:center;justify-content:center;gap:14px;background:#f4f5f6;color:#4a535d}
+.ide-reference .ide-minimized-overlay button{background:#e6e9ec;border-color:#cbd0d5;color:#3e4852}
+.ide-reference .explorer-actions{display:flex;align-items:center;gap:5px}
+.ide-reference .explorer-actions span{color:#77818b;font-size:10px}
+.ide-reference .explorer-actions button{width:23px;height:23px;padding:0;border:0;background:transparent;color:#6e7882;font-size:14px}
+.ide-reference .explorer-actions button:hover{background:#e6e9ed}
+.ide-reference .editor-actionbar{display:none}
+.ide-reference .editor-tabs{height:36px;flex-basis:36px;position:relative}
+.ide-reference .ide-maximized{height:100dvh}
+.ide-reference .browser-tab-menu{top:36px}
+
+.ide-reference{position:relative}
+.ide-reference .titlebar-actions button[aria-label="Open ODEI Studio Window"]{display:none}
+
+/* Screenshot-aligned OIPTECH Core toolbar and pane refinements */
+.ide-reference .ide-titlebar{height:38px;flex-basis:38px;padding:0 8px;gap:8px}
+.ide-reference .brand-lockup{position:static;min-width:28px;width:28px;flex:0 0 28px}
+.ide-reference .brand-lockup .brand-mark{width:20px;height:20px}
+.ide-reference .brand-lockup b{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;font-size:12px;font-weight:500;color:#68717a}
+.ide-reference .ide-menubar{left:42px;right:355px;top:0;height:38px;min-height:38px;flex-basis:38px;z-index:6}
+.ide-reference .ide-menu-items button{padding:0 7px;font-size:12px}
+.ide-reference .ide-explorer-toolbar{height:34px;flex:0 0 34px;display:flex;align-items:center;gap:3px;padding:0 9px;background:#f4f5f6;border-bottom:1px solid #e0e2e5}
+.ide-reference .ide-explorer-toolbar button{width:26px;height:26px;padding:0;border:0;background:transparent;color:#65707a;font-size:15px}
+.ide-reference .ide-explorer-toolbar button[aria-pressed=true]{background:#e1e5e9;color:#2f3942}
+.ide-reference .ide-explorer-toolbar button:hover{background:#e7eaed}
+.ide-reference .ide-explorer-toolbar span{flex:1}
+.ide-reference .ide-sidebar-message{padding:14px;color:#59636d;font-size:11px;line-height:1.6}
+.ide-reference .ide-sidebar-message strong{font-size:10px;letter-spacing:.08em}
+.ide-reference .ide-sidebar-message button,.ide-reference .ide-terminal-guidance button{margin-top:8px;padding:6px 9px;border:1px solid #cbd1d7;background:#f7f8f9;color:#46515b;font-size:10px}
+.ide-reference .ide-terminal-guidance{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ide-reference .nexus-pane .pane-heading{height:44px;flex-basis:44px}
+.ide-reference .nexus-pane .pane-heading strong{font-size:12px;letter-spacing:0;font-weight:500}
+.ide-reference .nexus-pane .pane-kicker{display:inline-block;margin:0 8px 0 0;color:#7a838c;font-size:10px;letter-spacing:0}
+.ide-reference .nexus-header-actions button{color:#626d77}
+.ide-reference .chat-composer{padding:10px}
+.ide-reference .chat-composer textarea{border-radius:10px;min-height:70px}
+.ide-reference .bottom-panel{height:104px;flex-basis:104px}
+@media(max-width:900px){.ide-reference .ide-menubar{right:320px;left:36px}.ide-reference .brand-lockup b{display:none}}
+@media(max-width:650px){.ide-reference .ide-menubar{position:relative;left:auto;right:auto;top:auto;height:32px;min-height:32px;flex-basis:32px;overflow-x:auto;background:#f6f7f8;border-bottom:1px solid #d8dade}.ide-reference .ide-titlebar{flex:0 0 38px}.ide-reference .brand-lockup b{display:none}}
+
+.ide-reference .ide-source-control{padding:10px 12px;min-width:0}
+.ide-reference .ide-source-heading{display:flex;align-items:center;justify-content:space-between}
+.ide-reference .ide-source-heading button,.ide-reference .ide-git-file button{border:0;background:transparent;color:inherit}
+.ide-reference .ide-git-file{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid #e5e7e9;padding:4px 0}
+.ide-reference .ide-git-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;flex:1}
+.ide-reference .ide-git-commit-label{display:block;margin-top:12px;font-size:9px;letter-spacing:.08em}
+.ide-reference .ide-source-control textarea{width:100%;margin:5px 0;padding:6px;border:1px solid #cbd1d7;background:#fff;color:#424b54;resize:vertical}
+.ide-reference .ide-git-diff{max-height:180px;overflow:auto;white-space:pre-wrap;background:#f4f5f6;border:1px solid #e0e2e5;padding:6px;font-size:10px}
+.ide-reference .native-browser-surface{background:#fff}
+
+.ide-reference .ide-native-terminal{height:100%;min-height:0;display:flex;flex-direction:column;gap:6px}
+.ide-reference .ide-native-terminal pre{flex:1;min-height:0;overflow:auto;margin:0;padding:8px;background:#fff;color:#3c4650;border:1px solid #e0e2e5;font:11px/1.5 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.ide-reference .ide-native-terminal form{display:flex;align-items:center;gap:6px}
+.ide-reference .ide-native-terminal input{flex:1;min-width:0;border:1px solid #cbd1d7;padding:6px;background:#fff;color:#333;font:11px Consolas,monospace}
+.ide-reference .ide-native-terminal button{border:1px solid #cbd1d7;padding:5px 9px;background:#f7f8f9;color:#3e4852;font-size:10px}
+.ide-reference .terminal-prompt{font:14px Consolas,monospace}

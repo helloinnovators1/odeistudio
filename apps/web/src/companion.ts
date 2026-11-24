@@ -2,7 +2,45 @@ const BASE=import.meta.env.VITE_COMPANION_ORIGIN||"http://127.0.0.1:8765";
 export interface CompanionWorkspace{workspace_id:string;name:string;access:"read-only"|"approval-gated"}
 export interface CompanionFile{path:string;size:number}
 interface Pair{access_token:string;token_type:"Bearer";expires_in:number;permissions:string[]}
-async function call<T>(path:string,opts:{method?:"GET"|"POST";token?:string;body?:unknown;signal?:AbortSignal}={},fetcher:typeof fetch=fetch):Promise<T>{const headers=new Headers();if(opts.token)headers.set("Authorization","Bearer "+opts.token);if(opts.body!==undefined)headers.set("Content-Type","application/json");const init={method:opts.method||"GET",headers,body:opts.body===undefined?undefined:JSON.stringify(opts.body),signal:opts.signal,mode:"cors",cache:"no-store",credentials:"omit",redirect:"error",targetAddressSpace:"loopback"} as RequestInit&{targetAddressSpace:"loopback"};const res=await fetcher(new Request(BASE+path,init));const body=res.status===204?undefined:await res.json().catch(()=>undefined);if(!res.ok)throw new Error(body&&typeof body.detail==="string"?body.detail:"Companion HTTP "+res.status);return body as T;}
+async function call<T>(
+  path: string,
+  opts: { method?: "GET" | "POST"; token?: string; body?: unknown; signal?: AbortSignal } = {},
+  fetcher: typeof fetch = fetch,
+): Promise<T> {
+  const headers = new Headers();
+  if (opts.token) headers.set("Authorization", "Bearer " + opts.token);
+  if (opts.body !== undefined) headers.set("Content-Type", "application/json");
+  const init = {
+    method: opts.method || "GET",
+    headers,
+    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    signal: opts.signal,
+    mode: "cors",
+    cache: "no-store",
+    credentials: "omit",
+    redirect: "error",
+    targetAddressSpace: "loopback",
+  } as RequestInit & { targetAddressSpace: "loopback" };
+  const response = await fetcher(new Request(BASE + path, init));
+  const body = response.status === 204 ? undefined : await response.json().catch(() => undefined);
+  if (!response.ok) {
+    const detail = body && typeof body === "object" && "detail" in body
+      ? (body as { detail?: unknown }).detail : undefined;
+    if (typeof detail === "string") throw new Error(detail);
+    if (detail && typeof detail === "object") {
+      const item = detail as { message?: unknown; rollback_failures?: unknown };
+      const message = typeof item.message === "string" ? item.message : "Companion HTTP " + response.status;
+      const failedPaths = Array.isArray(item.rollback_failures)
+        ? item.rollback_failures.filter((value): value is string => typeof value === "string")
+        : [];
+      throw new Error(failedPaths.length > 0
+        ? message + " Recovery is required for: " + failedPaths.join(", ")
+        : message);
+    }
+    throw new Error("Companion HTTP " + response.status);
+  }
+  return body as T;
+}
 export async function connectToCompanion():Promise<void>{let permissionCheck:Promise<PermissionStatus|null>=Promise.resolve(null);if("permissions"in navigator&&navigator.permissions?.query){try{const query=navigator.permissions.query as unknown as (d:{name:string})=>Promise<PermissionStatus>;permissionCheck=query({name:"loopback-network"}).catch(()=>null);}catch{/* Permission descriptor is not supported in this browser. */}}const healthCheck=call<{status:string}>("/health").then(health=>({health,error:null as unknown}),error=>({health:null,error}));const permission=await permissionCheck;if(permission?.state==="denied")throw new Error("Loopback access is blocked. Allow Local Network Access for this ODEI Studio site in Chrome site settings.");const result=await healthCheck;if(result.error)throw result.error;if(result.health?.status!=="ok")throw new Error("Local companion is not healthy.");}
 export async function pairWithCompanion(code:string):Promise<Pair>{
   const result=await call<Pair>("/v1/pair",{method:"POST",body:{code}});
@@ -122,6 +160,8 @@ export interface CompanionApplyResult {
   proposal_id: string;
   proposal_version: number;
   applied: true;
+  transaction_semantics: "per-file-atomic-with-compensating-rollback";
+  rollback_required: false;
   files: Array<{
     path: string;
     operation: "create" | "update" | "delete";
@@ -164,7 +204,7 @@ export async function applyApprovedWorkspacePatch(
     proposalVersion: number;
     challenge: string;
     capability: string;
-    file: PatchPreviewFile;
+    files: PatchPreviewFile[];
   },
   fetcher: typeof fetch = fetch,
 ): Promise<CompanionApplyResult> {
@@ -172,17 +212,29 @@ export async function applyApprovedWorkspacePatch(
   if (!id || id.length > 128 || !request.organizationId || !request.projectId ||
       !request.proposalId || !Number.isInteger(request.proposalVersion) ||
       request.proposalVersion < 0 || !/^[A-Za-z0-9_-]{32,128}$/.test(request.challenge) ||
-      !request.capability || request.capability.length > 8_192) {
-    throw new TypeError("A valid approved patch capability and selected workspace are required.");
+      !request.capability || request.capability.length > 8_192 ||
+      !Array.isArray(request.files) || request.files.length < 1 || request.files.length > 20) {
+    throw new TypeError("A valid approved patch capability, selected workspace and bounded file batch are required.");
   }
-  if (
-    !request.file || !["create", "update", "delete"].includes(request.file.operation) ||
-    typeof request.file.path !== "string" || !request.file.path ||
-    (request.file.content !== null && typeof request.file.content !== "string") ||
-    (request.file.base_sha256 !== null && !/^[0-9a-f]{64}$/.test(request.file.base_sha256)) ||
-    (request.file.result_sha256 !== null && !/^[0-9a-f]{64}$/.test(request.file.result_sha256))
-  ) {
-    throw new TypeError("The approved patch file is invalid.");
+  let totalBytes = 0;
+  for (const file of request.files) {
+    if (
+      !file || !["create", "update", "delete"].includes(file.operation) ||
+      typeof file.path !== "string" || !file.path ||
+      (file.content !== null && typeof file.content !== "string") ||
+      (file.base_sha256 !== null && !/^[0-9a-f]{64}$/.test(file.base_sha256)) ||
+      (file.result_sha256 !== null && !/^[0-9a-f]{64}$/.test(file.result_sha256))
+    ) {
+      throw new TypeError("An approved patch file is invalid.");
+    }
+    totalBytes += file.content === null ? 0 : new TextEncoder().encode(file.content).byteLength;
+  }
+  const paths = request.files.map((file) => file.path.toLocaleLowerCase("en-US"));
+  if (new Set(paths).size !== paths.length) {
+    throw new TypeError("The approved patch batch contains duplicate paths.");
+  }
+  if (totalBytes > 5 * 1024 * 1024) {
+    throw new TypeError("The approved patch batch exceeds the aggregate content limit.");
   }
   const result = await call<CompanionApplyResult>(
     "/v1/workspaces/" + encodeURIComponent(id) + "/apply-patch",
@@ -196,13 +248,13 @@ export async function applyApprovedWorkspacePatch(
         proposal_version: request.proposalVersion,
         companion_challenge: request.challenge,
         capability: request.capability,
-        files: [{
-          path: request.file.path,
-          operation: request.file.operation,
-          base_sha256: request.file.base_sha256,
-          result_sha256: request.file.result_sha256,
-          content: request.file.content,
-        }],
+        files: request.files.map((file) => ({
+          path: file.path,
+          operation: file.operation,
+          base_sha256: file.base_sha256,
+          result_sha256: file.result_sha256,
+          content: file.content,
+        })),
       },
     },
     fetcher,
@@ -212,13 +264,20 @@ export async function applyApprovedWorkspacePatch(
     result.proposal_id !== request.proposalId ||
     result.proposal_version !== request.proposalVersion ||
     result.applied !== true ||
-    !Array.isArray(result.files) || result.files.length !== 1 ||
-    result.files[0].path !== request.file.path ||
-    result.files[0].operation !== request.file.operation ||
-    result.files[0].applied !== true ||
-    typeof result.files[0].durability_confirmed !== "boolean"
+    result.transaction_semantics !== "per-file-atomic-with-compensating-rollback" ||
+    result.rollback_required !== false ||
+    !Array.isArray(result.files) || result.files.length !== request.files.length ||
+    result.files.some((file, index) => {
+      const expected = request.files[index];
+      return !expected ||
+        file.path !== expected.path ||
+        file.operation !== expected.operation ||
+        file.result_sha256 !== (expected.result_sha256 ?? "") ||
+        file.applied !== true ||
+        typeof file.durability_confirmed !== "boolean";
+    })
   ) {
-    throw new Error("Companion returned an invalid patch application result.");
+    throw new Error("Companion returned an invalid multi-file patch application result.");
   }
   return result;
 }

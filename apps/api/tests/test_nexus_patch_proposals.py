@@ -124,7 +124,20 @@ def _payload():
         "changes": {"src/main.py": "print('new')\n"},
         "expected_base_hashes": {"src/main.py": sha256_text(base)},
         "cloud_model_consent": True,
+        "mode": "agent",
     }
+
+
+@pytest.mark.parametrize("mode", ["ask", "plan", "debug", "unknown"])
+def test_patch_proposal_creation_requires_agent_mode(patch_state, mode):
+    payload = _payload()
+    payload["mode"] = mode
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals",
+        json=payload,
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "NEXUS_MODE_CAPABILITY_DENIED"
 
 
 def test_patch_proposal_is_persisted_redacted_and_owner_approved(patch_state):
@@ -139,6 +152,8 @@ def test_patch_proposal_is_persisted_redacted_and_owner_approved(patch_state):
     assert body["status"] == "pending"
     assert body["application_enabled"] is False
     assert body["files"][0]["operation"] == "update"
+    assert audit.events[0]["metadata"]["mode"] == "agent"
+    assert audit.events[1]["metadata"]["mode"] == "agent"
     assert "print('new')" in body["files"][0]["content"]
 
     listed = client.get(
@@ -319,7 +334,7 @@ def test_apply_capability_fails_closed_without_signing_configuration(patch_state
     assert unconfirmed.status_code == 422
 
 
-def test_multi_file_apply_capability_is_rejected(patch_state, monkeypatch):
+def test_multi_file_apply_capability_binds_every_approved_file(patch_state, monkeypatch):
     client = TestClient(app)
     payload = _payload()
     payload["base_files"]["second.py"] = "print('old')"
@@ -334,9 +349,15 @@ def test_multi_file_apply_capability_is_rejected(patch_state, monkeypatch):
     path = f"/api/v1/organizations/org-1/projects/project-1/nexus/patch-proposals/{proposal['proposal_id']}"
     approved = client.post(path + "/approve", json={"expected_version": 0})
     assert approved.status_code == 200, approved.text
+    captured = {}
+
+    def issue_for_batch(**kwargs):
+        captured.update(kwargs)
+        return "signed-capability", 1_900_000_000, "a" * 64
+
     monkeypatch.setattr(
         "odei_api.services.nexus_patch_proposals.issue_patch_apply_capability",
-        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not sign multi-file proposals")),
+        issue_for_batch,
     )
     response = client.post(path + "/apply-capability", json={
         "expected_version": 1,
@@ -344,5 +365,7 @@ def test_multi_file_apply_capability_is_rejected(patch_state, monkeypatch):
         "companion_challenge": "C" * 43,
         "confirm_apply": True,
     })
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "PATCH_APPLY_SINGLE_FILE_ONLY"
+    assert response.status_code == 200, response.text
+    assert response.json()["capability"] == "signed-capability"
+    assert len(captured["files"]) == 2
+    assert {item["path"] for item in captured["files"]} == {"src/main.py", "second.py"}

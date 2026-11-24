@@ -10,6 +10,7 @@ import json
 import logging
 import queue
 import threading
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -22,6 +23,7 @@ from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.execution_runs import ExecutionRunConflict
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
@@ -51,6 +53,7 @@ class NexusChatRequest(BaseModel):
     workspace_files: list[dict[str, StrictStr]] = Field(default_factory=list, max_length=5)
     cloud_model_consent: StrictBool
     conversation_id: StrictStr | None = Field(default=None, min_length=1, max_length=128)
+    mode: Literal["ask", "debug", "agent"] = "ask"
 
 
 async def _append_nexus_chat_audit(
@@ -64,6 +67,7 @@ async def _append_nexus_chat_audit(
     file_count: int,
     model: str | None = None,
     tool_calls: int = 0,
+    mode: str = "ask",
 ) -> None:
     """Audit chat access without recording prompts, source text or model output."""
     store = getattr(request.app.state, "audit_event_store", None)
@@ -72,7 +76,7 @@ async def _append_nexus_chat_audit(
             status_code=503,
             detail={"code": "AUDIT_STORE_UNAVAILABLE", "message": "Audit storage is not available."},
         )
-    metadata = {"message_count": message_count, "workspace_file_count": file_count}
+    metadata = {"message_count": message_count, "workspace_file_count": file_count, "mode": mode}
     if model:
         metadata["model"] = model
     if tool_calls:
@@ -464,6 +468,10 @@ async def nexus_project_chat_stream(
     """Stream redacted model deltas over SSE and persist the completed assistant turn."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "chat.read" if payload.mode == "ask" else "chat.debug")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."}) from exc
     if payload.cloud_model_consent is not True:
         raise HTTPException(status_code=400, detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending chat or workspace data to the cloud model."})
     if payload.conversation_id is None:
@@ -489,7 +497,7 @@ async def nexus_project_chat_stream(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
             conversation_id=payload.conversation_id, role="user",
-            content=payload.messages[-1]["content"],
+            content=payload.messages[-1]["content"], mode=payload.mode,
             expected_version=conversation["version"],
         )
         if persisted_user is None:
@@ -504,7 +512,7 @@ async def nexus_project_chat_stream(
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
         outcome="started", message_count=len(model_messages),
-        file_count=len(payload.workspace_files),
+        file_count=len(payload.workspace_files), mode=payload.mode,
     )
     try:
         client, model = get_openai_client()
@@ -512,7 +520,7 @@ async def nexus_project_chat_stream(
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=len(model_messages),
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
 
@@ -532,7 +540,7 @@ async def nexus_project_chat_stream(
         try:
             for delta in stream_nexus_chat(
                 client, model=model, messages=model_messages,
-                workspace_files=payload.workspace_files,
+                workspace_files=payload.workspace_files, mode=payload.mode,
             ):
                 if not publish("delta", delta):
                     return
@@ -570,7 +578,7 @@ async def nexus_project_chat_stream(
                     await _append_nexus_chat_audit(
                         request, principal, organization_id, project_id,
                         outcome="failure", message_count=len(model_messages),
-                        file_count=len(payload.workspace_files),
+                        file_count=len(payload.workspace_files), mode=payload.mode,
                     )
                     yield encode_event("error", {"message": value or "NEXUS streaming failed."})
                     return
@@ -583,21 +591,21 @@ async def nexus_project_chat_stream(
                     organization_id=organization_id, project_id=project_id,
                     owner_issuer=principal.issuer, owner_subject=principal.subject,
                     conversation_id=payload.conversation_id, role="assistant",
-                    content=answer, expected_version=persisted_user["version"],
+                    content=answer, mode=payload.mode, expected_version=persisted_user["version"],
                 )
                 if saved is None:
                     raise RuntimeError("Conversation version changed during streamed generation")
                 await _append_nexus_chat_audit(
                     request, principal, organization_id, project_id,
                     outcome="success", message_count=len(model_messages),
-                    file_count=len(payload.workspace_files), model=model,
+                    file_count=len(payload.workspace_files), mode=payload.mode, model=model,
                 )
             except Exception:  # noqa: BLE001 - persist/audit failures must not leak through SSE
                 try:
                     await _append_nexus_chat_audit(
                         request, principal, organization_id, project_id,
                         outcome="failure", message_count=len(model_messages),
-                        file_count=len(payload.workspace_files),
+                        file_count=len(payload.workspace_files), mode=payload.mode,
                     )
                 except HTTPException:
                     logger.warning("NEXUS stream completion audit could not be written")
@@ -615,7 +623,7 @@ async def nexus_project_chat_stream(
             await _append_nexus_chat_audit(
                 request, principal, organization_id, project_id,
                 outcome="failure", message_count=len(model_messages),
-                file_count=len(payload.workspace_files),
+                file_count=len(payload.workspace_files), mode=payload.mode,
             )
             raise
         finally:
@@ -656,6 +664,10 @@ async def nexus_project_chat(
             status_code=422,
             detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."},
         )
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "chat.read" if payload.mode == "ask" else "chat.debug")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."}) from exc
     if payload.cloud_model_consent is not True:
         raise HTTPException(
             status_code=400,
@@ -677,7 +689,7 @@ async def nexus_project_chat(
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
         outcome="started", message_count=len(payload.messages),
-        file_count=len(payload.workspace_files),
+        file_count=len(payload.workspace_files), mode=payload.mode,
     )
     model_messages = payload.messages
     persisted_user_message = None
@@ -697,7 +709,7 @@ async def nexus_project_chat(
                 organization_id=organization_id, project_id=project_id,
                 owner_issuer=principal.issuer, owner_subject=principal.subject,
                 conversation_id=payload.conversation_id, role="user",
-                content=payload.messages[-1]["content"],
+                content=payload.messages[-1]["content"], mode=payload.mode,
                 expected_version=conversation["version"],
             )
             if persisted_user_message is None:
@@ -716,12 +728,13 @@ async def nexus_project_chat(
             model=model,
             messages=model_messages,
             workspace_files=payload.workspace_files,
+            mode=payload.mode,
         )
     except ModelConfigurationError as exc:
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=len(payload.messages),
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(
             status_code=503,
@@ -731,7 +744,7 @@ async def nexus_project_chat(
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=len(payload.messages),
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(
             status_code=422,
@@ -742,7 +755,7 @@ async def nexus_project_chat(
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=len(payload.messages),
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(
             status_code=502,
@@ -755,7 +768,7 @@ async def nexus_project_chat(
                 organization_id=organization_id, project_id=project_id,
                 owner_issuer=principal.issuer, owner_subject=principal.subject,
                 conversation_id=payload.conversation_id, role="assistant",
-                content=result.answer, expected_version=persisted_user_message["version"],
+                content=result.answer, mode=payload.mode, expected_version=persisted_user_message["version"],
             )
             if saved is None:
                 raise HTTPException(status_code=409, detail={"code": "CONVERSATION_VERSION_CONFLICT", "message": "The conversation changed while NEXUS was responding. Reload history before continuing."})
@@ -764,7 +777,7 @@ async def nexus_project_chat(
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
         outcome="success", message_count=len(model_messages),
-        file_count=len(payload.workspace_files), model=result.model,
+        file_count=len(payload.workspace_files), mode=payload.mode, model=result.model,
     )
     return {
         "answer": result.answer,

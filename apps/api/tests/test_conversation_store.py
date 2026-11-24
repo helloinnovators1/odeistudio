@@ -122,6 +122,25 @@ async def test_conversation_append_uses_optimistic_version_and_persists_messages
 
 
 @pytest.mark.asyncio
+async def test_conversation_turn_persists_validated_mode_metadata():
+    collection = Collection()
+    store = MongoConversationStore(collection)
+    created = await store.create(
+        organization_id="org-a", project_id="project-a",
+        owner_issuer="https://id.example/", owner_subject="alice", title="Mode history",
+    )
+    common = {
+        "organization_id": "org-a", "project_id": "project-a",
+        "owner_issuer": "https://id.example/", "owner_subject": "alice",
+        "conversation_id": created["conversation_id"],
+    }
+    saved = await store.append(**common, role="user", content="Debug this", mode="debug", expected_version=0)
+    assert saved["messages"][0]["mode"] == "debug"
+    with pytest.raises(ValueError, match="mode"):
+        await store.append(**common, role="assistant", content="Bad mode", mode="root", expected_version=1)
+
+
+@pytest.mark.asyncio
 async def test_conversation_list_is_owner_scoped_and_bounded():
     collection = Collection()
     store = MongoConversationStore(collection)

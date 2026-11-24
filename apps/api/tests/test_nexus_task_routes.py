@@ -87,7 +87,7 @@ class ConversationStore:
         del self.documents[conversation_id]
         return True
 
-    async def append(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id, role, content, expected_version=None):
+    async def append(self, *, organization_id, project_id, owner_issuer, owner_subject, conversation_id, role, content, expected_version=None, mode=None):
         item = await self.get_for_owner(
             organization_id=organization_id, project_id=project_id,
             owner_issuer=owner_issuer, owner_subject=owner_subject,
@@ -97,6 +97,7 @@ class ConversationStore:
             return None
         message = {
             "message_id": uuid4().hex, "role": role, "content": content,
+            **({"mode": mode} if mode is not None else {}),
             "created_at": datetime.now(timezone.utc),
         }
         item["messages"].append(message)
@@ -514,6 +515,7 @@ def test_nexus_chat_persists_user_and_assistant_turns_in_conversation(route_stat
     assert response.json()["conversation_id"] == item["conversation_id"]
     stored = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
+    assert [message["mode"] for message in stored["messages"]] == ["ask", "ask"]
     assert stored["messages"][1]["content"] == "I will use the saved context."
 
 
@@ -589,8 +591,35 @@ def test_nexus_stream_endpoint_persists_and_emits_redacted_sse_deltas(route_stat
     assert "super_secret_token_12345" not in response.text
     saved = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in saved["messages"]] == ["user", "assistant"]
+    assert [message["mode"] for message in saved["messages"]] == ["ask", "ask"]
     assert "[REDACTED]" in saved["messages"][-1]["content"]
     assert audit.events[-1]["outcome"] == "success"
+
+
+
+
+def test_nexus_chat_rejects_agent_mode_on_read_only_routes(route_state):
+    client = TestClient(app)
+    payload = {
+        "messages": [{"role": "user", "content": "Inspect files"}],
+        "cloud_model_consent": True,
+        "mode": "agent",
+    }
+    for endpoint in (
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat",
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/stream",
+    ):
+        response = client.post(endpoint, json=payload)
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "NEXUS_MODE_FORBIDDEN"
+
+def test_nexus_inspection_rejects_non_agent_mode_before_processing(route_state):
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+        json={"messages": [{"role": "user", "content": "Inspect"}], "workspace_files": [{"path": "a.py", "content": "x"}], "conversation_id": "c", "cloud_model_consent": True, "mode": "ask"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "NEXUS_MODE_FORBIDDEN"
 
 
 def test_nexus_inspection_uses_only_attached_excerpt_tools_and_persists_result(route_state, monkeypatch):
@@ -632,6 +661,7 @@ def test_nexus_inspection_uses_only_attached_excerpt_tools_and_persists_result(r
             "workspace_files": [{"path": "src/main.py", "content": "def hello(): return 'ODEI'\\napi_key=" + secret}],
             "conversation_id": item["conversation_id"],
             "cloud_model_consent": True,
+            "mode": "agent",
         },
     )
     assert response.status_code == 200, response.text
@@ -641,6 +671,7 @@ def test_nexus_inspection_uses_only_attached_excerpt_tools_and_persists_result(r
     assert body["conversation_persisted"] is True
     stored = conversations.documents[item["conversation_id"]]
     assert [message["role"] for message in stored["messages"]] == ["user", "assistant"]
+    assert [message["mode"] for message in stored["messages"]] == ["agent", "agent"]
     assert stored["messages"][-1]["content"] == "The attached file defines hello()."
     assert audit.events[-1]["metadata"]["tool_call_count"] == 2
 
@@ -679,6 +710,7 @@ def test_nexus_inspection_persists_model_generated_patch_for_owner_review(route_
             "workspace_files": [{"path": "src/greet.py", "content": original}],
             "conversation_id": item["conversation_id"],
             "cloud_model_consent": True,
+            "mode": "agent",
         },
     )
     assert response.status_code == 200, response.text
@@ -693,6 +725,54 @@ def test_nexus_inspection_persists_model_generated_patch_for_owner_review(route_
     proposal_events = [event for event in audit.events if event["action"] == "nexus.patch_proposal.create"]
     assert [event["outcome"] for event in proposal_events] == ["started", "success"]
     assert all("prompt" not in event["metadata"] and "source" not in event["metadata"] for event in proposal_events)
+
+
+def test_nexus_inspection_requires_patch_propose_capability_before_persisting_changes(route_state, monkeypatch):
+    from odei_api.services.nexus_capabilities import NexusCapabilityPolicy
+
+    _, _, _, _conversations = route_state
+    client = TestClient(app)
+    item = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Denied proposal"},
+    ).json()
+    original_allows = NexusCapabilityPolicy.allows
+    monkeypatch.setattr(
+        NexusCapabilityPolicy,
+        "allows",
+        staticmethod(lambda mode, capability: False
+                     if capability == "patch.propose"
+                     else original_allows(mode, capability)),
+    )
+
+    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages):
+        workspace_tools.execute("propose_attached_file_change", {
+            "path": "src/greet.py", "content": "def greet(): return 'changed'",
+        })
+        return SimpleNamespace(
+            answer="A proposed change was generated.",
+            model=model, tool_calls=1, tool_rounds=1,
+            tool_names=("propose_attached_file_change",),
+        )
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection.get_openai_client",
+        lambda: (object(), "proposal-model"),
+    )
+    monkeypatch.setattr("odei_api.services.nexus_inspection.run_nexus_agent", fake_agent)
+    response = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+        json={
+            "messages": [{"role": "user", "content": "Change greet"}],
+            "workspace_files": [{"path": "src/greet.py", "content": "def greet(): return 'hello'"}],
+            "conversation_id": item["conversation_id"],
+            "cloud_model_consent": True,
+            "mode": "agent",
+        },
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "NEXUS_MODE_CAPABILITY_DENIED"
+    assert app.state.patch_proposal_store.documents == {}
 
 
 def test_nexus_inspection_rejects_unattached_or_unsafe_paths_before_model_call(route_state, monkeypatch):
@@ -713,6 +793,7 @@ def test_nexus_inspection_rejects_unattached_or_unsafe_paths_before_model_call(r
             "workspace_files": [{"path": "../outside.txt", "content": "secret"}],
             "conversation_id": item["conversation_id"],
             "cloud_model_consent": True,
+            "mode": "agent",
         },
     )
     assert response.status_code == 422

@@ -47,10 +47,14 @@ interface Props {
   isOpen?: boolean;
   activeFile?: { path: string; content: string } | null;
   workspaceContext?: { accessToken: string; workspaceId: string; files: CompanionFile[] } | null;
+  initialPrompt?: string;
+  initialMode?: "ask" | "plan" | "agent" | "debug";
+  initialContextPaths?: string[];
 }
 
 interface TranscriptMessage extends NexusChatMessage {
   id: string;
+  mode?: "ask" | "plan" | "agent" | "debug";
 }
 
 function environmentConfig(): { auth: ODidOAuthConfig | null; apiBaseUrl: string; missing: string[] } {
@@ -87,9 +91,13 @@ function newMessageId(): string {
 }
 
 export default function NexusChatPanel({
-  onClose, isOpen = true, activeFile = null, workspaceContext = null,
+  onClose, isOpen = true, activeFile = null, workspaceContext = null, initialPrompt = "", initialMode = "ask", initialContextPaths = [],
 }: Props) {
   const config = useMemo(environmentConfig, []);
+  const isDesktopHost = typeof window !== "undefined" && Boolean(window.odeiDesktop);
+  const [desktopAuthEnabled, setDesktopAuthEnabled] = useState(false);
+  const [desktopSettingsLoaded, setDesktopSettingsLoaded] = useState(!isDesktopHost);
+  const authAvailable = Boolean(config.auth) && (!isDesktopHost || (desktopSettingsLoaded && desktopAuthEnabled));
   const [access, setAccess] = useState<ODidAccessToken | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -107,11 +115,16 @@ export default function NexusChatPanel({
   const [conversations, setConversations] = useState<NexusConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState("");
   const [conversationBusy, setConversationBusy] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialPrompt);
+  useEffect(() => { setDraft(initialPrompt); }, [initialPrompt]);
+  useEffect(() => { setMode(initialMode); }, [initialMode]);
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
-  const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
+  const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>(initialContextPaths);
+  useEffect(() => { setSelectedContextPaths(initialContextPaths); }, [initialContextPaths]);
+  const [contextSearch, setContextSearch] = useState("");
   const [useAttachedTools, setUseAttachedTools] = useState(false);
+  const [mode, setMode] = useState<"ask" | "plan" | "agent" | "debug">(initialMode);
   const [inspectionRunning, setInspectionRunning] = useState(false);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
@@ -165,6 +178,25 @@ export default function NexusChatPanel({
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!isDesktopHost) return;
+    let active = true;
+    void window.odeiDesktop!.settings.get()
+      .then((settings) => {
+        if (!active) return;
+        setDesktopAuthEnabled(settings.odidSignInEnabled === true);
+        setDesktopSettingsLoaded(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDesktopAuthEnabled(false);
+        setDesktopSettingsLoaded(true);
+        setAuthError("Could not load the desktop ODID setting. Sign-in remains disabled.");
+      });
+    return () => { active = false; };
+  }, [isDesktopHost]);
+
+  useEffect(() => {
+    if (isDesktopHost && !desktopSettingsLoaded) return;
     if (callbackHandled.current) return;
     let redirect: URL;
     try {
@@ -175,9 +207,12 @@ export default function NexusChatPanel({
     if (window.location.origin !== redirect.origin || window.location.pathname !== redirect.pathname) return;
     if (!window.location.search) return;
     callbackHandled.current = true;
-    if (!config.auth) {
+    if (!authAvailable || !config.auth) {
       window.history.replaceState({}, document.title, redirect.pathname);
-      setAuthError("ODID callback received, but the complete public browser configuration is missing.");
+      clearODIDLoginTransaction();
+      setAuthError(isDesktopHost && !desktopAuthEnabled
+        ? "ODID sign-in is disabled in ODEI Studio desktop settings. Enable it to accept an identity callback."
+        : "ODID callback received, but the complete public browser configuration is missing.");
       return;
     }
     setAuthBusy(true);
@@ -193,7 +228,7 @@ export default function NexusChatPanel({
         window.history.replaceState({}, document.title, redirect.pathname);
         setAuthBusy(false);
       });
-  }, [config.auth]);
+  }, [config.auth, authAvailable, desktopSettingsLoaded, desktopAuthEnabled, isDesktopHost]);
 
   useEffect(() => {
     if (!access || !config.apiBaseUrl) return;
@@ -231,7 +266,7 @@ export default function NexusChatPanel({
           const latest = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access.accessToken, items[0].conversation_id);
           if (!active) return;
           setConversationId(latest.conversation_id);
-          setMessages(latest.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+          setMessages(latest.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content, mode: message.mode })));
           setNotice("Loaded your most recent saved conversation.");
         } else { setNotice("No saved conversations in this project. Start a new conversation."); }
       })
@@ -320,6 +355,7 @@ export default function NexusChatPanel({
 
   useEffect(() => {
     setSelectedContextPaths([]);
+    setContextSearch("");
     setUseAttachedTools(false);
   }, [workspaceContext?.workspaceId]);
 
@@ -472,7 +508,7 @@ export default function NexusChatPanel({
   }, [workspaceContext?.workspaceId]);
 
   async function signIn() {
-    if (!config.auth) {
+    if (!authAvailable || !config.auth || (isDesktopHost && !desktopSettingsLoaded)) {
       setAuthError("ODID browser authentication is not configured. Set the required VITE_* environment values and register the exact redirect URI.");
       return;
     }
@@ -980,10 +1016,11 @@ export default function NexusChatPanel({
   async function applyApprovedPatchProposal() {
     if (!access || !config.apiBaseUrl || !workspaceContext || !selectedPatch
       || selectedPatch.status !== "approved" || !selectedPatch.can_decide
-      || selectedPatch.files.length !== 1 || patchBusy) return;
-    const file = selectedPatch.files[0];
-    if (!file || !window.confirm(
-      `Apply the approved ${file.operation} operation to "${file.path}" in the selected local workspace? This changes the local file and cannot currently be rolled back automatically.`,
+      || selectedPatch.files.length < 1 || selectedPatch.files.length > 20 || patchBusy) return;
+    const files = selectedPatch.files;
+    const fileSummary = files.map((file) => `• ${file.operation.toUpperCase()} ${file.path}`).join("\\n");
+    if (!window.confirm(
+      `Apply all ${files.length} approved file operation(s) to the selected local workspace?\\n\\n${fileSummary}\\n\\nEach file operation is atomic. If a later operation fails, NEXUS attempts hash-guarded rollback of earlier operations. A process crash or failed rollback can still require manual recovery.`,
     )) return;
     setPatchBusy(true);
     setPatchError("");
@@ -1001,14 +1038,14 @@ export default function NexusChatPanel({
         {
           organizationId, projectId, proposalId: selectedPatch.proposal_id,
           proposalVersion: selectedPatch.version, challenge: challenge.challenge,
-          capability: capability.capability, file,
+          capability: capability.capability, files,
         },
       );
-      const applied = result.files[0];
-      if (!applied || !applied.durability_confirmed) {
-        setNotice("The companion reported the operation, but could not confirm durable storage. Inspect the workspace before continuing.");
+      const durable = result.files.every((file) => file.durability_confirmed);
+      if (!durable) {
+        setNotice(`NEXUS applied ${result.files.length} file operation(s), but one or more directory flushes could not be confirmed. Inspect the workspace before continuing.`);
       } else {
-        setNotice(`Applied the approved ${file.operation} operation to ${file.path}. The local companion confirmed durable storage. Automatic rollback is not available yet.`);
+        setNotice(`Applied all ${result.files.length} approved file operation(s). Individual file writes were atomic; compensation is attempted if a later operation fails. A durable crash-recovery journal is not yet implemented.`);
       }
     } catch (cause) {
       setPatchError(errorMessage(cause));
@@ -1019,6 +1056,7 @@ export default function NexusChatPanel({
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (mode === "plan") { void planTask(); return; }
     const content = draft.trim();
     if (!access || !projectId || !consent || !content || sending || conversationBusy || !config.apiBaseUrl) return;
     if (content.length > 8_000) {
@@ -1051,15 +1089,20 @@ export default function NexusChatPanel({
         return;
       }
     }
+    if ((mode === "agent" || useAttachedTools) && excerpt.length === 0) {
+      setSending(false);
+      setChatError("Agent inspection requires at least one explicitly selected file excerpt.");
+      return;
+    }
     const next: TranscriptMessage[] = [
       ...messages,
-      { id: newMessageId(), role: "user" as const, content },
+      { id: newMessageId(), role: "user" as const, content, mode },
     ].slice(-20);
     setMessages(next);
     setDraft("");
     setConsent(false);
     setChatError("");
-    const isInspection = useAttachedTools && excerpt.length > 0;
+    const isInspection = (mode === "agent" || useAttachedTools) && excerpt.length > 0;
     setInspectionRunning(isInspection);
     try {
       let activeConversationId = conversationId;
@@ -1079,10 +1122,11 @@ export default function NexusChatPanel({
           messages: next.map(({ role, content: text }) => ({ role, content: text })),
           workspaceFiles: excerpt,
           cloudModelConsent: true,
+          mode: "agent",
           signal: controller.signal,
         });
         setMessages((current) => [...current, {
-          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer,
+          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer, mode: "agent" as const,
         }].slice(-20));
         if (inspected.patch_proposal) {
           setPatchProposals((items) => [
@@ -1105,6 +1149,7 @@ export default function NexusChatPanel({
         return;
       }
       const assistantId = "stream-" + newMessageId();
+      const responseMode: TranscriptMessage["mode"] = mode === "debug" ? "debug" : "ask";
       let assistantStarted = false;
       const response = await sendNexusChatStream({
         apiBaseUrl: config.apiBaseUrl,
@@ -1115,12 +1160,13 @@ export default function NexusChatPanel({
         messages: next.map(({ role, content: text }) => ({ role, content: text })),
         workspaceFiles: excerpt,
         cloudModelConsent: true,
+        mode: mode === "debug" ? "debug" : "ask",
         signal: controller.signal,
       }, (delta) => {
         setMessages((current) => {
           if (!assistantStarted) {
             assistantStarted = true;
-            return [...current, { id: assistantId, role: "assistant" as const, content: delta }].slice(-20);
+            return [...current, { id: assistantId, role: "assistant" as const, content: delta, mode: responseMode }].slice(-20);
           }
           return current.map((message) => message.id === assistantId
             ? { ...message, content: message.content + delta }
@@ -1150,12 +1196,24 @@ export default function NexusChatPanel({
   const availableContextFiles = (workspaceContext?.files ?? [])
     .filter((file) => isNexusContextPathAllowed(file.path))
     .slice(0, 100);
+  const normalizedContextSearch = contextSearch.trim().replace(/^@/, "").toLocaleLowerCase("en-US");
+  const filteredContextFiles = normalizedContextSearch
+    ? availableContextFiles.filter((file) => file.path.toLocaleLowerCase("en-US").includes(normalizedContextSearch))
+    : availableContextFiles;
+  const availableContextFolders = [...new Set(availableContextFiles.flatMap((file) => {
+    const segments = file.path.split("/");
+    return segments.slice(0, -1).map((_segment, index) => segments.slice(0, index + 1).join("/"));
+  }))].sort((left, right) => left.localeCompare(right));
+  const filteredContextFolders = normalizedContextSearch
+    ? availableContextFolders.filter((folder) => folder.toLocaleLowerCase("en-US").includes(normalizedContextSearch))
+    : availableContextFolders;
 
   return (
     <aside className={`nexus-pane${isOpen ? "" : " nexus-pane-hidden"}`} aria-label="NEXUS AI chat panel">
       <div className="pane-heading">
-        <div><span className="pane-kicker">ODEI NEXUS</span><strong>AI Chat</strong></div>
+        <div><span className="pane-kicker">Tab · ODEI NEXUS</span><strong>{selectedProject?.name ?? "AI Chat"}</strong></div>
         <div className="nexus-header-actions">
+          {access && projectId && <button className="nexus-link-button" type="button" aria-label="New NEXUS conversation" title="New conversation" disabled={sending || conversationBusy} onClick={() => { setConversationId(""); setMessages([]); setDraft(""); setConsent(false); setNotice("New conversation ready. Send a message to create it."); }}>＋</button>}
           {access && <><button className="nexus-link-button" onClick={() => { setMacOpen((open) => !open); if (!macOpen) void refreshMacEnvironment(); }}>MAC</button><button className="nexus-link-button" onClick={() => { setMadOpen((open) => !open); if (!madOpen) void refreshMadOperations(); }}>MAD</button><button className="nexus-link-button" onClick={signOut}>Sign out</button></>}
           <button className="icon-button" aria-label="Close NEXUS chat" onClick={onClose}>×</button>
         </div>
@@ -1166,6 +1224,29 @@ export default function NexusChatPanel({
           <div className="nexus-mark">N</div>
           <h2>Connect NEXUS</h2>
           <p>Authenticate with your organization identity provider. Access and optional refresh tokens stay in memory; neither is saved in browser storage.</p>
+          {isDesktopHost && (
+            <label className="nexus-desktop-auth-toggle">
+              <input type="checkbox" checked={desktopAuthEnabled} disabled={!desktopSettingsLoaded || authBusy}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  setAuthError("");
+                  void window.odeiDesktop!.settings.setODIDSignIn(enabled)
+                    .then((settings) => {
+                      setDesktopAuthEnabled(settings.odidSignInEnabled);
+                      if (!settings.odidSignInEnabled) {
+                        signOut();
+                        setAuthError("");
+                        setNotice("Desktop ODID sign-in is disabled. Existing in-memory identity and project state were cleared.");
+                      }
+                    })
+                    .catch(() => {
+                      setDesktopAuthEnabled(false);
+                      setAuthError("Could not save the desktop ODID setting. Sign-in remains disabled.");
+                    });
+                }} />
+              <span><strong>ODEI Studio desktop · ODID sign-in</strong><small>{!desktopSettingsLoaded ? "Loading secure desktop setting…" : desktopAuthEnabled ? "Enabled on this desktop" : "Disabled by default"}</small></span>
+            </label>
+          )}
           {config.missing.length > 0 && (
             <div className="nexus-config-warning" role="status">
               Authentication is safely disabled until these deployment settings are configured:
@@ -1173,7 +1254,7 @@ export default function NexusChatPanel({
             </div>
           )}
           {authError && <p className="nexus-error" role="alert">{authError}</p>}
-          <button className="primary-button" disabled={authBusy || !config.auth} onClick={() => void signIn()}>
+          <button className="primary-button" disabled={authBusy || !authAvailable || !desktopSettingsLoaded} onClick={() => void signIn()}>
             {authBusy ? "Connecting…" : "Sign in with ODID"}
           </button>
         </section>
@@ -1182,6 +1263,25 @@ export default function NexusChatPanel({
       {access && (
         <section className="nexus-project-context">
           <div className="nexus-auth-status"><span className="nexus-online-dot" /> Signed in · access and optional refresh tokens held in memory</div>
+          {isDesktopHost && (
+            <label className="nexus-desktop-auth-toggle">
+              <input type="checkbox" checked={desktopAuthEnabled} disabled={!desktopSettingsLoaded || authBusy}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  void window.odeiDesktop!.settings.setODIDSignIn(enabled)
+                    .then((settings) => {
+                      setDesktopAuthEnabled(settings.odidSignInEnabled);
+                      if (!settings.odidSignInEnabled) signOut();
+                    })
+                    .catch(() => {
+                      setDesktopAuthEnabled(false);
+                      setAuthError("Could not save the desktop ODID setting. Sign-in remains disabled.");
+                      signOut();
+                    });
+                }} />
+              <span><strong>ODEI Studio desktop · ODID sign-in</strong><small>{desktopAuthEnabled ? "Enabled on this desktop" : "Disabled"}</small></span>
+            </label>
+          )}
           <div className="nexus-org-form">
             <label htmlFor="nexus-org-id">ORGANIZATION</label>
             <select id="nexus-org-id" value={organizationId} onChange={(event) => {
@@ -1266,7 +1366,7 @@ export default function NexusChatPanel({
                   try {
                     const item = await getNexusConversation(config.apiBaseUrl, organizationId, projectId, access!.accessToken, selected);
                     setConversationId(item.conversation_id);
-                    setMessages(item.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content })));
+                    setMessages(item.messages.map((message) => ({ id: message.message_id, role: message.role, content: message.content, mode: message.mode })));
                     setChatError("");
                   } catch (cause) { setChatError(errorMessage(cause)); }
                   finally { setConversationBusy(false); }
@@ -1423,7 +1523,7 @@ export default function NexusChatPanel({
         )}
         {messages.map((message) => (
           <article key={message.id} className={`nexus-message nexus-message-${message.role}`}>
-            <strong>{message.role === "user" ? "YOU" : "NEXUS"}</strong>
+            <strong>{message.role === "user" ? "YOU" : "NEXUS"}{message.mode ? <small className="nexus-message-mode">{message.mode.toUpperCase()}</small> : null}</strong>
             <p>{message.content}</p>
           </article>
         ))}
@@ -1453,17 +1553,15 @@ export default function NexusChatPanel({
             {selectedPatch.status === "pending" && !selectedPatch.can_decide && (
               <p className="nexus-task-safety">Awaiting a project-owner decision.</p>
             )}
-            {selectedPatch.status === "approved" && selectedPatch.can_decide && workspaceContext && selectedPatch.files.length === 1 ? (
+            {selectedPatch.status === "approved" && selectedPatch.can_decide && workspaceContext && selectedPatch.files.length > 0 ? (
               <button type="button" className="nexus-secondary-button" disabled={patchBusy}
                 onClick={() => void applyApprovedPatchProposal()}>
-                {patchBusy ? "Applying…" : "Apply approved change to selected workspace"}
+                {patchBusy ? "Applying…" : `Apply all ${selectedPatch.files.length} approved file changes`}
               </button>
-            ) : selectedPatch.status === "approved" && selectedPatch.files.length > 1 ? (
-              <p className="nexus-task-safety">This proposal contains multiple files. Local application is disabled until atomic multi-file apply and rollback are implemented.</p>
             ) : selectedPatch.status === "approved" && !workspaceContext ? (
               <p className="nexus-task-safety">Pair the local companion and select the target workspace before applying this approved change.</p>
             ) : null}
-            <p className="nexus-task-safety">Local writes occur only after explicit confirmation, a fresh session-bound companion challenge and a short-lived owner-signed capability. Automatic rollback is not yet available.</p>
+            <p className="nexus-task-safety">Local writes require explicit confirmation, a fresh session-bound companion challenge and a short-lived owner-signed capability. Each file write is atomic; failed batches attempt reverse-order compensation. Crash-safe journal recovery is still pending.</p>
             <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
           </section>
         )}
@@ -1634,7 +1732,58 @@ export default function NexusChatPanel({
               <details className="nexus-context-picker">
                 <summary>Select workspace files to attach ({selectedContextCount}/5)</summary>
                 <p className="nexus-muted">Only checked files are read and sent. Hidden files and the rest of the workspace are not included automatically.</p>
-                {availableContextFiles.map((file) => (
+                <input
+                  type="search"
+                  aria-label="Search workspace context files"
+                  placeholder="Search files or type @path…"
+                  value={contextSearch}
+                  onChange={(event) => setContextSearch(event.target.value)}
+                />
+                {filteredContextFolders.length > 0 && (
+                  <div className="nexus-context-folders">
+                    <p className="nexus-muted">Folders · selecting a folder adds its eligible files</p>
+                    {filteredContextFolders.map((folder) => {
+                      const folderPaths = availableContextFiles
+                        .filter((file) => file.path.startsWith(`${folder}/`))
+                        .map((file) => file.path);
+                      const activePath = attachActiveFile && activeFile ? activeFile.path : "";
+                      const selectedFolderCount = folderPaths.filter((path) =>
+                        selectedContextPaths.includes(path)
+                      ).length;
+                      const hasSelection = selectedFolderCount > 0;
+                      return (
+                        <label className="nexus-attach-toggle" key={`folder:${folder}`}>
+                          <input
+                            type="checkbox"
+                            checked={hasSelection}
+                            disabled={!hasSelection && selectedContextCount >= 5}
+                            onChange={(event) => {
+                              if (!event.target.checked) {
+                                setSelectedContextPaths((current) => current.filter((path) => !folderPaths.includes(path)));
+                                return;
+                              }
+                              const existing = new Set([
+                                ...selectedContextPaths,
+                                ...(activePath ? [activePath] : []),
+                              ]);
+                              const remaining = Math.max(0, 5 - existing.size);
+                              const candidates = folderPaths.filter((path) => !existing.has(path));
+                              const additions = candidates.slice(0, remaining);
+                              setSelectedContextPaths([...selectedContextPaths, ...additions]);
+                              if (additions.length < candidates.length) {
+                                setNotice("Folder context was limited to the five-file selection cap. Narrow the folder or remove another selection.");
+                              }
+                            }}
+                          />
+                          {folder}/ <span className="nexus-muted">({selectedFolderCount}/{folderPaths.length} selected)</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                {filteredContextFiles.length === 0 ? (
+                  <p className="nexus-muted">No eligible files match this search.</p>
+                ) : filteredContextFiles.map((file) => (
                   <label className="nexus-attach-toggle" key={file.path}>
                     <input type="checkbox" checked={selectedContextPaths.includes(file.path)}
                       disabled={!selectedContextPaths.includes(file.path) && selectedContextCount >= 5}
@@ -1650,10 +1799,20 @@ export default function NexusChatPanel({
                 {workspaceContext.files.filter((file) => isNexusContextPathAllowed(file.path)).length > 100 && <p className="nexus-muted">Showing the first 100 workspace entries. Narrow the workspace in the editor to select other files.</p>}
               </details>
             )}
+            <label className="nexus-attach-toggle nexus-tools-toggle">
+              <span>Mode</span>
+              <select aria-label="NEXUS mode" value={mode} disabled={sending || taskBusy}
+                onChange={(event) => { const next = event.target.value as "ask" | "plan" | "agent" | "debug"; setMode(next); setUseAttachedTools(next === "agent"); }}>
+                <option value="ask">Ask · read only</option>
+                <option value="plan">Plan · approval required</option>
+                <option value="agent">Agent · inspect and propose</option>
+                <option value="debug">Debug · diagnostics only</option>
+              </select>
+            </label>
             {selectedContextCount > 0 && (
               <label className="nexus-attach-toggle nexus-tools-toggle">
                 <input type="checkbox" checked={useAttachedTools}
-                  onChange={(event) => setUseAttachedTools(event.target.checked)} />
+                  onChange={(event) => { setUseAttachedTools(event.target.checked); setMode(event.target.checked ? "agent" : "ask"); }} />
                 Allow NEXUS inspection and review-only change proposals for the selected excerpts
               </label>
             )}

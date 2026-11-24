@@ -123,31 +123,37 @@ describe("signed companion patch application", () => {
     expect(request.headers.get("Authorization")).toBe("Bearer local-session");
   });
 
-  it("sends only the signed single-file approval to the selected workspace", async () => {
+  it("sends the signed multi-file approval batch to the selected workspace", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       workspace_id: "workspace-1",
       proposal_id: "proposal-1",
       proposal_version: 2,
       applied: true,
-      files: [{
-        path: "main.py", operation: "update",
-        result_sha256: "b".repeat(64), applied: true, durability_confirmed: true,
-      }],
+      transaction_semantics: "per-file-atomic-with-compensating-rollback",
+      rollback_required: false,
+      files: [
+        { path: "main.py", operation: "update", result_sha256: "b".repeat(64), applied: true, durability_confirmed: true },
+        { path: "README.md", operation: "create", result_sha256: "c".repeat(64), applied: true, durability_confirmed: true },
+      ],
     }), { status: 200 }));
-    const file = {
-      path: "main.py", operation: "update" as const,
-      base_sha256: "a".repeat(64), result_sha256: "b".repeat(64),
-      content: "print('new')", unified_diff: "-old\\n+new\\n",
-    };
+    const files = [
+      { path: "main.py", operation: "update" as const,
+        base_sha256: "a".repeat(64), result_sha256: "b".repeat(64),
+        content: "print('new')", unified_diff: "-old\\n+new\\n" },
+      { path: "README.md", operation: "create" as const,
+        base_sha256: null, result_sha256: "c".repeat(64),
+        content: "hello", unified_diff: "+hello\\n" },
+    ];
     const result = await applyApprovedWorkspacePatch(
       "local-session", "workspace-1", {
         organizationId: "org-1", projectId: "project-1",
         proposalId: "proposal-1", proposalVersion: 2,
-        challenge: "C".repeat(43), capability: "signed-capability", file,
+        challenge: "C".repeat(43), capability: "signed-capability", files,
       },
       fetchMock,
     );
     expect(result.applied).toBe(true);
+    expect(result.files).toHaveLength(2);
     const request = fetchMock.mock.calls[0][0] as Request;
     expect(request.url).toContain("/v1/workspaces/workspace-1/apply-patch");
     expect(request.headers.get("Authorization")).toBe("Bearer local-session");
@@ -157,8 +163,33 @@ describe("signed companion patch application", () => {
       proposal_id: "proposal-1",
       proposal_version: 2,
       capability: "signed-capability",
-      files: [{ path: "main.py", operation: "update" }],
+      files: [
+        { path: "main.py", operation: "update" },
+        { path: "README.md", operation: "create" },
+      ],
     });
+  });
+
+  it("surfaces paths that need manual recovery after incomplete batch rollback", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: {
+        code: "PATCH_BATCH_RECOVERY_REQUIRED",
+        message: "Patch batch failed and automatic rollback was incomplete.",
+        rollback_failures: ["src/main.py", "README.md"],
+      },
+    }), { status: 500 }));
+    const file = {
+      path: "src/main.py", operation: "update" as const,
+      base_sha256: "a".repeat(64), result_sha256: "b".repeat(64),
+      content: "updated", unified_diff: "",
+    };
+    await expect(applyApprovedWorkspacePatch(
+      "local-session", "workspace-1", {
+        organizationId: "org-1", projectId: "project-1",
+        proposalId: "proposal-1", proposalVersion: 2,
+        challenge: "C".repeat(43), capability: "signed-capability", files: [file],
+      }, fetchMock,
+    )).rejects.toThrow("Recovery is required for: src/main.py, README.md");
   });
 
   it("rejects a response for a different proposal or workspace", async () => {
@@ -181,9 +212,9 @@ describe("signed companion patch application", () => {
       "local-session", "workspace-1", {
         organizationId: "org-1", projectId: "project-1",
         proposalId: "proposal-1", proposalVersion: 2,
-        challenge: "C".repeat(43), capability: "signed-capability", file,
+        challenge: "C".repeat(43), capability: "signed-capability", files: [file],
       },
       fetchMock,
-    )).rejects.toThrow("invalid patch application result");
+    )).rejects.toThrow("invalid multi-file patch application result");
   });
 });

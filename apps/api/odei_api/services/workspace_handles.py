@@ -7,6 +7,7 @@ write operations remain relative to retained native root handles.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import stat
@@ -160,6 +161,70 @@ class WorkspaceHandleRegistry:
                 int(grant.handle), relative_path, max_bytes=max_bytes
             )
 
+
+    def search_text(
+        self, workspace_id: str, query: str, *, limit: int = 50
+    ) -> dict:
+        """Search indexed-safe text files and return bounded, hash-attributed matches."""
+        if not isinstance(query, str) or not query.strip() or len(query) > 256:
+            raise ValueError("Search query must contain 1 to 256 characters")
+        if not 1 <= limit <= 100:
+            raise ValueError("Search result limit must be between 1 and 100")
+        needle = query.casefold()
+        matches: list[dict[str, str | int]] = []
+        scanned_files = 0
+        skipped_files = 0
+        truncated = False
+        with self._borrow(workspace_id) as grant:
+            if grant.platform == "nt":
+                files = list_project_files_from_windows_handle(
+                    grant.handle, kernel32=grant.kernel32,
+                    max_files=DEFAULT_MAX_FILES, max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
+                )
+            else:
+                files = list_project_files_from_posix_fd(
+                    int(grant.handle), max_files=DEFAULT_MAX_FILES,
+                    max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
+                )
+            for item in files:
+                try:
+                    if grant.platform == "nt":
+                        content = read_project_text_file_from_windows_handle(
+                            grant.handle, item.path, max_bytes=MAX_TEXT_FILE_BYTES
+                        )
+                    else:
+                        content = read_project_text_file_from_posix_fd(
+                            int(grant.handle), item.path, max_bytes=MAX_TEXT_FILE_BYTES
+                        )
+                except (OSError, ValueError):
+                    skipped_files += 1
+                    continue
+                scanned_files += 1
+                digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                for line_number, line in enumerate(content.splitlines(), start=1):
+                    if needle not in line.casefold():
+                        continue
+                    if len(matches) >= limit:
+                        truncated = True
+                        break
+                    matches.append({
+                        "path": item.path,
+                        "line": line_number,
+                        "snippet": line[:500],
+                        "content_sha256": digest,
+                        "index_version": "literal-search-v1",
+                    })
+                if truncated:
+                    break
+        return {
+            "query": query,
+            "matches": matches,
+            "scanned_files": scanned_files,
+            "skipped_files": skipped_files,
+            "truncated": truncated,
+            "index_version": "literal-search-v1",
+        }
+
     def can_apply_patch(self, workspace_id: str) -> bool:
         """Report whether the selected root was opened with patch-write rights."""
         with self._borrow(workspace_id) as grant:
@@ -173,6 +238,19 @@ class WorkspaceHandleRegistry:
             if not grant.allow_patch_apply:
                 raise WorkspaceHandleError("Workspace was opened read-only")
             return apply_single_file_patch(grant, file)
+
+    def apply_patch_batch(self, workspace_id: str, files: list[dict]) -> dict:
+        """Apply a signed multi-file batch under one workspace lock.
+
+        Individual filesystem operations are atomic; a later failure triggers
+        reverse-order, hash-guarded compensation before this lock is released.
+        """
+        from odei_api.services.workspace_patch_apply import apply_file_patch_batch
+
+        with self._borrow(workspace_id) as grant:
+            if not grant.allow_patch_apply:
+                raise WorkspaceHandleError("Workspace was opened read-only")
+            return apply_file_patch_batch(grant, files)
 
     def revoke(self, workspace_id: str) -> bool:
         with self._lock:

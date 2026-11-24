@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from odei_api.services.nexus_capabilities import NexusCapabilityPolicy
 from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
@@ -54,3 +55,29 @@ def test_tool_schemas_are_strict_and_do_not_accept_workspace_ids() -> None:
     }
     assert all(item["strict"] for item in schemas)
     assert all("workspace_id" not in item["parameters"]["properties"] for item in schemas)
+
+
+def test_nexus_capability_policy_is_fail_closed_and_mode_scoped() -> None:
+    assert NexusCapabilityPolicy.allows("ask", "chat.read")
+    assert NexusCapabilityPolicy.allows("debug", "chat.debug")
+    assert NexusCapabilityPolicy.allows("plan", "task.plan")
+    assert NexusCapabilityPolicy.allows("agent", "workspace.inspect")
+    assert NexusCapabilityPolicy.allows("agent", "workspace.read")
+    assert NexusCapabilityPolicy.allows("agent", "execution.run")
+    assert not NexusCapabilityPolicy.allows("ask", "execution.run")
+    assert not NexusCapabilityPolicy.allows("plan", "execution.run")
+    assert not NexusCapabilityPolicy.allows("debug", "execution.run")
+    assert not NexusCapabilityPolicy.allows("ask", "workspace.read")
+    assert not NexusCapabilityPolicy.allows("debug", "workspace.inspect")
+    assert not NexusCapabilityPolicy.allows("plan", "patch.propose")
+    assert not NexusCapabilityPolicy.allows("root", "workspace.read")
+
+
+def test_read_only_workspace_tools_reject_non_agent_mode(tmp_path: Path) -> None:
+    registry = WorkspaceHandleRegistry()
+    workspace_id = registry.register_selected_root(tmp_path)
+    try:
+        with pytest.raises(ToolExecutionError, match="cannot access workspace"):
+            ReadOnlyWorkspaceTools(registry, workspace_id, mode="ask")
+    finally:
+        registry.close()

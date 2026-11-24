@@ -17,6 +17,7 @@ from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_tasks import _authorize_project
 from odei_api.services.patch_approval import (
     PatchApprovalError,
@@ -46,6 +47,7 @@ class PatchProposalRequest(BaseModel):
     changes: dict[StrictStr, StrictStr | None] = Field(min_length=1, max_length=MAX_PATCH_FILES)
     expected_base_hashes: dict[StrictStr, StrictStr | None] = Field(max_length=MAX_PATCH_FILES)
     cloud_model_consent: StrictBool
+    mode: StrictStr = Field(min_length=1, max_length=16)
 
     @model_validator(mode="after")
     def validate_budgets(self):
@@ -212,6 +214,7 @@ async def _audit_proposal(
     proposal_id: str, action: str, outcome: str,
     *, project_id: str, file_count: int = 0, version: int | None = None,
     proposal_count: int = 0, decision: str | None = None,
+    mode: str | None = None,
 ) -> None:
     audit = getattr(request.app.state, "audit_event_store", None)
     if audit is None:
@@ -223,6 +226,8 @@ async def _audit_proposal(
         metadata["proposal_count"] = proposal_count
     if decision is not None:
         metadata["decision"] = decision
+    if mode is not None:
+        metadata["mode"] = mode
     try:
         await audit.append(
             organization_id=organization_id,
@@ -266,6 +271,16 @@ async def create_patch_proposal(
     """Persist a validated diff preview; never apply it to local files."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "patch.propose")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "NEXUS_MODE_CAPABILITY_DENIED",
+                "message": "Switch to Agent mode to propose workspace changes.",
+            },
+        ) from exc
     _, store = await _project_and_store(request, organization_id, project_id, principal)
     try:
         for path, expected_hash in payload.expected_base_hashes.items():
@@ -297,7 +312,7 @@ async def create_patch_proposal(
     await _audit_proposal(
         request, principal, organization_id, proposal_id,
         "nexus.patch_proposal.create", "started",
-        project_id=project_id, file_count=len(files),
+        project_id=project_id, file_count=len(files), mode=payload.mode,
     )
     try:
         created = await store.create(
@@ -310,7 +325,7 @@ async def create_patch_proposal(
     await _audit_proposal(
         request, principal, organization_id, created["proposal_id"],
         "nexus.patch_proposal.create", "success",
-        project_id=project_id, file_count=len(files), version=0,
+        project_id=project_id, file_count=len(files), version=0, mode=payload.mode,
     )
     return {
         "proposal_id": created["proposal_id"],
@@ -459,11 +474,6 @@ async def create_patch_apply_capability(
         raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is temporarily unavailable."}) from exc
     if item is None:
         raise HTTPException(status_code=404, detail={"code": "PATCH_PROPOSAL_NOT_FOUND", "message": "Patch proposal was not found."})
-    if len(item["files"]) != 1:
-        raise HTTPException(status_code=409, detail={
-            "code": "PATCH_APPLY_SINGLE_FILE_ONLY",
-            "message": "Local application currently supports exactly one file per approved proposal. Multi-file transactions remain disabled.",
-        })
     if item["status"] != "approved" or item["version"] != payload.expected_version:
         raise HTTPException(status_code=409, detail={"code": "PATCH_PROPOSAL_NOT_APPROVED", "message": "The proposal must be approved at the expected version before a capability can be issued."})
     try:

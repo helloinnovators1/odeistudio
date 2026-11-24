@@ -133,3 +133,26 @@ def test_chat_stream_rejects_incomplete_provider_response():
             client, model="test-model",
             messages=[{"role": "user", "content": "Explain this source."}],
         ))
+
+
+def test_debug_mode_uses_diagnostic_instructions_without_tools():
+    client = FakeClient("Likely cause: a stale reference.")
+    result = run_nexus_chat(
+        client, model="test-model",
+        messages=[{"role": "user", "content": "Why does this test fail?"}],
+        mode="debug",
+    )
+    call = client.responses.calls[0]
+    assert result.answer.startswith("Likely cause")
+    assert "Debug mode" in call["instructions"]
+    assert "tools" not in call
+    assert call["store"] is False
+
+
+def test_chat_runtime_rejects_agent_mode():
+    with pytest.raises(NexusChatError, match="only Ask or Debug"):
+        run_nexus_chat(
+            FakeClient(), model="test-model",
+            messages=[{"role": "user", "content": "Inspect files"}],
+            mode="agent",
+        )

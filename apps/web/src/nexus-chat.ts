@@ -18,6 +18,7 @@ export interface NexusChatRequest {
   cloudModelConsent: true;
   signal?: AbortSignal;
   conversationId?: string;
+  mode?: "ask" | "debug" | "agent";
 }
 
 export interface NexusChatResponse {
@@ -127,6 +128,7 @@ export async function sendNexusChat(
         messages: request.messages,
         workspace_files: request.workspaceFiles ?? [],
         cloud_model_consent: true,
+        mode: request.mode ?? "ask",
         ...(request.conversationId ? { conversation_id: request.conversationId } : {}),
       }),
       cache: "no-store",
@@ -197,6 +199,7 @@ export interface NexusConversationMessage {
   message_id: string;
   role: "user" | "assistant";
   content: string;
+  mode?: "ask" | "plan" | "agent" | "debug";
   created_at: string;
 }
 
@@ -296,6 +299,7 @@ function validateConversation(value: unknown): NexusConversation {
       typeof message.message_id !== "string" ||
       (message.role !== "user" && message.role !== "assistant") ||
       typeof message.content !== "string" || message.content.length > 16_000 ||
+      (message.mode !== undefined && !["ask", "plan", "agent", "debug"].includes(String(message.mode))) ||
       typeof message.created_at !== "string"
     ) throw new NexusChatTransportError("NEXUS returned an invalid conversation message.", 200);
     return message as unknown as NexusConversationMessage;
@@ -425,6 +429,7 @@ export async function sendNexusChatStream(
         workspace_files: workspaceFiles,
         cloud_model_consent: true,
         conversation_id: conversationId,
+        mode: request.mode ?? "ask",
       }),
       cache: "no-store",
       credentials: "omit",
@@ -603,6 +608,7 @@ export async function sendNexusChatInspection(
         workspace_files: workspaceFiles,
         cloud_model_consent: true,
         conversation_id: conversationId,
+        mode: "agent",
       }),
       cache: "no-store",
       credentials: "omit",

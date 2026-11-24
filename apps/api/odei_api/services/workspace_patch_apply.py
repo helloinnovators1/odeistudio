@@ -1,11 +1,13 @@
-"""One-file atomic patch application beneath a retained workspace root handle.
+"""Atomic local patch operations beneath a retained workspace root handle.
 
-The companion accepts only a signed, single-file capability. Paths are resolved
-relative to held directory handles; no caller-supplied absolute paths are used.
+The companion accepts only signed, owner-approved file batches. Each file
+operation is atomic; batches use hash-guarded compensation if a later step fails.
+Paths are resolved relative to held directory handles, never caller paths.
 """
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import stat
@@ -17,6 +19,8 @@ from odei_api.services.patch_proposals import (
     PatchProposalError,
     validate_patch_path,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspacePatchApplyError(ValueError):
@@ -214,3 +218,125 @@ def apply_single_file_patch(grant: Any, item: dict[str, Any]) -> dict[str, str |
 
         return apply_single_file_patch_from_handle(grant.handle, item, parsed)
     raise WorkspacePatchApplyError("This platform does not support safe patch application")
+
+
+
+class WorkspacePatchBatchError(WorkspacePatchApplyError):
+    """A multi-file patch failed; exposes whether compensation restored prior files."""
+
+    def __init__(self, message: str, *, applied_paths: list[str], rolled_back_paths: list[str], rollback_failures: list[str]):
+        super().__init__(message)
+        self.applied_paths = applied_paths
+        self.rolled_back_paths = rolled_back_paths
+        self.rollback_failures = rollback_failures
+        self.rollback_complete = not rollback_failures
+
+
+def _read_for_batch(grant: Any, item: dict[str, Any], parsed) -> str | None:
+    parts = parsed[0]
+    if grant.platform == "posix":
+        parent_fd = None
+        try:
+            parent_fd, name = _open_posix_parent(int(grant.handle), parts)
+            current = _read_posix(parent_fd, name)
+            return None if current is None else current[0]
+        except FileNotFoundError:
+            return None
+        finally:
+            if parent_fd is not None:
+                os.close(parent_fd)
+    if grant.platform == "nt":
+        from odei_api.services.windows_file_handles import _read_windows_file
+
+        return _read_windows_file(grant.handle, parts)
+    raise WorkspacePatchApplyError("This platform does not support safe patch application")
+
+
+def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Apply a bounded batch with preflight checks and reverse-order compensation.
+
+    Each individual filesystem operation is atomic. A batch is not a single
+    filesystem transaction: if a later operation fails, earlier operations are
+    reversed using hash-guarded inverse patches. A failed compensation is
+    surfaced explicitly and must never be reported as a clean rollback.
+    """
+    if not isinstance(items, list) or not 1 <= len(items) <= 20:
+        raise WorkspacePatchApplyError("A patch batch must contain between 1 and 20 files")
+    parsed_items = [_validate_file(item) for item in items]
+    paths = ["/".join(parsed[0]).casefold() for parsed in parsed_items]
+    if len(set(paths)) != len(paths):
+        raise WorkspacePatchApplyError("Patch batch contains duplicate paths")
+    total_bytes = sum(len(item["content"].encode("utf-8")) for item in items if item["content"] is not None)
+    if total_bytes > 5 * 1024 * 1024:
+        raise WorkspacePatchApplyError("Patch batch exceeds the aggregate content limit")
+
+    originals: list[str | None] = []
+    for item, parsed in zip(items, parsed_items, strict=True):
+        current = _read_for_batch(grant, item, parsed)
+        operation, base_hash = parsed[1], parsed[2]
+        if operation == "create":
+            if current is not None:
+                raise WorkspacePatchApplyError("A file already exists at an approved create path")
+        elif current is None or hashlib.sha256(current.encode("utf-8")).hexdigest() != base_hash:
+            raise WorkspacePatchApplyError("A file changed after the approved batch was prepared")
+        originals.append(current)
+
+    applied: list[tuple[dict[str, Any], str | None]] = []
+    results: list[dict[str, Any]] = []
+    try:
+        for item, original in zip(items, originals, strict=True):
+            results.append(apply_single_file_patch(grant, item))
+            applied.append((item, original))
+    except (OSError, ValueError) as failure:
+        applied_paths = [item["path"] for item, _original in applied]
+        rolled_back: list[str] = []
+        rollback_failures: list[str] = []
+        for item, original in reversed(applied):
+            operation = item["operation"]
+            if operation == "create":
+                inverse = {
+                    "path": item["path"], "operation": "delete",
+                    "base_sha256": item["result_sha256"],
+                    "result_sha256": None, "content": None,
+                }
+            elif operation == "update":
+                restored_hash = hashlib.sha256(original.encode("utf-8")).hexdigest()
+                inverse = {
+                    "path": item["path"], "operation": "update",
+                    "base_sha256": item["result_sha256"],
+                    "result_sha256": restored_hash, "content": original,
+                }
+            else:
+                restored_hash = hashlib.sha256(original.encode("utf-8")).hexdigest()
+                inverse = {
+                    "path": item["path"], "operation": "create",
+                    "base_sha256": None,
+                    "result_sha256": restored_hash, "content": original,
+                }
+            try:
+                apply_single_file_patch(grant, inverse)
+                rolled_back.append(item["path"])
+            except (OSError, ValueError) as rollback_error:
+                rollback_failures.append(item["path"])
+                # Do not include file contents, absolute paths or secrets.
+                logger.error(
+                    "Compensation failed for %s (%s)",
+                    item["path"], type(rollback_error).__name__,
+                )
+        raise WorkspacePatchBatchError(
+            "Patch batch failed; " + (
+                "all earlier file operations were rolled back"
+                if not rollback_failures else
+                "one or more rollback operations failed and workspace recovery is required"
+            ),
+            applied_paths=applied_paths,
+            rolled_back_paths=rolled_back,
+            rollback_failures=rollback_failures,
+        ) from failure
+
+    return {
+        "applied": True,
+        "transaction_semantics": "per-file-atomic-with-compensating-rollback",
+        "rollback_required": False,
+        "files": results,
+    }
