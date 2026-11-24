@@ -12,6 +12,7 @@ test("ODEI Studio Window is the first screen and opens the workspace", async ({ 
   await automations.getByLabel("Automation name").fill("Review open pull requests");
   await automations.getByRole("button", { name: "Save automation draft" }).click();
   await expect(page.getByRole("status")).toContainText("Automation draft saved locally; live scheduling is not configured.");
+  await automations.getByRole("button").first().click();
   const popupPromise = page.context().waitForEvent("page");
   await page.getByRole("button", { name: "Open IDE in independent window" }).click();
   const ide = await popupPromise;
