@@ -4,9 +4,9 @@ import pytest
 
 from odei_api.services.parallel_job_worker import ParallelJobWorker
 from odei_api.services.parallel_jobs import (
-    ParallelJob,
     GitWorktreeManager,
     MongoParallelJobStore,
+    ParallelJob,
     ParallelJobConflict,
 )
 
