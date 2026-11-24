@@ -105,7 +105,7 @@ async def inspect_attached_project_excerpts(
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
         outcome="started", message_count=message_count,
-        file_count=len(payload.workspace_files),
+        file_count=len(payload.workspace_files), mode=payload.mode,
     )
     try:
         client, model = get_openai_client()
@@ -118,14 +118,14 @@ async def inspect_attached_project_excerpts(
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=message_count,
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
     except (AgentRuntimeError, SelectedExcerptToolError, ValueError) as exc:
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=message_count,
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=422, detail={"code": "NEXUS_INSPECTION_FAILED", "message": "NEXUS could not safely inspect the attached excerpts."}) from exc
     except Exception as exc:
@@ -133,7 +133,7 @@ async def inspect_attached_project_excerpts(
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
             outcome="failure", message_count=message_count,
-            file_count=len(payload.workspace_files),
+            file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=502, detail={"code": "NEXUS_INSPECTION_UNAVAILABLE", "message": "NEXUS inspection is temporarily unavailable."}) from exc
 
@@ -210,7 +210,7 @@ async def inspect_attached_project_excerpts(
     await _append_nexus_chat_audit(
         request, principal, organization_id, project_id,
         outcome="success", message_count=message_count,
-        file_count=len(payload.workspace_files), model=result.model,
+        file_count=len(payload.workspace_files), mode=payload.mode, model=result.model,
         tool_calls=result.tool_calls,
     )
     return {

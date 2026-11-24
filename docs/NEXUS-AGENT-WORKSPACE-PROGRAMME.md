@@ -10,7 +10,7 @@ NEXUS is a governed project agent inside ODEI Studio. It must make the distincti
 
 | Capability | Existing foundation observed in this branch | Required end state / acceptance |
 |---|---|---|
-| Agent modes | Chat streaming, read-only inspection, task planning and separately approved execution exist | Explicit Ask, Plan, Agent and Debug modes with server-enforced capability sets; mode displayed per turn and persisted in conversation metadata |
+| Agent modes | Ask / Plan / Agent / Debug selector; Ask and Debug use read-only chat; Agent is restricted to attached-excerpt inspection and review-only proposals; Plan uses the approval-ready task endpoint. API mode guards and route/runtime tests are in place. Mode is included in chat audit metadata. | Persist mode in each conversation turn; enforce mode-scoped tool/capability registry for all future tools; extend Agent through approved execution only after review and explicit execution consent. |
 | Context picker | Active-file excerpt and up to five explicitly selected workspace excerpts | Unified `@` picker for files, folders, terminal sessions, chats, Git diff/status, browser page and approved integrations; context preview, source provenance, token/size budget and remove controls |
 | Tool execution | Inspection endpoint, patch proposals, task plans, isolated execution profiles | Typed tool registry, policy engine, scoped capabilities, tool event stream, approval prompts, timeout/rate limits, audit events and deny-by-default behavior |
 | Change review | Patch proposal review and approved apply capability | Per-file and per-hunk diff, accept/reject, stale-base detection, atomic multi-file apply, conflict recovery and verified rollback |
@@ -48,8 +48,8 @@ The UI mode label is never an authorization boundary. The API must enforce mode 
 - Test fresh install, restart persistence, off-state callback, on-state valid/invalid configuration, sign-out, and web-host regression.
 
 ### P1 — coherent interaction model
-- Ship explicit modes with server-enforced permissions.
-- Deliver unified context picker and provenance preview.
+- [x] Initial explicit Ask / Plan / Agent / Debug selector and server-side route/runtime boundaries; mode is included in chat audit metadata. Conversation-turn metadata and complete capability registry remain open.
+- [ ] Deliver unified context picker and provenance preview.
 - Standardize tool event schema and streamed execution timeline.
 - Add per-file review and transactional multi-file apply.
 
