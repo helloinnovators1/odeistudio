@@ -108,12 +108,18 @@ def test_journal_refuses_symlink_database(tmp_path):
 
 def _batch_for_recovery(project):
     before = (project / "main.py").read_text(encoding="utf-8")
+    deleted = (project / "deleted.txt").read_text(encoding="utf-8")
     return [
         {
             "path": "main.py", "operation": "update",
             "base_sha256": hashlib.sha256(before.encode()).hexdigest(),
             "result_sha256": hashlib.sha256(b"after").hexdigest(),
             "content": "after",
+        },
+        {
+            "path": "deleted.txt", "operation": "delete",
+            "base_sha256": hashlib.sha256(deleted.encode()).hexdigest(),
+            "result_sha256": None, "content": None,
         },
         {
             "path": "created.txt", "operation": "create",
@@ -131,6 +137,7 @@ def test_registry_recovers_interrupted_batch_after_process_restart(tmp_path, mon
     project = tmp_path / "project"
     project.mkdir()
     (project / "main.py").write_text("before", encoding="utf-8")
+    (project / "deleted.txt").write_text("preserve me", encoding="utf-8")
     journal = DurableWorkspaceJournal(tmp_path / "state" / "journal.sqlite3")
     first_registry = WorkspaceHandleRegistry(journal=journal)
     workspace_id = first_registry.register_selected_root(project, allow_patch_apply=True)
@@ -150,6 +157,7 @@ def test_registry_recovers_interrupted_batch_after_process_restart(tmp_path, mon
     monkeypatch.setattr(workspace_patch_apply, "apply_single_file_patch", real_apply)
 
     assert (project / "main.py").read_text(encoding="utf-8") == "after"
+    assert not (project / "deleted.txt").exists()
     assert not (project / "created.txt").exists()
 
     restarted_registry = WorkspaceHandleRegistry(journal=journal)
@@ -159,6 +167,7 @@ def test_registry_recovers_interrupted_batch_after_process_restart(tmp_path, mon
         )
         assert restarted_registry.read_text(recovered_id, "main.py") == "before"
         assert not (project / "created.txt").exists()
+        assert (project / "deleted.txt").read_text(encoding="utf-8") == "preserve me"
         assert journal.pending(
             workspace_root_key(
                 project,
@@ -203,6 +212,7 @@ def test_crash_recovery_preserves_external_edits_and_blocks_workspace_open(tmp_p
                 project, allow_patch_apply=True
             )
         assert (project / "main.py").read_text(encoding="utf-8") == "edited by user"
+        assert (project / "deleted.txt").read_text(encoding="utf-8") == "preserve me"
         assert not (project / "created.txt").exists()
     finally:
         restarted_registry.close()
