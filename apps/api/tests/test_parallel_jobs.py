@@ -441,3 +441,54 @@ async def test_nexus_parallel_handler_rejects_cross_project_and_requester_runs()
             },
             None, save_checkpoint, not_cancelled,
         )
+
+
+@pytest.mark.asyncio
+async def test_nexus_parallel_handler_propagates_job_cancellation_to_execution_run():
+    from odei_api.services.execution_runs import ExecutionRunStatus
+
+    class Runs:
+        def __init__(self):
+            self.status = ExecutionRunStatus.RUNNING
+            self.cancelled = False
+
+        async def get(self, *, organization_id, run_id):
+            return SimpleNamespace(
+                id=run_id, organization_id=organization_id, project_id="project",
+                task_id="task", requester_issuer="https://identity.example",
+                requester_subject="subject-1", status=self.status, version=2,
+                cancel_requested=self.cancelled,
+            )
+
+        async def request_cancel(self, **kwargs):
+            self.cancelled = True
+            self.status = ExecutionRunStatus.CANCELLED
+
+    runs = Runs()
+    async def save_checkpoint(_):
+        return None
+
+    async def is_cancelled():
+        return True
+
+    job = ParallelJob(
+        id="cancel-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker", lease_token="lease",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+    handler = NexusParallelExecutionHandler(
+        runs=runs, audit=object(), tasks=object(), task_events=object(),
+    )
+    result = await handler(
+        job,
+        {
+            "execution_run_id": "execution-1",
+            "requested_by_issuer": "https://identity.example",
+            "requested_by_subject": "subject-1",
+        },
+        None, save_checkpoint, is_cancelled,
+    )
+    assert runs.cancelled is True
+    assert result == {"outcome": "cancelled", "execution_run_id": "execution-1"}
