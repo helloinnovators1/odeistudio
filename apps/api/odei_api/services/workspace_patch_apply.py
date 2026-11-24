@@ -286,7 +286,7 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
         for item, original in zip(items, originals, strict=True):
             results.append(apply_single_file_patch(grant, item))
             applied.append((item, original))
-    except WorkspacePatchApplyError as failure:
+    except (OSError, ValueError) as failure:
         applied_paths = [item["path"] for item, _original in applied]
         rolled_back: list[str] = []
         rollback_failures: list[str] = []
@@ -315,7 +315,7 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
             try:
                 apply_single_file_patch(grant, inverse)
                 rolled_back.append(item["path"])
-            except WorkspacePatchApplyError as rollback_error:
+            except (OSError, ValueError) as rollback_error:
                 rollback_failures.append(item["path"])
                 # Do not include file contents, absolute paths or secrets.
                 logger.error(
