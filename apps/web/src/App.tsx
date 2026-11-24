@@ -51,6 +51,7 @@ export default function App() {
   });
   const [initialPrompt, setInitialPrompt] = useState("");
   const [initialMode, setInitialMode] = useState<"ask" | "plan" | "agent" | "debug">("ask");
+  const [initialContextPaths, setInitialContextPaths] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -646,6 +647,7 @@ export default function App() {
       workspaceContext={token && workspace ? { accessToken: token, workspaceId: workspace, files } : null}
       initialPrompt={initialPrompt}
       initialMode={initialMode}
+      initialContextPaths={initialContextPaths}
     />
   );
 
@@ -653,10 +655,11 @@ export default function App() {
     <main className={isIDEWindow ? `ide-shell ide-reference${ideMaximized ? " ide-maximized" : ""}` : "ide-shell"}>
       {homeOpen ? <ODEIStudioHome
         onOpenWorkspace={() => setHomeOpen(false)}
-        onStartChat={(prompt, mode = "ask") => { setInitialPrompt(prompt); setInitialMode(mode); setHomeOpen(false); setChatOpen(true); }}
+        onStartChat={(prompt, mode = "ask", contextPaths = []) => { setInitialPrompt(prompt); setInitialMode(mode); setInitialContextPaths(contextPaths); setHomeOpen(false); setChatOpen(true); }}
         onCustomize={() => { setHomeOpen(false); setSettingsOpen(true); }}
         workspaceName={workspaceName === "No folder open" ? "" : workspaceName}
         companionConnected={Boolean(token)}
+        workspaceFiles={files}
       /> : <>
       <header className="ide-titlebar">
         <div className="brand-lockup"><div className="brand-mark">◆</div><div><b>{isIDEWindow ? "OIPTECH Core" : "ODEI STUDIO"}</b><small>{isIDEWindow ? "Workspace" : "Development workspace"}</small></div></div>
