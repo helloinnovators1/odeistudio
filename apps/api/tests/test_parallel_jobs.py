@@ -4,7 +4,10 @@ from types import SimpleNamespace
 import pytest
 
 from odei_api.services.nexus_parallel_execution import NexusParallelExecutionHandler
-from odei_api.services.parallel_job_worker import ParallelJobWorker
+from odei_api.services.parallel_job_worker import (
+    ParallelJobWorker,
+    RetryableParallelJobError,
+)
 from odei_api.services.parallel_jobs import (
     GitWorktreeManager,
     MongoParallelJobStore,
