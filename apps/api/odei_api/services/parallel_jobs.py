@@ -16,6 +16,7 @@ from pymongo import ReturnDocument
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
 _MAX_CHECKPOINT_BYTES = 256_000
 _MAX_JOBS_PER_GROUP = 32
+_SECRET_FIELD = re.compile(r"(?:secret|password|passwd|token|api[_-]?key|private[_-]?key|credential)", re.IGNORECASE)
 _TERMINAL = frozenset({"completed", "failed", "cancelled"})
 
 
@@ -55,6 +56,24 @@ def _checkpoint(value: dict[str, Any] | None) -> tuple[dict[str, Any] | None, st
         return None, None
     if not isinstance(value, dict):
         raise TypeError("checkpoint must be an object")
+    def validate(item: Any, *, depth: int = 0) -> None:
+        if depth > 12:
+            raise ValueError("checkpoint nesting exceeds the limit")
+        if isinstance(item, dict):
+            if len(item) > 256:
+                raise ValueError("checkpoint object exceeds the field limit")
+            for key, nested in item.items():
+                if not isinstance(key, str) or _SECRET_FIELD.search(key):
+                    raise ValueError("checkpoint contains a secret-bearing or invalid field name")
+                validate(nested, depth=depth + 1)
+        elif isinstance(item, list):
+            if len(item) > 1024:
+                raise ValueError("checkpoint array exceeds the item limit")
+            for nested in item:
+                validate(nested, depth=depth + 1)
+        elif item is not None and not isinstance(item, (str, int, float, bool)):
+            raise ValueError("checkpoint contains a non-JSON value")
+    validate(value)
     try:
         encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     except (TypeError, ValueError, UnicodeEncodeError) as exc:
