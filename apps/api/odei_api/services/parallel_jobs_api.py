@@ -10,8 +10,8 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
-from odei_api.services.project_access import require_project_access
 from odei_api.services.parallel_jobs import ParallelJobConflict
+from odei_api.services.project_access import require_project_access
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
