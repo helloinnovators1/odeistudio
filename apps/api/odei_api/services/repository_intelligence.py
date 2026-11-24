@@ -123,7 +123,7 @@ def _embedding_batch(client: OpenAI, texts: list[str]) -> list[list[float]]:
 
 
 async def _embed_new_chunks(
-    chunks: list[dict], existing_chunks: list[dict], *, client: OpenAI,
+    chunks: list[dict], existing_chunks: list[dict], *, client: OpenAI | None,
 ) -> list[dict]:
     existing = {
         (item.get("path"), item.get("chunk_index"), item.get("sha256")): item.get("embedding")
@@ -135,6 +135,8 @@ async def _embed_new_chunks(
         vector = existing.get(key)
         if not (isinstance(vector, list) and len(vector) == 1536):
             missing.append(chunk)
+    if missing and client is None:
+        raise ModelConfigurationError("Embedding API key is not configured")
     embedded: dict[tuple[str, int, str], list[float]] = {}
     for start in range(0, len(missing), _EMBEDDING_BATCH_SIZE):
         batch = missing[start:start + _EMBEDDING_BATCH_SIZE]
@@ -145,6 +147,7 @@ async def _embed_new_chunks(
             raise RuntimeError("Embedding provider returned an unexpected vector shape")
         for item, vector in zip(batch, vectors, strict=True):
             embedded[(item["path"], item["chunk_index"], item["sha256"])] = vector
+    result: list[dict] = []
     for chunk in chunks:
         key = (chunk["path"], chunk["chunk_index"], chunk["sha256"])
         vector = existing.get(key)
