@@ -86,7 +86,7 @@ export default function ODEIStudioHome({
       case "customize": onCustomize(); break;
       case "open-ide": openIndependentIDE(); break;
       case "show-apps": setShowApps(true); break;
-      case "start-plan": onStartChat(prompt.trim() || "Help me plan a new project. Clarify its goal, constraints, architecture and first deliverable."); break;
+      case "start-plan": onStartChat(prompt.trim() || "Help me plan a new project. Clarify its goal, constraints, architecture and first deliverable.", "plan"); break;
       case "help": setHelpOpen(true); break;
     }
   }
