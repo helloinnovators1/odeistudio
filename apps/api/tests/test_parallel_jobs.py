@@ -1,6 +1,10 @@
+from datetime import datetime, timezone
+
 import pytest
 
+from odei_api.services.parallel_job_worker import ParallelJobWorker
 from odei_api.services.parallel_jobs import (
+    ParallelJob,
     GitWorktreeManager,
     MongoParallelJobStore,
     ParallelJobConflict,
@@ -185,11 +189,6 @@ async def test_worker_can_renew_only_its_current_lease():
 
 @pytest.mark.asyncio
 async def test_parallel_worker_restores_checkpoint_and_persists_new_progress():
-    from datetime import datetime, timezone
-
-    from odei_api.services.parallel_jobs import ParallelJob
-    from odei_api.services.parallel_job_worker import ParallelJobWorker
-
     initial = ParallelJob(
         id="resume-job", group_id="resume-group", organization_id="org",
         project_id="project", status="leased", version=4, attempt=2,
@@ -232,7 +231,6 @@ async def test_parallel_worker_restores_checkpoint_and_persists_new_progress():
 
         async def finish(self, **kwargs):
             self.finished = kwargs
-            return None
 
         async def heartbeat(self, **kwargs):
             return None
