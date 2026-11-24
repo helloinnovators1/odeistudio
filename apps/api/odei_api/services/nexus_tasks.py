@@ -23,8 +23,8 @@ from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.execution_runs import ExecutionRunConflict
-from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
+from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import (

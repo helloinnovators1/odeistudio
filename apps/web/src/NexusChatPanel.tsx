@@ -1119,7 +1119,7 @@ export default function NexusChatPanel({
           signal: controller.signal,
         });
         setMessages((current) => [...current, {
-          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer, mode: "agent",
+          id: "inspect-" + newMessageId(), role: "assistant" as const, content: inspected.answer, mode: "agent" as const,
         }].slice(-20));
         if (inspected.patch_proposal) {
           setPatchProposals((items) => [

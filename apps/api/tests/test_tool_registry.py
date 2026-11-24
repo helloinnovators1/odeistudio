@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
 from odei_api.services.nexus_capabilities import NexusCapabilityPolicy
+from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
 from odei_api.services.workspace_handles import WorkspaceHandleRegistry
 
 
