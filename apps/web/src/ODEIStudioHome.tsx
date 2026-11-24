@@ -5,7 +5,8 @@ interface SpeechRecognitionLike { continuous: boolean; interimResults: boolean; 
 
 interface Props {
   onOpenWorkspace: () => void;
-  onStartChat: (prompt: string, mode?: "ask" | "plan" | "agent" | "debug") => void;
+  onStartChat: (prompt: string, mode?: "ask" | "plan" | "agent" | "debug", contextPaths?: string[]) => void;
+  workspaceFiles: Array<{ path: string }>;
   onCustomize: () => void;
   workspaceName: string;
   companionConnected: boolean;
@@ -19,7 +20,7 @@ const suggestions = [
 ] as const;
 
 export default function ODEIStudioHome({
-  onOpenWorkspace, onStartChat, onCustomize, workspaceName, companionConnected,
+  onOpenWorkspace, onStartChat, onCustomize, workspaceName, companionConnected, workspaceFiles,
 }: Props) {
   const [prompt, setPrompt] = useState("");
   const [composerMode, setComposerMode] = useState<"ask" | "plan" | "agent" | "debug">("ask");
@@ -39,6 +40,7 @@ export default function ODEIStudioHome({
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState("ODEI NEXUS");
   const [attachments, setAttachments] = useState<Array<{ name: string; content: string }>>([]);
+  const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
   const [recentChats, setRecentChats] = useState<string[]>([]);
   const [automationName, setAutomationName] = useState("");
   const [automationSchedule, setAutomationSchedule] = useState("Daily");
@@ -157,7 +159,7 @@ export default function ODEIStudioHome({
     setRecentChats((items) => [prompt.trim().slice(0, 48) || "New conversation", ...items].slice(0, 6));
     setAttachments([]);
     setVoiceMessage("");
-    onStartChat(message, selectedMode);
+    onStartChat(message, selectedMode, selectedContextPaths);
   }
 
   function toggleDictation() {
@@ -174,7 +176,15 @@ export default function ODEIStudioHome({
   }
 
   function saveAutomationDraft(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!automationName.trim()) return; const key = "odei-automation-drafts"; let items: string[] = []; try { items = JSON.parse(window.localStorage.getItem(key) || "[]") as string[]; } catch { items = []; } window.localStorage.setItem(key, JSON.stringify([automationName.trim() + " · " + automationSchedule, ...items].slice(0, 10))); setAutomationName(""); setVoiceMessage("Automation draft saved locally; live scheduling is not configured."); }
-  function chooseContext(value: string) { setPrompt((current) => current + (current ? " " : "") + "@" + value + " "); setContextOpen(false); document.getElementById("studio-home-prompt")?.focus(); }
+  function chooseContext(path: string) {
+    setSelectedContextPaths((current) => {
+      if (current.includes(path)) return current.filter((item) => item !== path);
+      if (current.length >= 5) { setVoiceMessage("Select up to five workspace files for NEXUS context."); return current; }
+      setPrompt((value) => value + (value.trim() ? " " : "") + "@" + path + " ");
+      return [...current, path];
+    });
+    document.getElementById("studio-home-prompt")?.focus();
+  }
   function chooseSuggestion(action: (typeof suggestions)[number]["action"], title: string) {
     if (action === "workspace") { onOpenWorkspace(); return; }
     const mode = action === "plan" ? "plan" : title === "Debug an issue" ? "debug" : "ask";
@@ -275,7 +285,7 @@ export default function ODEIStudioHome({
             <p className="studio-hero-copy">Plan, build, debug and ship with ODEI NEXUS.</p>
             <form className="studio-prompt-card" onSubmit={submit}>
               <label className="studio-sr-only" htmlFor="studio-home-prompt">Describe what you want to build</label>
-              <textarea id="studio-home-prompt" rows={3} maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "@") setContextOpen(true); }} placeholder="Plan, Build, / for skills, @ for context" />{attachments.length > 0 && <div className="studio-attachment-list">{attachments.map((file, index) => <span key={file.name + index}>{file.name}<button type="button" aria-label={"Remove " + file.name} onClick={() => setAttachments((items) => items.filter((_, i) => i !== index))}>×</button></span>)}</div>}{contextOpen && <div className="studio-composer-popover studio-context-picker"><strong>ADD CONTEXT</strong><button type="button" onClick={() => chooseContext("workspace")}>Current workspace</button><button type="button" onClick={() => chooseContext("files")}>Files and folders</button><button type="button" onClick={() => chooseContext("terminal")}>Terminal context</button><button type="button" onClick={() => chooseContext("git-changes")}>Git changes</button><button type="button" onClick={() => chooseContext("browser")}>Browser context</button></div>}
+              <textarea id="studio-home-prompt" rows={3} maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "@") setContextOpen(true); }} placeholder="Plan, Build, / for skills, @ for context" />{attachments.length > 0 && <div className="studio-attachment-list">{attachments.map((file, index) => <span key={file.name + index}>{file.name}<button type="button" aria-label={"Remove " + file.name} onClick={() => setAttachments((items) => items.filter((_, i) => i !== index))}>×</button></span>)}</div>}{contextOpen && <div className="studio-composer-popover studio-context-picker"><strong>WORKSPACE FILES</strong><small>Select up to five real files to attach as NEXUS context.</small>{workspaceFiles.slice(0, 100).map((file) => <button key={file.path} type="button" aria-pressed={selectedContextPaths.includes(file.path)} onClick={() => chooseContext(file.path)}>{selectedContextPaths.includes(file.path) ? "✓ " : ""}{file.path}</button>)}{workspaceFiles.length === 0 && <p>Connect the local companion and open a workspace to browse files. Terminal, Git and browser context are not connected in this workspace.</p>}{workspaceFiles.length > 100 && <small>Showing the first 100 files. Use the IDE Explorer to narrow the workspace.</small>}</div>}
               <div className="studio-prompt-toolbar">
                 <div className="studio-composer-actions"><button type="button" className="studio-add-context" title="Attach files" aria-label="Attach files" onClick={() => fileInputRef.current?.click()}>＋</button><input ref={fileInputRef} className="studio-sr-only" type="file" multiple accept=".txt,.md,.mdx,.json,.jsonc,.yaml,.yml,.toml,.ini,.csv,.xml,.html,.htm,.css,.scss,.less,.js,.jsx,.ts,.tsx,.py,.go,.rs,.java,.kt,.c,.h,.cpp,.hpp,.cs,.php,.rb,.sh,.sql,.graphql,.prisma" onChange={(event) => { void handleAttachmentChange(event); }} /><button type="button" className="studio-tool-button" title="Add context" aria-label="Add context" onClick={() => setContextOpen((open) => !open)}>＠</button></div><select className="studio-mode-select" aria-label="Agent mode" value={composerMode} onChange={(event) => setComposerMode(event.target.value as "ask" | "plan" | "agent" | "debug")}><option value="ask">Ask</option><option value="plan">Plan</option><option value="agent">Build</option><option value="debug">Debug</option></select><span className="studio-prompt-hint" role="status">{voiceMessage || " "}</span><div className="studio-model-anchor"><button type="button" className="studio-model-indicator" aria-expanded={modelOpen} onClick={() => setModelOpen((open) => !open)}><i />{selectedModel}⌄</button>{modelOpen && <div className="studio-composer-popover studio-model-picker"><strong>MODEL</strong><button type="button" onClick={() => { setSelectedModel("ODEI NEXUS"); setModelOpen(false); }}>ODEI NEXUS <small>Configured assistant</small></button><button type="button" disabled>Grok 4.7 High <small>Provider not configured</small></button></div>}</div><button type="button" className="studio-tool-button" title={dictating ? "Stop microphone dictation" : "Start microphone dictation"} aria-label={dictating ? "Stop microphone dictation" : "Microphone dictation"} aria-pressed={dictating} onClick={toggleDictation}>{dictating ? "■" : "🎙"}</button><button type="button" className="studio-voice-button" title="Voice" aria-label="Voice" onClick={() => setVoiceMessage("Voice sessions require a configured realtime speech provider.")}>◖)))</button><button className="studio-send-button" type="submit" disabled={!prompt.trim()} aria-label="Start with NEXUS">↑</button>
               </div>
