@@ -1310,3 +1310,26 @@ def test_companion_search_cache_invalidates_changed_and_deleted_files(tmp_path):
         assert deleted.json()["matches"] == []
     finally:
         registry.close()
+
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX hard-link protection")
+def test_posix_patch_read_rejects_hard_linked_target(tmp_path):
+    from odei_api.services import workspace_patch_apply
+
+    target = tmp_path / "target.txt"
+    alias = tmp_path / "alias.txt"
+    target.write_text("sensitive", encoding="utf-8")
+    os.link(target, alias)
+    parent_fd = os.open(
+        tmp_path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    )
+    try:
+        with pytest.raises(
+            workspace_patch_apply.WorkspacePatchApplyError,
+            match="Hard-linked patch targets",
+        ):
+            workspace_patch_apply._read_posix(parent_fd, "target.txt")
+        assert alias.read_text(encoding="utf-8") == "sensitive"
+    finally:
+        os.close(parent_fd)
