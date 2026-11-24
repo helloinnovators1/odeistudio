@@ -594,6 +594,22 @@ def test_nexus_stream_endpoint_persists_and_emits_redacted_sse_deltas(route_stat
 
 
 
+
+def test_nexus_chat_rejects_agent_mode_on_read_only_routes(route_state):
+    client = TestClient(app)
+    payload = {
+        "messages": [{"role": "user", "content": "Inspect files"}],
+        "cloud_model_consent": True,
+        "mode": "agent",
+    }
+    for endpoint in (
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat",
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/stream",
+    ):
+        response = client.post(endpoint, json=payload)
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "NEXUS_MODE_FORBIDDEN"
+
 def test_nexus_inspection_rejects_non_agent_mode_before_processing(route_state):
     response = TestClient(app).post(
         "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",

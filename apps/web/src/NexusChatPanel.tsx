@@ -1081,6 +1081,11 @@ export default function NexusChatPanel({
         return;
       }
     }
+    if ((mode === "agent" || useAttachedTools) && excerpt.length === 0) {
+      setSending(false);
+      setChatError("Agent inspection requires at least one explicitly selected file excerpt.");
+      return;
+    }
     const next: TranscriptMessage[] = [
       ...messages,
       { id: newMessageId(), role: "user" as const, content },
@@ -1090,11 +1095,6 @@ export default function NexusChatPanel({
     setConsent(false);
     setChatError("");
     const isInspection = (mode === "agent" || useAttachedTools) && excerpt.length > 0;
-    if ((mode === "agent" || useAttachedTools) && excerpt.length === 0) {
-      setChatError("Agent inspection requires at least one explicitly selected file excerpt.");
-      setSending(false);
-      return;
-    }
     setInspectionRunning(isInspection);
     try {
       let activeConversationId = conversationId;
@@ -1743,7 +1743,7 @@ export default function NexusChatPanel({
             {selectedContextCount > 0 && (
               <label className="nexus-attach-toggle nexus-tools-toggle">
                 <input type="checkbox" checked={useAttachedTools}
-                  onChange={(event) => setUseAttachedTools(event.target.checked)} />
+                  onChange={(event) => { setUseAttachedTools(event.target.checked); setMode(event.target.checked ? "agent" : "ask"); }} />
                 Allow NEXUS inspection and review-only change proposals for the selected excerpts
               </label>
             )}
