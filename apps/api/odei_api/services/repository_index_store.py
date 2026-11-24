@@ -1,9 +1,10 @@
 """Tenant/project-scoped persistent repository index storage and retrieval."""
 from __future__ import annotations
 
+import logging
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -11,6 +12,8 @@ from pymongo.errors import DuplicateKeyError
 
 from odei_api.security.auth import Principal
 from odei_api.services.audit_store import MongoAuditEventStore
+
+logger = logging.getLogger(__name__)
 
 
 class RepositoryIndexStoreError(RuntimeError):
@@ -224,11 +227,67 @@ class MongoRepositoryIndexStore:
                         session=active_session,
                     )
                 await session.with_transaction(transaction)
+
+            if previous is not None and previous.get("revision_id"):
+                retire_at = now + timedelta(hours=1)
+                if isinstance(previous.get("expires_at"), datetime):
+                    retire_at = min(retire_at, previous["expires_at"])
+                for collection in (
+                    self._files, self._symbols, self._references, self._imports, self._chunks,
+                ):
+                    try:
+                        await collection.update_many(
+                            {
+                                "organization_id": organization_id,
+                                "project_id": project_id,
+                                "revision_id": previous["revision_id"],
+                            },
+                            {"$set": {"expires_at": retire_at}},
+                        )
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            "Could not shorten retention for superseded repository index (%s)",
+                            type(cleanup_error).__name__,
+                        )
             return self.public_state(state)
         except DuplicateKeyError as exc:
+            await self._cleanup_unpublished_revision(
+                organization_id, project_id, revision_id
+            )
             raise RepositoryIndexConflict(
                 "Repository index changed concurrently; retry the refresh"
             ) from exc
+        except Exception:
+            await self._cleanup_unpublished_revision(
+                organization_id, project_id, revision_id
+            )
+            raise
+
+    async def _cleanup_unpublished_revision(
+        self, organization_id: str, project_id: str, revision_id: str
+    ) -> None:
+        """Remove orphaned build documents unless the revision became active."""
+        try:
+            active = await self._state.find_one({
+                "organization_id": organization_id,
+                "project_id": project_id,
+                "revision_id": revision_id,
+            })
+            if active is not None:
+                return
+            for collection in (
+                self._files, self._symbols, self._references, self._imports, self._chunks,
+            ):
+                await collection.delete_many({
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                    "revision_id": revision_id,
+                })
+        except Exception as exc:
+            logger.warning(
+                "Could not clean up unpublished repository index revision (%s)",
+                type(exc).__name__,
+            )
 
     @staticmethod
     def public_state(state: dict[str, Any]) -> dict[str, Any]:
