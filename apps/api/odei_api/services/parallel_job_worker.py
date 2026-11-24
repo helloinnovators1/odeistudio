@@ -137,7 +137,7 @@ class ParallelJobWorker:
             shutdown_cancelled = True
         except ParallelJobConflict:
             outcome = "lease_lost"
-        except (OSError, RuntimeError, ValueError, TypeError, KeyError, PyMongoError) as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
             logger.warning(
                 "Parallel job handler failed (job_id=%s, error=%s)",
                 job.id, type(exc).__name__,
@@ -179,7 +179,7 @@ class ParallelJobWorker:
             return
         try:
             await self.heartbeats.heartbeat(worker_id=self.worker_id, status=status)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - telemetry failures must not stop execution
             logger.warning("Parallel worker heartbeat failed (error=%s)", type(exc).__name__)
 
     async def _finish(
