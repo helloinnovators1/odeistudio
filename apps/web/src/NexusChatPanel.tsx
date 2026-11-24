@@ -38,6 +38,7 @@ import {
 } from "./nexus-patch-proposals";
 import { getMadExecutionMetrics, listMadIncidents, transitionMadIncident, type MadIncident, type MadMetrics } from "./mad-operations";
 import { RequestGeneration } from "./request-generation";
+import { buildNexusLocalDemoReply } from "./nexus-demo";
 import { isNexusContextPathAllowed, loadNexusWorkspaceExcerpts } from "./nexus-context";
 import { approveMacEnvironment, createMacEnvironmentDraft, getMacEnvironment, promoteMacEnvironment, rollbackMacEnvironment, submitMacEnvironment, updateMacEnvironmentDraft, type MacEnvironmentRecord } from "./mac-environments";
 import "./nexus-chat-panel.css";
@@ -1064,9 +1065,7 @@ export default function NexusChatPanel({
     if (demoMode) {
       if (!content || !consent || sending || content.length > 8_000) return;
       const userMessage: TranscriptMessage = { id: newMessageId(), role: "user", content, mode };
-      let demoReply = "Local chat interface test completed. Your message was kept only in this page\u2019s memory. No identity provider, API, model, repository, or external service was contacted.";
-      if (mode === "plan") demoReply = "Plan-mode UI is available to exercise, but task planning is disabled in local demo mode. Connect ODID and an authorized project to test real planning.";
-      if (mode === "agent" || mode === "debug") demoReply = `The ${mode} interface is receiving messages correctly. Local demo mode does not inspect files, call tools, execute commands, or access a repository. Connect ODID and an authorized project to test those governed capabilities.`;
+      const demoReply = buildNexusLocalDemoReply(mode);
       setMessages((current) => [...current, userMessage, { id: newMessageId(), role: "assistant", content: demoReply, mode }].slice(-20));
       setDraft("");
       setConsent(false);
@@ -1265,6 +1264,7 @@ export default function NexusChatPanel({
               <span><strong>ODEI Studio desktop · ODID sign-in</strong><small>{!desktopSettingsLoaded ? "Loading secure desktop setting…" : desktopAuthEnabled ? "Enabled on this desktop" : "Disabled by default"}</small></span>
             </label>
           )}
+          <button className="nexus-secondary-button" type="button" onClick={() => { setDemoMode(true); setMessages([]); setNotice("Local demo only · no API calls."); }}>Open local demo chat</button>
           {config.missing.length > 0 && (
             <div className="nexus-config-warning" role="status">
               Authentication is safely disabled until these deployment settings are configured:
@@ -1421,7 +1421,7 @@ export default function NexusChatPanel({
       )}
 
       <div className="nexus-transcript" role="log" aria-label="Conversation" aria-live="polite">
-      {demoMode && <div className="nexus-demo-banner" role="status"><strong>LOCAL DEMO MODE</strong><span>Chat UI testing only. No sign-in, backend, AI model, repository, tools, or external network requests.</span></div>}
+      {demoMode && <div className="nexus-demo-banner" role="status"><strong>LOCAL DEMO MODE</strong><span>Chat UI testing only. No sign-in, backend, AI model, repository, tools, or external network requests.</span><small>To enable real NEXUS access, configure: {config.missing.join(", ") || "the ODID/API deployment settings"}.</small></div>}
       {access && macOpen && (
         <section className="mac-environment-panel" aria-label="MAC environment governance">
           <div className="nexus-task-heading">
@@ -1741,13 +1741,13 @@ export default function NexusChatPanel({
       <div className="nexus-composer-wrap">
         {(access && projectId) || demoMode ? (
           <>
-            {activeFile && (
+            {!demoMode && activeFile && (
               <label className="nexus-attach-toggle">
                 <input type="checkbox" checked={attachActiveFile} disabled={!isNexusContextPathAllowed(activeFile.path) || (!attachActiveFile && selectedContextCount >= 5 && !selectedContextPaths.includes(activeFile.path))} onChange={(event) => { setAttachActiveFile(event.target.checked); if (!event.target.checked) setUseAttachedTools(false); }} />
                 Attach active file excerpt: {activeFile.path}{!isNexusContextPathAllowed(activeFile.path) ? " · excluded from AI context for security" : ""}
               </label>
             )}
-            {workspaceContext && availableContextFiles.length > 0 && (
+            {!demoMode && workspaceContext && availableContextFiles.length > 0 && (
               <details className="nexus-context-picker">
                 <summary>Select workspace files to attach ({selectedContextCount}/5)</summary>
                 <p className="nexus-muted">Only checked files are read and sent. Hidden files and the rest of the workspace are not included automatically.</p>
