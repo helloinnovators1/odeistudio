@@ -86,6 +86,51 @@ async def create_parallel_job_group(
     store, audit, _project = await _authorize(request, organization_id, project_id, principal)
     group_id = payload.group_id or uuid4().hex
     jobs = [item.model_dump(exclude_none=True) for item in payload.jobs]
+    run_store = getattr(request.app.state, "execution_run_store", None)
+    if run_store is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "NEXUS_EXECUTION_UNAVAILABLE",
+            "message": "Approved NEXUS execution storage is not configured.",
+        })
+    try:
+        for item in jobs:
+            job_payload = item.get("payload", {})
+            if not isinstance(job_payload, dict) or set(job_payload) != {"execution_run_id"}:
+                raise HTTPException(status_code=422, detail={
+                    "code": "INVALID_NEXUS_JOB_PAYLOAD",
+                    "message": "Each parallel job must reference one previously approved execution run.",
+                })
+            execution_run_id = job_payload["execution_run_id"]
+            if not isinstance(execution_run_id, str) or not execution_run_id.strip():
+                raise HTTPException(status_code=422, detail={
+                    "code": "INVALID_NEXUS_EXECUTION_REFERENCE",
+                    "message": "Execution run reference is invalid.",
+                })
+            execution_run = await run_store.get(
+                organization_id=organization_id, run_id=execution_run_id,
+            )
+            if (
+                execution_run is None
+                or execution_run.project_id != project_id
+                or execution_run.requester_issuer != principal.issuer
+                or execution_run.requester_subject != principal.subject
+            ):
+                raise HTTPException(status_code=404, detail={
+                    "code": "NEXUS_EXECUTION_NOT_FOUND",
+                    "message": "An approved execution run was not found in this project for this requester.",
+                })
+            if execution_run.status.value not in {"queued", "leased", "running", "collecting"}:
+                raise HTTPException(status_code=409, detail={
+                    "code": "NEXUS_EXECUTION_NOT_ACTIVE",
+                    "message": "Only active approved execution runs can be scheduled.",
+                })
+            job_payload["requested_by_issuer"] = principal.issuer
+            job_payload["requested_by_subject"] = principal.subject
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "NEXUS_EXECUTION_UNAVAILABLE",
+            "message": "NEXUS execution state could not be verified.",
+        }) from exc
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.parallel_jobs.create", "started",
                  {"group_id": group_id, "job_count": len(jobs)})
