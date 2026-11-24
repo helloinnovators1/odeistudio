@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import TaskStatus, identity_owner_key
 from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
@@ -33,6 +34,7 @@ _MAX_BASE64_CHARS = ((_MAX_ARCHIVE_BYTES + 2) // 3) * 4
 class CreateExecutionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     profile_id: StrictStr = Field(min_length=1, max_length=64)
+    mode: StrictStr = Field(min_length=1, max_length=16)
     expected_task_version: int = Field(ge=0)
     workspace_upload_consent: StrictBool
     execution_consent: StrictBool
@@ -272,6 +274,10 @@ async def create_execution(
 ) -> dict:
     if organization_id != organization_id.strip() or project_id != project_id.strip() or task_id != task_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "execution.run")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_CAPABILITY_DENIED", "message": "Switch to Agent mode to request approved execution."}) from exc
     if payload.workspace_upload_consent is not True or payload.execution_consent is not True:
         raise HTTPException(status_code=400, detail={"code": "EXECUTION_CONSENT_REQUIRED", "message": "Separate explicit workspace-upload and code-execution consent are required."})
     database, _project, task = await _authorize_execution_resource(request, organization_id, project_id, task_id, principal)

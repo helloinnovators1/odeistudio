@@ -189,7 +189,7 @@ def execution_state():
 
 def payload(**overrides):
     value = {
-        "profile_id": "python-tests", "expected_task_version": 4,
+        "profile_id": "python-tests", "mode": "agent", "expected_task_version": 4,
         "workspace_upload_consent": True, "execution_consent": True,
         "snapshot_zip_base64": archive_base64(),
     }
@@ -226,6 +226,15 @@ def test_project_execution_history_rejects_partial_cursor(execution_state):
     )
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "INVALID_EXECUTION_CURSOR"
+
+
+def test_execution_requires_agent_mode_at_api_boundary(execution_state):
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=payload(mode="ask"),
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "NEXUS_MODE_CAPABILITY_DENIED"
 
 
 def test_execution_requires_both_explicit_consents(execution_state):

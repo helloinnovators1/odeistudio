@@ -9,7 +9,7 @@ MODES: Final[frozenset[str]] = frozenset({"ask", "plan", "agent", "debug"})
 _MODE_CAPABILITIES: Final[dict[str, frozenset[str]]] = {
     "ask": frozenset({"chat.read"}),
     "plan": frozenset({"task.plan"}),
-    "agent": frozenset({"workspace.inspect", "workspace.read", "patch.propose"}),
+    "agent": frozenset({"workspace.inspect", "workspace.read", "patch.propose", "execution.run"}),
     "debug": frozenset({"chat.debug"}),
 }
 

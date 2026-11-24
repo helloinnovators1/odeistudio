@@ -10,7 +10,7 @@ NEXUS is a governed project agent inside ODEI Studio. It must make the distincti
 
 | Capability | Existing foundation observed in this branch | Required end state / acceptance |
 |---|---|---|
-| Agent modes | Ask / Plan / Agent / Debug selector; Ask and Debug use read-only chat; Agent is restricted to attached-excerpt inspection and review-only proposals; Plan uses the approval-ready task endpoint. API mode guards, route/runtime tests, per-message mode persistence and transcript restoration/display are in place. A centralized deny-by-default capability policy now grants only chat.read to Ask, chat.debug to Debug, task.plan to Plan, and workspace.inspect/workspace.read/patch.propose to Agent; read-only workspace tools reject non-Agent mode. | Extend policy enforcement to every execution, integration and host capability; extend Agent through approved execution only after review and explicit execution consent. |
+| Agent modes | Ask / Plan / Agent / Debug selector; Ask and Debug use read-only chat; Agent is restricted to attached-excerpt inspection and review-only proposals; Plan uses the approval-ready task endpoint. API mode guards, route/runtime tests, per-message mode persistence and transcript restoration/display are in place. The approved execution-creation route also enforces the Agent-only `execution.run` capability. A centralized deny-by-default capability policy now grants only chat.read to Ask, chat.debug to Debug, task.plan to Plan, and workspace.inspect/workspace.read/patch.propose to Agent; read-only workspace tools reject non-Agent mode. | Extend policy enforcement to every execution, integration and host capability; extend Agent through approved execution only after review and explicit execution consent. |
 | Context picker | Active-file excerpt and up to five explicitly selected workspace excerpts | Unified `@` picker for files, folders, terminal sessions, chats, Git diff/status, browser page and approved integrations; context preview, source provenance, token/size budget and remove controls |
 | Tool execution | Inspection endpoint, patch proposals, task plans, isolated execution profiles | Typed tool registry and initial centralized mode capability policy; scoped execution/integration capabilities, tool event stream, approval prompts, timeout/rate limits, audit events and complete deny-by-default lifecycle |
 | Change review | Patch proposal review and approved apply capability | Per-file and per-hunk diff, accept/reject, stale-base detection, atomic multi-file apply, conflict recovery and verified rollback |
@@ -28,7 +28,7 @@ NEXUS is a governed project agent inside ODEI Studio. It must make the distincti
 - **Agent:** may propose and apply changes only through explicit policy checks and review/approval. Shell and external tools require their own capability grants.
 - **Debug:** diagnostic read-only tools by default; any remediation is converted into a reviewed proposal or separately approved execution.
 
-The UI mode label is never an authorization boundary. The API must enforce mode and capability scopes on every request.
+The UI mode label is never an authorization boundary. The API must enforce mode and capability scopes on every request. Approved execution requests now require an explicit `mode` field and the centralized `execution.run` capability; the web client sends `agent`, while Ask, Plan, Debug and unknown modes fail closed.
 
 ## Host and security architecture
 

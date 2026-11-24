@@ -153,6 +153,7 @@ export async function createNexusExecution(
     route(baseUrl, organizationId, projectId, taskId), accessToken,
     { method: "POST", fetcher, signal, body: {
       profile_id: values.profileId,
+      mode: "agent",
       expected_task_version: values.expectedTaskVersion,
       workspace_upload_consent: true,
       execution_consent: true,
