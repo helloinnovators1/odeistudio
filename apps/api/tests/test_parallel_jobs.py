@@ -543,3 +543,36 @@ async def test_worker_schedules_retry_for_transient_nexus_state_failure():
     assert await worker.run_once() == "retry_scheduled"
     assert store.retry_args["expected_version"] == 1
     assert store.retry_args["delay_seconds"] == 0
+
+
+@pytest.mark.asyncio
+async def test_group_cancellation_makes_dependency_blocked_jobs_claimable_for_cleanup():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="cancel-dependencies",
+        jobs=[
+            {"job_id": "parent"},
+            {"job_id": "child", "depends_on": ["parent"]},
+        ],
+    )
+    assert await store.cancel_group(
+        organization_id="org", project_id="project", group_id="cancel-dependencies",
+    ) == 2
+    first = await store.claim_next(worker_id="worker-a")
+    assert first is not None and first.id == "parent"
+    assert await store.cancellation_requested(
+        organization_id="org", job_id=first.id, worker_id="worker-a",
+        lease_token=first.lease_token,
+    )
+    await store.finish(
+        organization_id="org", job_id=first.id, worker_id="worker-a",
+        lease_token=first.lease_token, expected_version=first.version,
+        outcome="cancelled",
+    )
+    second = await store.claim_next(worker_id="worker-b")
+    assert second is not None and second.id == "child"
+    assert await store.cancellation_requested(
+        organization_id="org", job_id=second.id, worker_id="worker-b",
+        lease_token=second.lease_token,
+    )
