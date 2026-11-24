@@ -351,6 +351,7 @@ export default function NexusChatPanel({
 
   useEffect(() => {
     setSelectedContextPaths([]);
+    setContextSearch("");
     setUseAttachedTools(false);
   }, [workspaceContext?.workspaceId]);
 
