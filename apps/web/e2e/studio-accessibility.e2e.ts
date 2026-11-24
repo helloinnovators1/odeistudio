@@ -17,7 +17,7 @@ test("visible interactive controls have programmatic accessible names", async ({
     const element = node as HTMLElement & { labels?: NodeListOf<HTMLLabelElement> | null };
     const labelledBy = element.getAttribute("aria-labelledby");
     const referencedLabel = labelledBy
-      ? labelledBy.split(/\\s+/).some((id) => Boolean(document.getElementById(id)?.textContent?.trim()))
+      ? labelledBy.split(/\s+/).some((id) => Boolean(document.getElementById(id)?.textContent?.trim()))
       : false;
     const explicitLabel = element.getAttribute("aria-label")?.trim();
     const nativeLabels = element.labels && Array.from(element.labels).some((label) => label.textContent?.trim());
