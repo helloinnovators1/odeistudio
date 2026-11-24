@@ -161,8 +161,8 @@ class MongoRepositoryIndexStore:
                 (self._chunks, chunks),
             ):
                 batch = documents(items)
-                for start in range(0, len(batch), 100):
-                    await collection.insert_many(batch[start:start + 100], ordered=True)
+                for start in range(0, len(batch), 25):
+                    await collection.insert_many(batch[start:start + 25], ordered=True)
 
             now = datetime.now(timezone.utc)
             state = {
@@ -257,13 +257,18 @@ class MongoRepositoryIndexStore:
         chunks = await self.get_active_chunks(
             organization_id=organization_id, project_id=project_id
         )
+        if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in query_embedding):
+            raise ValueError("query embedding is invalid")
         query_norm = math.sqrt(sum(value * value for value in query_embedding))
         if query_norm == 0:
             raise ValueError("query embedding is invalid")
         scored = []
         for chunk in chunks:
             vector = chunk.get("embedding")
-            if not isinstance(vector, list) or len(vector) != len(query_embedding):
+            if (
+                not isinstance(vector, list) or len(vector) != len(query_embedding)
+                or any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in vector)
+            ):
                 continue
             norm = math.sqrt(sum(value * value for value in vector))
             if norm == 0:
@@ -323,7 +328,10 @@ class MongoRepositoryIndexStore:
         return {
             "revision": state["revision"],
             "nodes": nodes,
+            "snapshot_id": state["snapshot_id"],
             "edges": [{
                 "source": item["path"], "target": item["module"],
+                "sha256": item["sha256"], "revision": state["revision"],
+                "snapshot_id": state["snapshot_id"],
             } for item in imports],
         }
