@@ -10,9 +10,9 @@ NEXUS is a governed project agent inside ODEI Studio. It must make the distincti
 
 | Capability | Existing foundation observed in this branch | Required end state / acceptance |
 |---|---|---|
-| Agent modes | Ask / Plan / Agent / Debug selector; Ask and Debug use read-only chat; Agent is restricted to attached-excerpt inspection and review-only proposals; Plan uses the approval-ready task endpoint. API mode guards and route/runtime tests are in place. Mode is included in chat audit metadata and persisted on every user and assistant conversation message; the transcript restores and displays it. | Enforce mode-scoped tool/capability registry for all future tools; enforce mode-scoped tool/capability registry for all future tools; extend Agent through approved execution only after review and explicit execution consent. |
+| Agent modes | Ask / Plan / Agent / Debug selector; Ask and Debug use read-only chat; Agent is restricted to attached-excerpt inspection and review-only proposals; Plan uses the approval-ready task endpoint. API mode guards, route/runtime tests, per-message mode persistence and transcript restoration/display are in place. A centralized deny-by-default capability policy now grants only chat.read to Ask, chat.debug to Debug, task.plan to Plan, and workspace.inspect/workspace.read/patch.propose to Agent; read-only workspace tools reject non-Agent mode. | Extend policy enforcement to every execution, integration and host capability; extend Agent through approved execution only after review and explicit execution consent. |
 | Context picker | Active-file excerpt and up to five explicitly selected workspace excerpts | Unified `@` picker for files, folders, terminal sessions, chats, Git diff/status, browser page and approved integrations; context preview, source provenance, token/size budget and remove controls |
-| Tool execution | Inspection endpoint, patch proposals, task plans, isolated execution profiles | Typed tool registry, policy engine, scoped capabilities, tool event stream, approval prompts, timeout/rate limits, audit events and deny-by-default behavior |
+| Tool execution | Inspection endpoint, patch proposals, task plans, isolated execution profiles | Typed tool registry and initial centralized mode capability policy; scoped execution/integration capabilities, tool event stream, approval prompts, timeout/rate limits, audit events and complete deny-by-default lifecycle |
 | Change review | Patch proposal review and approved apply capability | Per-file and per-hunk diff, accept/reject, stale-base detection, atomic multi-file apply, conflict recovery and verified rollback |
 | Recovery | Task cancellation and execution history/events | Local immutable checkpoints plus durable server task checkpoints, restore preview, rollback verification and retention controls |
 | Long-running work | Durable task and execution records, polling and cancellation | Durable sessions, queue/steer/stop/resume, background agents, isolated subagents, idempotent orchestration and event replay |
@@ -48,7 +48,8 @@ The UI mode label is never an authorization boundary. The API must enforce mode 
 - Test fresh install, restart persistence, off-state callback, on-state valid/invalid configuration, sign-out, and web-host regression.
 
 ### P1 — coherent interaction model
-- [x] Initial explicit Ask / Plan / Agent / Debug selector and server-side route/runtime boundaries; mode is included in chat audit metadata. Conversation-turn metadata and complete capability registry remain open.
+- [x] Initial explicit Ask / Plan / Agent / Debug selector, server-side route/runtime boundaries, persisted mode per conversation turn, transcript restoration/display, and initial centralized mode capability policy.
+- [ ] Extend capability policy to execution, integrations and host capabilities; complete unified context picker and provenance preview.
 - [ ] Deliver unified context picker and provenance preview.
 - Standardize tool event schema and streamed execution timeline.
 - Add per-file review and transactional multi-file apply.
