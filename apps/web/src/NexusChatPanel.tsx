@@ -1744,7 +1744,7 @@ export default function NexusChatPanel({
                         .map((file) => file.path);
                       const activePath = attachActiveFile && activeFile ? activeFile.path : "";
                       const selectedFolderCount = folderPaths.filter((path) =>
-                        selectedContextPaths.includes(path) || path === activePath
+                        selectedContextPaths.includes(path)
                       ).length;
                       const hasSelection = selectedFolderCount > 0;
                       return (
