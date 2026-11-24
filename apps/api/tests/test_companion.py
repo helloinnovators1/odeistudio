@@ -1333,3 +1333,24 @@ def test_posix_patch_read_rejects_hard_linked_target(tmp_path):
         assert alias.read_text(encoding="utf-8") == "sensitive"
     finally:
         os.close(parent_fd)
+
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows hard-link protection")
+def test_windows_patch_read_rejects_hard_linked_target(tmp_path):
+    from odei_api.services import windows_file_handles
+
+    target = tmp_path / "target.txt"
+    alias = tmp_path / "alias.txt"
+    target.write_text("sensitive", encoding="utf-8")
+    os.link(target, alias)
+    kernel32, root_handle = windows_file_handles.open_directory_handle(tmp_path)
+    try:
+        with pytest.raises(
+            windows_file_handles.UnsafeWindowsPath,
+            match="Hard-linked patch targets",
+        ):
+            windows_file_handles._read_windows_file(root_handle, ("target.txt",))
+        assert alias.read_text(encoding="utf-8") == "sensitive"
+    finally:
+        windows_file_handles.close_directory_handle(kernel32, root_handle)
