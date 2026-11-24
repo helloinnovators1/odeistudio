@@ -9,8 +9,8 @@ from uuid import uuid4
 
 from pymongo.errors import DuplicateKeyError
 
-from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.security.auth import Principal
+from odei_api.services.audit_store import MongoAuditEventStore
 
 
 class RepositoryIndexStoreError(RuntimeError):
