@@ -534,6 +534,29 @@ def create_companion_app(
             {"path": item.path, "size": item.size} for item in files
         ]}
 
+
+    @app.get("/v1/workspaces/{workspace_id}/search")
+    async def search_workspace_text(
+        workspace_id: str,
+        request: Request,
+        q: str = Query(min_length=1, max_length=256),
+        limit: int = Query(default=50, ge=1, le=100),
+    ):
+        """Bounded literal search over the selected workspace's safe text inventory."""
+        require_bearer(request)
+        require_selected_workspace(workspace_id)
+        try:
+            return {
+                "workspace_id": workspace_id,
+                **await run_in_threadpool(
+                    registry.search_text, workspace_id, q, limit=limit
+                ),
+            }
+        except (ValueError, OSError) as exc:
+            raise HTTPException(
+                status_code=400, detail="Workspace search request is invalid"
+            ) from exc
+
     @app.get("/v1/workspaces/{workspace_id}/file")
     async def read_workspace_file(
         workspace_id: str,

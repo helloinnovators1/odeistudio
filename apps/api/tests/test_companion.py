@@ -1139,3 +1139,54 @@ def test_windows_patch_read_rejects_file_modified_during_snapshot(tmp_path, monk
         match="changed while being read",
     ):
         windows_file_handles._read_windows_file(None, ("target.txt",))
+
+
+def test_companion_search_returns_bounded_literal_matches_with_provenance(tmp_path):
+    client, registry, _pairing, code = _build_client(tmp_path)
+    project = tmp_path / "project"
+    (project / "src").mkdir()
+    (project / "src" / "module.py").write_text(
+        "alpha = 1\\nNeedleValue = 2\\nneedlevalue = 3\\n", encoding="utf-8"
+    )
+    (project / ".env").write_text("NeedleValue=secret", encoding="utf-8")
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        response = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "needlevalue", "limit": 10},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert [(item["path"], item["line"]) for item in payload["matches"]] == [
+            ("src/module.py", 2), ("src/module.py", 3),
+        ]
+        assert payload["matches"][0]["content_sha256"] == hashlib.sha256(
+            b"alpha = 1\\nNeedleValue = 2\\nneedlevalue = 3\\n"
+        ).hexdigest()
+        assert payload["matches"][0]["index_version"] == "literal-search-v1"
+        assert payload["scanned_files"] >= 1
+        assert payload["truncated"] is False
+    finally:
+        registry.close()
+
+
+def test_companion_search_enforces_query_and_result_bounds(tmp_path):
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        empty = client.get(
+            f"/v1/workspaces/{workspace_id}/search", params={"q": ""},
+            headers=headers,
+        )
+        oversized = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            params={"q": "x", "limit": 101}, headers=headers,
+        )
+        assert empty.status_code == 422
+        assert oversized.status_code == 422
+    finally:
+        registry.close()
+
