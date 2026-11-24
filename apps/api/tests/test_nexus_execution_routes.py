@@ -276,6 +276,7 @@ def test_execution_upload_is_validated_and_atomically_enqueued(execution_state):
     assert body["snapshot"]["snapshot_id"] == "snapshot-1"
     assert runs.created["expected_task_version"] == 4
     assert runs.created["tasks"] is _database["tasks"]
+    assert runs.created["audit_event"]["metadata"]["mode"] == "agent"
     assert runs.run.arguments == ()
     assert snapshots.documents
     assert audit.events == []

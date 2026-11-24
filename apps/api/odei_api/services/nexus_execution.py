@@ -325,8 +325,7 @@ async def create_execution(
             expected_task_version=payload.expected_task_version,
             audit_event=_audit_event(principal, organization_id, run_id,
                 "nexus.execution.create", {"project_id": project_id, "task_id": task_id,
-                "profile_id": payload.profile_id, "mode": payload.mode,
-                "snapshot_id": snapshot["snapshot_id"],
+                "profile_id": payload.profile_id, "snapshot_id": snapshot["snapshot_id"],
                 "snapshot_file_count": file_count, "snapshot_bytes": total_bytes}),
         )
     except ExecutionRunConflict as exc:
