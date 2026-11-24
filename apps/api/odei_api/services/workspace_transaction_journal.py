@@ -76,15 +76,15 @@ class DurableWorkspaceJournal:
         parent = self.path.parent
         parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if os.name != "nt":
-            os.chmod(parent, 0o700)
             metadata = os.lstat(parent)
             if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
                 raise WorkspaceJournalError("Journal state directory is not a safe directory")
-        if self.path.exists() and self.path.is_symlink():
+            os.chmod(parent, 0o700)
+        if self.path.is_symlink():
             raise WorkspaceJournalError("Journal database must not be a symbolic link")
 
     def _connect(self) -> sqlite3.Connection:
-        if self.path.exists() and self.path.is_symlink():
+        if self.path.is_symlink():
             raise WorkspaceJournalError("Journal database must not be a symbolic link")
         connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
         connection.row_factory = sqlite3.Row
