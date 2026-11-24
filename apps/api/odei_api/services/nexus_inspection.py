@@ -143,6 +143,16 @@ async def inspect_attached_project_excerpts(
     patch_proposal = None
     proposed_changes = tools.proposed_changes
     if proposed_changes:
+        try:
+            NexusCapabilityPolicy.require(payload.mode, "patch.propose")
+        except NexusCapabilityDenied as exc:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "NEXUS_MODE_CAPABILITY_DENIED",
+                    "message": "The current NEXUS mode cannot create patch proposals.",
+                },
+            ) from exc
         proposal_store = getattr(request.app.state, "patch_proposal_store", None)
         if proposal_store is None:
             raise HTTPException(status_code=503, detail={"code": "PATCH_PROPOSAL_STORE_UNAVAILABLE", "message": "Patch proposal storage is not configured."})
@@ -166,7 +176,7 @@ async def inspect_attached_project_excerpts(
         await _audit_proposal(
             request, principal, organization_id, proposal_id,
             "nexus.patch_proposal.create", "started",
-            project_id=project_id, file_count=len(proposal_files),
+            project_id=project_id, file_count=len(proposal_files), mode=payload.mode,
         )
         try:
             created_proposal = await proposal_store.create(
@@ -179,7 +189,7 @@ async def inspect_attached_project_excerpts(
         await _audit_proposal(
             request, principal, organization_id, proposal_id,
             "nexus.patch_proposal.create", "success",
-            project_id=project_id, file_count=len(proposal_files), version=0,
+            project_id=project_id, file_count=len(proposal_files), version=0, mode=payload.mode,
         )
         patch_proposal = {
             "proposal_id": created_proposal["proposal_id"],

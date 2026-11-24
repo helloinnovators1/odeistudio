@@ -727,6 +727,54 @@ def test_nexus_inspection_persists_model_generated_patch_for_owner_review(route_
     assert all("prompt" not in event["metadata"] and "source" not in event["metadata"] for event in proposal_events)
 
 
+def test_nexus_inspection_requires_patch_propose_capability_before_persisting_changes(route_state, monkeypatch):
+    from odei_api.services.nexus_capabilities import NexusCapabilityPolicy
+
+    _, _, _, _conversations = route_state
+    client = TestClient(app)
+    item = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/conversations",
+        json={"title": "Denied proposal"},
+    ).json()
+    original_allows = NexusCapabilityPolicy.allows
+    monkeypatch.setattr(
+        NexusCapabilityPolicy,
+        "allows",
+        staticmethod(lambda mode, capability: False
+                     if capability == "patch.propose"
+                     else original_allows(mode, capability)),
+    )
+
+    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages):
+        workspace_tools.execute("propose_attached_file_change", {
+            "path": "src/greet.py", "content": "def greet(): return 'changed'",
+        })
+        return SimpleNamespace(
+            answer="A proposed change was generated.",
+            model=model, tool_calls=1, tool_rounds=1,
+            tool_names=("propose_attached_file_change",),
+        )
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection.get_openai_client",
+        lambda: (object(), "proposal-model"),
+    )
+    monkeypatch.setattr("odei_api.services.nexus_inspection.run_nexus_agent", fake_agent)
+    response = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+        json={
+            "messages": [{"role": "user", "content": "Change greet"}],
+            "workspace_files": [{"path": "src/greet.py", "content": "def greet(): return 'hello'"}],
+            "conversation_id": item["conversation_id"],
+            "cloud_model_consent": True,
+            "mode": "agent",
+        },
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "NEXUS_MODE_CAPABILITY_DENIED"
+    assert app.state.patch_proposal_store.documents == {}
+
+
 def test_nexus_inspection_rejects_unattached_or_unsafe_paths_before_model_call(route_state, monkeypatch):
     _, _, _, conversations = route_state
     item = TestClient(app).post(
