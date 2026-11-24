@@ -207,7 +207,7 @@ class MongoParallelJobStore:
         }).sort("created_at", 1).limit(100).to_list(length=100)
         for candidate in candidates:
             dependencies = candidate.get("depends_on", [])
-            if dependencies:
+            if dependencies and not candidate.get("cancel_requested", False):
                 rows = await self._jobs.find({
                     "organization_id": candidate["organization_id"],
                     "group_id": candidate["group_id"], "job_id": {"$in": dependencies},
@@ -379,7 +379,8 @@ class MongoParallelJobStore:
         queued = await self._jobs.update_many(
             {"organization_id": organization_id, "project_id": project_id,
              "group_id": group_id, "status": {"$in": ["queued", "blocked"]}},
-            {"$set": {"status": "cancelled", "updated_at": now}, "$inc": {"version": 1}},
+            {"$set": {"status": "queued", "cancel_requested": True,
+                      "available_at": now, "updated_at": now}, "$inc": {"version": 1}},
         )
         leased = await self._jobs.update_many(
             {"organization_id": organization_id, "project_id": project_id,
