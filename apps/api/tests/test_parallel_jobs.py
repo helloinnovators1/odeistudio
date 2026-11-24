@@ -133,6 +133,12 @@ async def test_checkpoint_rejects_stale_lease_and_bounds_payload():
             lease_token=job.lease_token, expected_version=job.version,
             checkpoint={"data": "x" * 300_000},
         )
+    with pytest.raises(ValueError, match="secret-bearing"):
+        await store.checkpoint(
+            organization_id="org", job_id="job", worker_id="worker",
+            lease_token=job.lease_token, expected_version=job.version,
+            checkpoint={"session_token": "should-not-be-persisted"},
+        )
 
 
 @pytest.mark.asyncio
