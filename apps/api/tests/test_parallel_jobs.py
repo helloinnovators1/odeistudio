@@ -162,3 +162,22 @@ def test_worktree_manager_requires_safe_repository_and_base_commit(tmp_path):
     manager.remove(worktree)
     with pytest.raises(ValueError):
         manager.create(job_id="../escape", base_commit=commit)
+
+@pytest.mark.asyncio
+async def test_worker_can_renew_only_its_current_lease():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="lease-group",
+        jobs=[{"job_id": "lease-job"}],
+    )
+    job = await store.claim_next(worker_id="worker-a")
+    await store.heartbeat(
+        organization_id="org", job_id=job.id, worker_id="worker-a",
+        lease_token=job.lease_token, lease_seconds=90,
+    )
+    with pytest.raises(ParallelJobConflict):
+        await store.heartbeat(
+            organization_id="org", job_id=job.id, worker_id="worker-b",
+            lease_token=job.lease_token, lease_seconds=90,
+        )
