@@ -245,6 +245,9 @@ async def refresh_repository_index(
             "repository.index.refresh.started",
             {"snapshot_id": snapshot["_id"], "archive_bytes": len(archive)},
         )
+        previous_hashes = await store.get_active_file_hashes(
+            organization_id=organization_id, project_id=project_id,
+        )
         with TemporaryDirectory(prefix="odei-repository-index-") as temporary_root:
             ingestor = WorkspaceSnapshotIngestor(
                 temporary_root, max_archive_bytes=50 * 1024 * 1024,
@@ -266,6 +269,15 @@ async def refresh_repository_index(
                 "content": item._content,
             } for item in indexed_records]
             file_hashes = {item["path"]: item["sha256"] for item in files}
+            changed_count = sum(
+                1 for path, digest in file_hashes.items()
+                if previous_hashes.get(path) != digest
+            )
+            unchanged_count = sum(
+                1 for path, digest in file_hashes.items()
+                if previous_hashes.get(path) == digest
+            )
+            removed_count = len(set(previous_hashes) - set(file_hashes))
             analysis = await run_in_threadpool(
                 analyze_repository, files, max_chunks=_MAX_SEMANTIC_CHUNKS
             )
@@ -327,9 +339,9 @@ async def refresh_repository_index(
                 "indexed": True,
                 **state,
                 "update": {
-                    "changed": update.changed,
-                    "unchanged": update.unchanged,
-                    "removed": update.removed,
+                    "changed": changed_count,
+                    "unchanged": unchanged_count,
+                    "removed": removed_count,
                     "skipped": update.skipped,
                     "total_bytes": update.total_bytes,
                 },
@@ -446,7 +458,14 @@ async def search_repository_symbols(
         request, principal, organization_id, project_id,
         "repository.symbols.search", {"name_length": len(name), "result_count": len(results)},
     )
-    return {"results": results, "limit": limit}
+    return {"results": [
+        {
+            "name": item["name"], "qualified_name": item["qualified_name"],
+            "kind": item["kind"], "path": item["path"], "line": item["line"],
+            "sha256": item["sha256"], "revision": item["revision"],
+            "snapshot_id": item["snapshot_id"],
+        } for item in results
+    ], "limit": limit}
 
 
 @router.get(
@@ -475,7 +494,13 @@ async def search_repository_references(
         request, principal, organization_id, project_id,
         "repository.references.search", {"name_length": len(name), "result_count": len(results)},
     )
-    return {"results": results, "limit": limit}
+    return {"results": [
+        {
+            "name": item["name"], "path": item["path"], "line": item["line"],
+            "sha256": item["sha256"], "revision": item["revision"],
+            "snapshot_id": item["snapshot_id"],
+        } for item in results
+    ], "limit": limit}
 
 
 @router.get(
@@ -536,6 +561,11 @@ async def semantic_repository_search(
             )
         finally:
             client.close()
+        state = await store.get_state(
+            organization_id=organization_id, project_id=project_id,
+        )
+        if state is None:
+            raise HTTPException(status_code=404, detail={"code": "REPOSITORY_INDEX_NOT_FOUND"})
         results = await store.search_semantic(
             organization_id=organization_id, project_id=project_id,
             query_embedding=vectors[0], limit=payload.limit,
