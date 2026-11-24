@@ -48,6 +48,7 @@ interface Props {
   activeFile?: { path: string; content: string } | null;
   workspaceContext?: { accessToken: string; workspaceId: string; files: CompanionFile[] } | null;
   initialPrompt?: string;
+  initialMode?: "ask" | "plan" | "agent" | "debug";
 }
 
 interface TranscriptMessage extends NexusChatMessage {
@@ -89,7 +90,7 @@ function newMessageId(): string {
 }
 
 export default function NexusChatPanel({
-  onClose, isOpen = true, activeFile = null, workspaceContext = null, initialPrompt = "",
+  onClose, isOpen = true, activeFile = null, workspaceContext = null, initialPrompt = "", initialMode = "ask",
 }: Props) {
   const config = useMemo(environmentConfig, []);
   const isDesktopHost = typeof window !== "undefined" && Boolean(window.odeiDesktop);
@@ -115,12 +116,13 @@ export default function NexusChatPanel({
   const [conversationBusy, setConversationBusy] = useState(false);
   const [draft, setDraft] = useState(initialPrompt);
   useEffect(() => { setDraft(initialPrompt); }, [initialPrompt]);
+  useEffect(() => { setMode(initialMode); }, [initialMode]);
   const [consent, setConsent] = useState(false);
   const [attachActiveFile, setAttachActiveFile] = useState(false);
   const [selectedContextPaths, setSelectedContextPaths] = useState<string[]>([]);
   const [contextSearch, setContextSearch] = useState("");
   const [useAttachedTools, setUseAttachedTools] = useState(false);
-  const [mode, setMode] = useState<"ask" | "plan" | "agent" | "debug">("ask");
+  const [mode, setMode] = useState<"ask" | "plan" | "agent" | "debug">(initialMode);
   const [inspectionRunning, setInspectionRunning] = useState(false);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
