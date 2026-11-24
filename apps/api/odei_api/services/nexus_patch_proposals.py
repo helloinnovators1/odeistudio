@@ -309,7 +309,7 @@ async def create_patch_proposal(
     await _audit_proposal(
         request, principal, organization_id, proposal_id,
         "nexus.patch_proposal.create", "started",
-        project_id=project_id, file_count=len(files),
+        project_id=project_id, file_count=len(files), mode=payload.mode,
     )
     try:
         created = await store.create(
@@ -322,7 +322,7 @@ async def create_patch_proposal(
     await _audit_proposal(
         request, principal, organization_id, created["proposal_id"],
         "nexus.patch_proposal.create", "success",
-        project_id=project_id, file_count=len(files), version=0,
+        project_id=project_id, file_count=len(files), version=0, mode=payload.mode,
     )
     return {
         "proposal_id": created["proposal_id"],
