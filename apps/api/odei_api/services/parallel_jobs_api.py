@@ -11,6 +11,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.project_access import require_project_access
+from odei_api.services.parallel_jobs import ParallelJobConflict
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -139,7 +140,7 @@ async def create_parallel_job_group(
             organization_id=organization_id, project_id=project_id,
             group_id=group_id, jobs=jobs, max_attempts=payload.max_attempts,
         )
-    except (ValueError, DuplicateKeyError) as exc:
+    except (ValueError, DuplicateKeyError, ParallelJobConflict) as exc:
         await _audit(audit, principal, organization_id, project_id,
                      "nexus.parallel_jobs.create", "denied",
                      {"group_id": group_id, "error_type": type(exc).__name__})
@@ -164,7 +165,7 @@ async def create_parallel_job_group(
     tags=["nexus-jobs"],
 )
 async def get_parallel_job(
-    request,
+    request: Request,
     organization_id: str = Path(min_length=1, max_length=128),
     project_id: str = Path(min_length=1, max_length=128),
     job_id: str = Path(min_length=1, max_length=128),
@@ -191,7 +192,7 @@ async def get_parallel_job(
     tags=["nexus-jobs"],
 )
 async def cancel_parallel_job_group(
-    request,
+    request: Request,
     organization_id: str = Path(min_length=1, max_length=128),
     project_id: str = Path(min_length=1, max_length=128),
     group_id: str = Path(min_length=1, max_length=128),
