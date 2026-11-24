@@ -254,7 +254,10 @@ def _read_for_batch(grant: Any, item: dict[str, Any], parsed) -> str | None:
     raise WorkspacePatchApplyError("This platform does not support safe patch application")
 
 
-def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str, Any]:
+def apply_file_patch_batch(
+    grant: Any, items: list[dict[str, Any]], *, journal: Any | None = None,
+    root_key: str | None = None,
+) -> dict[str, Any]:
     """Apply a bounded batch with preflight checks and reverse-order compensation.
 
     Each individual filesystem operation is atomic. A batch is not a single
@@ -282,6 +285,13 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
         elif current is None or hashlib.sha256(current.encode("utf-8")).hexdigest() != base_hash:
             raise WorkspacePatchApplyError("A file changed after the approved batch was prepared")
         originals.append(current)
+
+    transaction_id = None
+    if journal is not None:
+        if not isinstance(root_key, str) or len(root_key) != 64:
+            raise WorkspacePatchApplyError("A durable workspace root identity is required")
+        # This write-ahead record must be durable before the first filesystem mutation.
+        transaction_id = journal.prepare(root_key, items, originals)
 
     applied: list[tuple[dict[str, Any], str | None]] = []
     results: list[dict[str, Any]] = []
@@ -325,6 +335,16 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
                     "Compensation failed for %s (%s)",
                     item["path"], type(rollback_error).__name__,
                 )
+        if transaction_id is not None:
+            journal.finish(
+                transaction_id,
+                state="recovered" if not rollback_failures else "conflict",
+                receipt={
+                    "applied_paths": applied_paths,
+                    "rolled_back_paths": rolled_back,
+                    "rollback_failures": rollback_failures,
+                },
+            )
         raise WorkspacePatchBatchError(
             "Patch batch failed; " + (
                 "all earlier file operations were rolled back"
@@ -336,9 +356,122 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
             rollback_failures=rollback_failures,
         ) from failure
 
+    receipt = {
+        "applied_paths": [item["path"] for item in items],
+        "file_count": len(items),
+        "rollback_required": False,
+    }
+    if transaction_id is not None:
+        # If this commit record cannot be persisted, leave the durable pending
+        # before-images intact; startup recovery will safely reverse the batch.
+        journal.finish(transaction_id, state="committed", receipt=receipt)
+
     return {
         "applied": True,
-        "transaction_semantics": "per-file-atomic-with-compensating-rollback",
+        "transaction_id": transaction_id,
+        "transaction_semantics": (
+            "durable-write-ahead-journal-with-crash-recovery"
+            if transaction_id is not None else
+            "per-file-atomic-with-compensating-rollback"
+        ),
         "rollback_required": False,
         "files": results,
     }
+
+
+class WorkspacePatchRecoveryRequired(RuntimeError):
+    """A pending transaction conflicts with current workspace contents."""
+
+
+def recover_pending_patch_transactions(
+    grant: Any, journal: Any, root_key: str
+) -> list[dict[str, Any]]:
+    """Recover pending batches through the selected native root handle.
+
+    Each target is restored only when its current hash is either the recorded
+    pre-transaction hash or the approved post-transaction hash. Any third value
+    is treated as an external edit and blocks recovery without overwriting it.
+    """
+    recovered: list[dict[str, Any]] = []
+    for transaction in journal.pending(root_key):
+        transaction_id = transaction["transaction_id"]
+        restored_paths: list[str] = []
+        conflicts: list[str] = []
+        for entry in reversed(transaction["files"]):
+            item = entry["patch"]
+            before = entry["before"]
+            parsed = _validate_file(item)
+            operation, base_hash, result_hash = parsed[1], parsed[2], parsed[3]
+            try:
+                current = _read_for_batch(grant, item, parsed)
+                current_hash = (
+                    hashlib.sha256(current.encode("utf-8")).hexdigest()
+                    if current is not None else None
+                )
+                inverse = None
+                if operation == "create":
+                    if current is None:
+                        continue
+                    if current_hash != result_hash:
+                        conflicts.append(item["path"])
+                        continue
+                    inverse = {
+                        "path": item["path"], "operation": "delete",
+                        "base_sha256": result_hash, "result_sha256": None,
+                        "content": None,
+                    }
+                elif operation == "update":
+                    if before is None:
+                        conflicts.append(item["path"])
+                        continue
+                    if current_hash == base_hash:
+                        continue
+                    if current_hash != result_hash:
+                        conflicts.append(item["path"])
+                        continue
+                    inverse = {
+                        "path": item["path"], "operation": "update",
+                        "base_sha256": result_hash,
+                        "result_sha256": hashlib.sha256(before.encode("utf-8")).hexdigest(),
+                        "content": before,
+                    }
+                else:  # delete
+                    if before is None:
+                        conflicts.append(item["path"])
+                        continue
+                    if current is not None:
+                        if current_hash == base_hash:
+                            continue
+                        conflicts.append(item["path"])
+                        continue
+                    inverse = {
+                        "path": item["path"], "operation": "create",
+                        "base_sha256": None,
+                        "result_sha256": hashlib.sha256(before.encode("utf-8")).hexdigest(),
+                        "content": before,
+                    }
+                if inverse is not None:
+                    apply_single_file_patch(grant, inverse)
+                    restored_paths.append(item["path"])
+            except (OSError, ValueError, WorkspacePatchApplyError):
+                conflicts.append(item["path"])
+
+        if conflicts:
+            journal.finish(
+                transaction_id, state="conflict",
+                receipt={"recovery_conflicts": sorted(set(conflicts)),
+                         "restored_paths": restored_paths},
+            )
+            raise WorkspacePatchRecoveryRequired(
+                "A pending workspace transaction conflicts with external file changes: "
+                + ", ".join(sorted(set(conflicts)))
+            )
+        journal.finish(
+            transaction_id, state="recovered",
+            receipt={"recovered": True, "restored_paths": restored_paths},
+        )
+        recovered.append({
+            "transaction_id": transaction_id,
+            "restored_paths": restored_paths,
+        })
+    return recovered

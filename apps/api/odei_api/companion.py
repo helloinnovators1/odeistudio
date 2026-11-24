@@ -46,6 +46,11 @@ from odei_api.services.workspace_handles import (
     WorkspaceNotFound,
 )
 from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
+from odei_api.services.workspace_transaction_journal import (
+    DurableWorkspaceJournal,
+    WorkspaceJournalError,
+    default_journal_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -525,6 +530,23 @@ def create_companion_app(
             **applied,
         }
 
+    @app.get("/v1/workspaces/{workspace_id}/transactions/{transaction_id}")
+    async def get_workspace_transaction_receipt(
+        workspace_id: str, transaction_id: str, request: Request
+    ):
+        """Return a bounded receipt without exposing journal before-images."""
+        require_bearer(request)
+        require_selected_workspace(workspace_id)
+        try:
+            receipt = await run_in_threadpool(
+                registry.transaction_receipt, workspace_id, transaction_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Transaction ID is invalid") from exc
+        if receipt is None:
+            raise HTTPException(status_code=404, detail="Workspace transaction receipt was not found")
+        return {"workspace_id": workspace_id, **receipt}
+
     @app.get("/v1/workspaces/{workspace_id}/files")
     async def list_workspace_files(workspace_id: str, request: Request):
         require_bearer(request)
@@ -874,7 +896,12 @@ def main() -> int:
         print("No project folders selected.")
         return 1
 
-    registry = WorkspaceHandleRegistry()
+    try:
+        journal = DurableWorkspaceJournal(default_journal_path())
+    except WorkspaceJournalError as exc:
+        print(f"Could not initialize the durable workspace transaction journal: {exc}", file=sys.stderr)
+        return 2
+    registry = WorkspaceHandleRegistry(journal=journal)
     workspace_ids: list[str] = []
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
