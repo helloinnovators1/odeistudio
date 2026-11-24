@@ -1235,3 +1235,33 @@ def test_companion_search_enforces_query_and_result_bounds(tmp_path):
     finally:
         registry.close()
 
+
+
+
+def test_project_file_read_rejects_concurrent_in_place_modification(tmp_path, monkeypatch):
+    from odei_api.services import project_files
+
+    target = tmp_path / "main.py"
+    target.write_bytes(b"before")
+    descriptor = os.open(target, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+    metadata = os.fstat(descriptor)
+    real_fstat = os.fstat
+    calls = {"count": 0}
+
+    def racing_fstat(fd):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            writer = os.open(target, os.O_WRONLY | getattr(os, "O_BINARY", 0))
+            try:
+                os.write(writer, b"change")
+            finally:
+                os.close(writer)
+            os.utime(
+                target,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1_000_000_000),
+            )
+        return real_fstat(fd)
+
+    monkeypatch.setattr(project_files.os, "fstat", racing_fstat)
+    with pytest.raises(project_files.UnsafeProjectPath, match="changed while being read"):
+        project_files._read_open_descriptor(descriptor, metadata, 100)
