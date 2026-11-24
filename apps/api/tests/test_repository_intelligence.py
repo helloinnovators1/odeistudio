@@ -151,3 +151,15 @@ async def test_semantic_search_is_revision_and_tenant_scoped():
         "organization_id": "org-a", "project_id": "project-a",
         "revision_id": "revision-a",
     }
+
+
+def test_cross_file_reference_analysis_has_a_repository_wide_cap():
+    call_lines = "target()\\n" * 5_000
+    files = [{"path": "defs.py", "content": "def target():\\n    return None\\n"}]
+    files.extend(
+        {"path": f"caller_{index}.py", "content": call_lines}
+        for index in range(11)
+    )
+    result = analyze_repository(files)
+    assert len(result["references"]) == 50_000
+    assert result["analysis_truncated"] is True
