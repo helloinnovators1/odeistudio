@@ -1158,7 +1158,7 @@ export default function NexusChatPanel({
         setMessages((current) => {
           if (!assistantStarted) {
             assistantStarted = true;
-            return [...current, { id: assistantId, role: "assistant" as const, content: delta, mode: mode === "debug" ? "debug" as const : "ask" as const }].slice(-20);
+            return [...current, { id: assistantId, role: "assistant" as const, content: delta, mode: (mode === "debug" ? "debug" : "ask") as "debug" | "ask" }].slice(-20);
           }
           return current.map((message) => message.id === assistantId
             ? { ...message, content: message.content + delta }
