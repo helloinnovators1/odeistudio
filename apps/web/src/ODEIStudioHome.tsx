@@ -179,6 +179,7 @@ export default function ODEIStudioHome({
   function chooseContext(path: string) {
     if (selectedContextPaths.includes(path)) {
       setSelectedContextPaths((current) => current.filter((item) => item !== path));
+      setPrompt((value) => value.replace("@" + path, "").replace(/\s{2,}/g, " ").trimStart());
     } else {
       if (selectedContextPaths.length >= 5) {
         setVoiceMessage("Select up to five workspace files for NEXUS context.");
