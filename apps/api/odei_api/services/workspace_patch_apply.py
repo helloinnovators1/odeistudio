@@ -254,7 +254,10 @@ def _read_for_batch(grant: Any, item: dict[str, Any], parsed) -> str | None:
     raise WorkspacePatchApplyError("This platform does not support safe patch application")
 
 
-def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str, Any]:
+def apply_file_patch_batch(
+    grant: Any, items: list[dict[str, Any]], *, journal: Any | None = None,
+    root_key: str | None = None,
+) -> dict[str, Any]:
     """Apply a bounded batch with preflight checks and reverse-order compensation.
 
     Each individual filesystem operation is atomic. A batch is not a single
@@ -282,6 +285,13 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
         elif current is None or hashlib.sha256(current.encode("utf-8")).hexdigest() != base_hash:
             raise WorkspacePatchApplyError("A file changed after the approved batch was prepared")
         originals.append(current)
+
+    transaction_id = None
+    if journal is not None:
+        if not isinstance(root_key, str) or len(root_key) != 64:
+            raise WorkspacePatchApplyError("A durable workspace root identity is required")
+        # This write-ahead record must be durable before the first filesystem mutation.
+        transaction_id = journal.prepare(root_key, items, originals)
 
     applied: list[tuple[dict[str, Any], str | None]] = []
     results: list[dict[str, Any]] = []
@@ -325,6 +335,16 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
                     "Compensation failed for %s (%s)",
                     item["path"], type(rollback_error).__name__,
                 )
+        if transaction_id is not None:
+            journal.finish(
+                transaction_id,
+                state="recovered" if not rollback_failures else "conflict",
+                receipt={
+                    "applied_paths": applied_paths,
+                    "rolled_back_paths": rolled_back,
+                    "rollback_failures": rollback_failures,
+                },
+            )
         raise WorkspacePatchBatchError(
             "Patch batch failed; " + (
                 "all earlier file operations were rolled back"
@@ -336,9 +356,24 @@ def apply_file_patch_batch(grant: Any, items: list[dict[str, Any]]) -> dict[str,
             rollback_failures=rollback_failures,
         ) from failure
 
+    receipt = {
+        "applied_paths": [item["path"] for item in items],
+        "file_count": len(items),
+        "rollback_required": False,
+    }
+    if transaction_id is not None:
+        # If this commit record cannot be persisted, leave the durable pending
+        # before-images intact; startup recovery will safely reverse the batch.
+        journal.finish(transaction_id, state="committed", receipt=receipt)
+
     return {
         "applied": True,
-        "transaction_semantics": "per-file-atomic-with-compensating-rollback",
+        "transaction_id": transaction_id,
+        "transaction_semantics": (
+            "durable-write-ahead-journal-with-crash-recovery"
+            if transaction_id is not None else
+            "per-file-atomic-with-compensating-rollback"
+        ),
         "rollback_required": False,
         "files": results,
     }
