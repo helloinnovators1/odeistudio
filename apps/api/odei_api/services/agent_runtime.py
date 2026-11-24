@@ -72,6 +72,7 @@ def run_nexus_agent(
     mode: str = "agent",
     timeout_seconds: int = 90,
     cancel_check: Callable[[], bool] | None = None,
+    event_sink: Callable[[dict[str, Any]], None] | None = None,
 ) -> AgentRunResult:
     """Run bounded read-only tools after explicit cloud-model consent.
 
@@ -85,7 +86,25 @@ def run_nexus_agent(
         raise ValueError(f"timeout_seconds must be between 1 and {MAX_AGENT_WALL_SECONDS}")
     if cancel_check is not None and not callable(cancel_check):
         raise TypeError("cancel_check must be callable")
+    if event_sink is not None and not callable(event_sink):
+        raise TypeError("event_sink must be callable")
     deadline = time.monotonic() + timeout_seconds
+    started_at = time.monotonic()
+
+    def emit_event(event: str, **attributes: Any) -> None:
+        if event_sink is None:
+            return
+        payload = {
+            "event": event,
+            "mode": mode,
+            "model": model,
+            "elapsed_ms": max(0, int((time.monotonic() - started_at) * 1000)),
+            **attributes,
+        }
+        try:
+            event_sink(payload)
+        except Exception as exc:
+            raise AgentRuntimeError("NEXUS audit event delivery failed; execution stopped") from exc
 
     def remaining_seconds() -> float:
         if cancel_check is not None and cancel_check():
@@ -134,8 +153,7 @@ def run_nexus_agent(
     if history_chars > MAX_AGENT_HISTORY_CHARS:
         raise ValueError("prior_messages exceeds the maximum context budget")
     history.append({"role": "user", "content": redact_secrets(clean_task)})
-    response = client.responses.create(
-        timeout=remaining_seconds(),
+    emit_event("agent.run.started", timeout_seconds=timeout_seconds)\n    emit_event("agent.provider.requested", request_number=1)\n    response = client.responses.create(\n        timeout=remaining_seconds(),
         model=model,
         instructions=AGENT_INSTRUCTIONS,
         input=list(history),
@@ -159,8 +177,7 @@ def run_nexus_agent(
             answer = _field(response, "output_text", "")
             if not isinstance(answer, str) or not answer.strip():
                 raise AgentRuntimeError("The model returned no final answer")
-            return AgentRunResult(
-                answer=redact_secrets(answer[:MAX_AGENT_OUTPUT_CHARS]),
+            emit_event("agent.run.completed", tool_calls=total_calls, tool_rounds=rounds)\n            return AgentRunResult(\n                answer=redact_secrets(answer[:MAX_AGENT_OUTPUT_CHARS]),
                 model=model,
                 tool_calls=total_calls,
                 tool_rounds=rounds,
@@ -186,14 +203,14 @@ def run_nexus_agent(
                 raise AgentRuntimeError("Model returned oversized tool arguments")
             seen_call_ids.add(call_id)
             total_calls += 1
-            try:
+            emit_event("agent.tool.started", tool_name=name, call_number=total_calls)\n            try:
                 arguments = json.loads(raw_arguments)
                 if not isinstance(arguments, dict):
                     raise ToolExecutionError("Tool arguments must be a JSON object")
                 result = workspace_tools.execute(name, arguments)
                 invoked_tools.append(name)
-            except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:
-                result = json.dumps({"error": redact_secrets(str(exc)[:500])})
+                emit_event("agent.tool.completed", tool_name=name, call_number=total_calls)\n            except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:
+                emit_event("agent.tool.failed", tool_name=name, call_number=total_calls, error_type=type(exc).__name__)\n                result = json.dumps({"error": redact_secrets(str(exc)[:500])})
             outputs.append({
                 "type": "function_call_output",
                 "call_id": call_id,
@@ -213,8 +230,7 @@ def run_nexus_agent(
         history.extend(output_items)
         history.extend(outputs)
         rounds += 1
-        response = client.responses.create(
-            timeout=remaining_seconds(),
+        emit_event("agent.provider.requested", request_number=rounds + 2)\n        response = client.responses.create(\n            timeout=remaining_seconds(),
             model=model,
             instructions=AGENT_INSTRUCTIONS,
             input=history,
