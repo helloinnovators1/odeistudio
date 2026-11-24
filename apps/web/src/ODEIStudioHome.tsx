@@ -108,7 +108,7 @@ export default function ODEIStudioHome({
     <section className="studio-home" aria-label="ODEI Studio Window">
       <header className="studio-home-menubar">
         <div className="studio-home-brand"><span className="studio-home-mark">O</span><strong>ODEI STUDIO</strong></div>
-        <nav aria-label="Application menu">{["File", "Edit", "View", "Help"].map((menu) => <button key={menu} type="button" className={activeMenu === menu ? "studio-menubar-item active" : "studio-menubar-item"} aria-haspopup="menu" aria-expanded={activeMenu === menu} onClick={() => { setActiveMenu((current) => current === menu ? null : menu); setShowApps(false); setOverflowOpen(false); }}>{menu}</button>)}</nav>
+        <nav aria-label="Application menu">{["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"].map((menu) => <button key={menu} type="button" className={activeMenu === menu ? "studio-menubar-item active" : "studio-menubar-item"} aria-haspopup="menu" aria-expanded={activeMenu === menu} onClick={() => { setActiveMenu((current) => current === menu ? null : menu); setShowApps(false); setOverflowOpen(false); }}>{menu}</button>)}</nav>
         {activeMenu && <div className="studio-menubar-popover" role="menu" aria-label={`${activeMenu} menu`}>{menuItems[activeMenu].map((item) => <button key={item.label} type="button" role="menuitem" onClick={() => runMenuAction(item.action)}><span>{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>)}</div>}
         <span className="studio-home-window-label">ODEI Studio Window</span>
         <div className="studio-home-tools">
@@ -186,9 +186,11 @@ export default function ODEIStudioHome({
         </aside>
 
         <section className="studio-home-main">
-          <div className="studio-home-main-top"><button type="button" className="studio-context-chip" onClick={onOpenWorkspace}><span className="studio-context-dot" />{workspaceName || "Select repository"} <span>⌄</span></button><button type="button" className="studio-context-chip" onClick={() => setVoiceMessage(window.odeiDesktop ? "This PC is available through the native desktop host." : "This PC requires the native ODEI desktop host.")}>▣ This PC <span>⌄</span></button></div>
+          <div className="studio-home-main-top"><button type="button" className="studio-context-chip" onClick={onOpenWorkspace}><span className="studio-context-dot" />{workspaceName || "OIPTECH Core"} <span>⌄</span></button><button type="button" className="studio-context-chip" onClick={() => setVoiceMessage(window.odeiDesktop ? "This PC is available through the native desktop host." : "This PC requires the native ODEI desktop host.")}>▣ This PC <span>⌄</span></button></div>
           <div className="studio-home-content">
-            
+            <span className="studio-eyebrow">YOUR AI SOFTWARE ENGINEERING WORKSPACE</span>
+            <h1>What are we building today?</h1>
+            <p className="studio-hero-copy">Plan, build, debug and ship with ODEI NEXUS.</p>
             <form className="studio-prompt-card" onSubmit={submit}>
               <label className="studio-sr-only" htmlFor="studio-home-prompt">Describe what you want to build</label>
               <textarea id="studio-home-prompt" rows={3} maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "@") setContextOpen(true); }} placeholder="Plan, Build, / for skills, @ for context" />{attachments.length > 0 && <div className="studio-attachment-list">{attachments.map((name, index) => <span key={name + index}>{name}<button type="button" aria-label={"Remove " + name} onClick={() => setAttachments((items) => items.filter((_, i) => i !== index))}>×</button></span>)}</div>}{contextOpen && <div className="studio-composer-popover studio-context-picker"><strong>ADD CONTEXT</strong><button type="button" onClick={() => chooseContext("workspace")}>Current workspace</button><button type="button" onClick={() => chooseContext("files")}>Files and folders</button><button type="button" onClick={() => chooseContext("terminal")}>Terminal context</button><button type="button" onClick={() => chooseContext("git-changes")}>Git changes</button><button type="button" onClick={() => chooseContext("browser")}>Browser context</button></div>}
