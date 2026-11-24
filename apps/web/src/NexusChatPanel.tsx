@@ -1142,6 +1142,7 @@ export default function NexusChatPanel({
         return;
       }
       const assistantId = "stream-" + newMessageId();
+      const responseMode: TranscriptMessage["mode"] = mode === "debug" ? "debug" : "ask";
       let assistantStarted = false;
       const response = await sendNexusChatStream({
         apiBaseUrl: config.apiBaseUrl,
@@ -1158,7 +1159,7 @@ export default function NexusChatPanel({
         setMessages((current) => {
           if (!assistantStarted) {
             assistantStarted = true;
-            return [...current, { id: assistantId, role: "assistant" as const, content: delta, mode: (mode === "debug" ? "debug" : "ask") as "debug" | "ask" }].slice(-20);
+            return [...current, { id: assistantId, role: "assistant" as const, content: delta, mode: responseMode }].slice(-20);
           }
           return current.map((message) => message.id === assistantId
             ? { ...message, content: message.content + delta }
