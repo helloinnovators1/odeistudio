@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 
 MAX_AGENT_TASK_CHARS = 8_000
 MAX_AGENT_TURNS = 6
@@ -61,12 +62,18 @@ def run_nexus_agent(
     workspace_tools: ReadOnlyWorkspaceTools,
     cloud_model_consent: bool = False,
     prior_messages: list[dict[str, str]] | None = None,
+    mode: str = "agent",
 ) -> AgentRunResult:
     """Run bounded read-only tools after explicit cloud-model consent.
 
     Responses are stateless (store=False); the caller-owned history replays prior
     output items and function results instead of relying on stored response IDs.
     """
+    try:
+        NexusCapabilityPolicy.require(mode, "workspace.inspect")
+    except NexusCapabilityDenied as exc:
+        raise AgentRuntimeError("The selected mode cannot run the workspace agent") from exc
+
     clean_task = task.strip()
     if not clean_task:
         raise ValueError("task must not be empty")

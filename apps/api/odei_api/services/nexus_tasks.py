@@ -24,6 +24,7 @@ from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.execution_runs import ExecutionRunConflict
 from odei_api.services.nexus_chat import NexusChatError, run_nexus_chat, stream_nexus_chat
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import (
@@ -467,8 +468,10 @@ async def nexus_project_chat_stream(
     """Stream redacted model deltas over SSE and persist the completed assistant turn."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
-    if payload.mode not in {"ask", "debug"}:
-        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "chat.read" if payload.mode == "ask" else "chat.debug")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."}) from exc
     if payload.cloud_model_consent is not True:
         raise HTTPException(status_code=400, detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending chat or workspace data to the cloud model."})
     if payload.conversation_id is None:
@@ -661,8 +664,10 @@ async def nexus_project_chat(
             status_code=422,
             detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."},
         )
-    if payload.mode not in {"ask", "debug"}:
-        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "chat.read" if payload.mode == "ask" else "chat.debug")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "This endpoint permits only Ask or Debug mode."}) from exc
     if payload.cloud_model_consent is not True:
         raise HTTPException(
             status_code=400,

@@ -14,6 +14,7 @@ from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.agent_runtime import AgentRuntimeError, run_nexus_agent
 from odei_api.services.conversation_store import ConversationStoreError
 from odei_api.services.nexus_patch_proposals import _audit_proposal
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_tasks import (
     NexusChatRequest,
     _append_nexus_chat_audit,
@@ -46,8 +47,10 @@ async def inspect_attached_project_excerpts(
     """Run bounded tools against attached excerpts and persist review-only proposals."""
     if organization_id != organization_id.strip() or project_id != project_id.strip():
         raise HTTPException(status_code=422, detail={"code": "INVALID_RESOURCE_ID", "message": "Resource identifier is invalid."})
-    if payload.mode != "agent":
-        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "Attached-file inspection is available only in Agent mode."})
+    try:
+        NexusCapabilityPolicy.require(payload.mode, "workspace.inspect")
+    except NexusCapabilityDenied as exc:
+        raise HTTPException(status_code=403, detail={"code": "NEXUS_MODE_FORBIDDEN", "message": "Attached-file inspection is available only in Agent mode."}) from exc
     if payload.cloud_model_consent is not True:
         raise HTTPException(status_code=400, detail={"code": "CLOUD_MODEL_CONSENT_REQUIRED", "message": "Explicit consent is required before sending chat or workspace data to the cloud model."})
     if payload.conversation_id is None:
