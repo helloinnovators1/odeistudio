@@ -94,7 +94,7 @@ class MongoParallelJobStore:
             raise ValueError("max_attempts must be between 1 and 10")
         now = datetime.now(timezone.utc)
         group = {
-            "_id": group_id, "organization_id": organization_id, "project_id": project_id,
+            "_id": f"{organization_id}:{project_id}:{group_id}", "group_id": group_id, "organization_id": organization_id, "project_id": project_id,
             "status": "queued", "job_count": len(jobs), "created_at": now, "updated_at": now,
         }
         documents = []
@@ -109,7 +109,7 @@ class MongoParallelJobStore:
             if len(encoded) > 32_768:
                 raise ValueError("job payload exceeds the size limit")
             dependencies = item.get("depends_on", [])
-            if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
+            if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies) or len(set(dependencies)) != len(dependencies):
                 raise ValueError("depends_on must be a list of job identifiers")
             documents.append({
                 "_id": uuid4().hex, "job_id": job_id, "group_id": group_id,
@@ -146,7 +146,7 @@ class MongoParallelJobStore:
         try:
             await self._jobs.insert_many(documents, ordered=True)
         except Exception:
-            await self._groups.delete_one({"_id": group_id, "organization_id": organization_id})
+            await self._groups.delete_one({"_id": f"{organization_id}:{project_id}:{group_id}", "organization_id": organization_id})
             raise
         for row in documents:
             await self._events.insert_one({
@@ -269,12 +269,28 @@ class MongoParallelJobStore:
 
     async def cancel_group(self, *, organization_id: str, project_id: str, group_id: str) -> int:
         now = datetime.now(timezone.utc)
-        result = await self._jobs.update_many(
+        queued = await self._jobs.update_many(
             {"organization_id": organization_id, "project_id": project_id,
              "group_id": group_id, "status": {"$in": ["queued", "blocked"]}},
             {"$set": {"status": "cancelled", "updated_at": now}, "$inc": {"version": 1}},
         )
-        return result.modified_count
+        leased = await self._jobs.update_many(
+            {"organization_id": organization_id, "project_id": project_id,
+             "group_id": group_id, "status": "leased"},
+            {"$set": {"cancel_requested": True, "updated_at": now}, "$inc": {"version": 1}},
+        )
+        return queued.modified_count + leased.modified_count
+
+    async def cancellation_requested(
+        self, *, organization_id: str, job_id: str, worker_id: str, lease_token: str,
+    ) -> bool:
+        row = await self._jobs.find_one({
+            "organization_id": organization_id, "job_id": job_id,
+            "worker_id": worker_id, "lease_token": lease_token, "status": "leased",
+        })
+        if row is None:
+            raise ParallelJobConflict("worker no longer owns this job lease")
+        return bool(row.get("cancel_requested", False))
 
     async def get(self, *, organization_id: str, project_id: str, job_id: str) -> ParallelJob | None:
         row = await self._jobs.find_one({
@@ -298,9 +314,13 @@ class GitWorktreeManager:
     """Create isolated Git worktrees under one trusted root without shell execution."""
 
     def __init__(self, repository: str | Path, worktree_root: str | Path):
-        self.repository = Path(repository).resolve(strict=True)
-        self.root = Path(worktree_root).resolve(strict=True)
-        if not (self.repository / ".git").exists() or self.repository == self.root:
+        repository_path = Path(repository)
+        root_path = Path(worktree_root)
+        if repository_path.is_symlink() or root_path.is_symlink():
+            raise ValueError("repository and worktree root cannot be symbolic links")
+        self.repository = repository_path.resolve(strict=True)
+        self.root = root_path.resolve(strict=True)
+        if not (self.repository / ".git").exists() or not self.root.is_dir() or self.repository == self.root:
             raise ValueError("repository must be a Git worktree and root must be separate")
 
     def create(self, *, job_id: str, base_commit: str) -> Path:
