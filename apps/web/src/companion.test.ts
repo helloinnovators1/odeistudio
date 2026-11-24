@@ -193,6 +193,6 @@ describe("signed companion patch application", () => {
         challenge: "C".repeat(43), capability: "signed-capability", files: [file],
       },
       fetchMock,
-    )).rejects.toThrow("invalid patch application result");
+    )).rejects.toThrow("invalid multi-file patch application result");
   });
 });
