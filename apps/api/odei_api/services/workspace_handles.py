@@ -12,6 +12,7 @@ import os
 import secrets
 import stat
 import threading
+from collections import OrderedDict
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -45,6 +46,8 @@ class _WorkspaceGrant:
     kernel32: object | None = None
     allow_patch_apply: bool = False
     lock: threading.RLock = field(default_factory=threading.RLock)
+    search_cache: OrderedDict[str, tuple[str, tuple[str, ...], int]] = field(default_factory=OrderedDict)
+    search_cache_bytes: int = 0
 
 
 class WorkspaceHandleRegistry:
@@ -186,7 +189,9 @@ class WorkspaceHandleRegistry:
                     int(grant.handle), max_files=DEFAULT_MAX_FILES,
                     max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
                 )
+            seen_paths: set[str] = set()
             for item in files:
+                seen_paths.add(item.path)
                 try:
                     if grant.platform == "nt":
                         content = read_project_text_file_from_windows_handle(
@@ -198,10 +203,29 @@ class WorkspaceHandleRegistry:
                         )
                 except (OSError, ValueError):
                     skipped_files += 1
+                    grant.search_cache.pop(item.path, None)
                     continue
                 scanned_files += 1
                 digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-                for line_number, line in enumerate(content.splitlines(), start=1):
+                cached = grant.search_cache.pop(item.path, None)
+                if cached is not None and cached[0] == digest:
+                    lines = cached[1]
+                    grant.search_cache[item.path] = cached
+                else:
+                    if cached is not None:
+                        grant.search_cache_bytes -= cached[2]
+                    lines = tuple(content.splitlines())
+                    cache_size = len(content.encode("utf-8"))
+                    # Keep a small per-workspace parsed-line cache. Files are still
+                    # reopened and hashed on every query, so edits and deletions
+                    # cannot be hidden by a stale cache.
+                    if cache_size <= 256 * 1024:
+                        grant.search_cache[item.path] = (digest, lines, cache_size)
+                        grant.search_cache_bytes += cache_size
+                        while grant.search_cache_bytes > 8 * 1024 * 1024:
+                            _old_path, old_entry = grant.search_cache.popitem(last=False)
+                            grant.search_cache_bytes -= old_entry[2]
+                for line_number, line in enumerate(lines, start=1):
                     if needle not in line.casefold():
                         continue
                     if len(matches) >= limit:
@@ -216,6 +240,12 @@ class WorkspaceHandleRegistry:
                     })
                 if truncated:
                     break
+            # Prune deleted or newly excluded paths so cache state never outlives
+            # the inventory returned by the currently selected workspace.
+            for cached_path in tuple(grant.search_cache):
+                if cached_path not in seen_paths:
+                    removed = grant.search_cache.pop(cached_path)
+                    grant.search_cache_bytes -= removed[2]
         return {
             "query": query,
             "matches": matches,
