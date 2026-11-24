@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import "./studio-home.css";
 
 interface Props {
@@ -28,6 +28,17 @@ export default function ODEIStudioHome({
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
+  const [githubOpen, setGithubOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("ODEI NEXUS");
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [recentChats, setRecentChats] = useState<string[]>([]);
+  const [automationName, setAutomationName] = useState("");
+  const [automationSchedule, setAutomationSchedule] = useState("Daily");
+  const [voiceMessage, setVoiceMessage] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   function openIndependentIDE() {
     const url = new URL(window.location.href);
@@ -79,9 +90,15 @@ export default function ODEIStudioHome({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onStartChat(prompt.trim());
+    const message = (prompt.trim() + (attachments.length ? "\n\nAttached files: " + attachments.join(", ") : "")).trim();
+    if (!message) return;
+    setRecentChats((items) => [prompt.trim().slice(0, 48) || "New conversation", ...items].slice(0, 6));
+    setAttachments([]);
+    onStartChat(message);
   }
 
+  function saveAutomationDraft(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!automationName.trim()) return; const key = "odei-automation-drafts"; let items: string[] = []; try { items = JSON.parse(window.localStorage.getItem(key) || "[]") as string[]; } catch { items = []; } window.localStorage.setItem(key, JSON.stringify([automationName.trim() + " · " + automationSchedule, ...items].slice(0, 10))); setAutomationName(""); setVoiceMessage("Automation draft saved locally; live scheduling is not configured."); }
+  function chooseContext(value: string) { setPrompt((current) => current + (current ? " " : "") + "@" + value + " "); setContextOpen(false); document.getElementById("studio-home-prompt")?.focus(); }
   function chooseSuggestion(action: (typeof suggestions)[number]["action"], title: string) {
     if (action === "workspace") onOpenWorkspace();
     else onStartChat(action === "plan" ? prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable." : prompt.trim() || title);
@@ -91,7 +108,7 @@ export default function ODEIStudioHome({
     <section className="studio-home" aria-label="ODEI Studio Window">
       <header className="studio-home-menubar">
         <div className="studio-home-brand"><span className="studio-home-mark">O</span><strong>ODEI STUDIO</strong></div>
-        <nav aria-label="Application menu">{Object.keys(menuItems).map((menu) => <button key={menu} type="button" className={activeMenu === menu ? "studio-menubar-item active" : "studio-menubar-item"} aria-haspopup="menu" aria-expanded={activeMenu === menu} onClick={() => { setActiveMenu((current) => current === menu ? null : menu); setShowApps(false); setOverflowOpen(false); }}>{menu}</button>)}</nav>
+        <nav aria-label="Application menu">{["File", "Edit", "View", "Help"].map((menu) => <button key={menu} type="button" className={activeMenu === menu ? "studio-menubar-item active" : "studio-menubar-item"} aria-haspopup="menu" aria-expanded={activeMenu === menu} onClick={() => { setActiveMenu((current) => current === menu ? null : menu); setShowApps(false); setOverflowOpen(false); }}>{menu}</button>)}</nav>
         {activeMenu && <div className="studio-menubar-popover" role="menu" aria-label={`${activeMenu} menu`}>{menuItems[activeMenu].map((item) => <button key={item.label} type="button" role="menuitem" onClick={() => runMenuAction(item.action)}><span>{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>)}</div>}
         <span className="studio-home-window-label">ODEI Studio Window</span>
         <div className="studio-home-tools">
@@ -129,16 +146,16 @@ export default function ODEIStudioHome({
       {helpOpen && <div className="studio-help-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setHelpOpen(false); }}><section className="studio-help-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-help-title"><div className="studio-help-heading"><strong id="studio-help-title">KEYBOARD SHORTCUTS</strong><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setHelpOpen(false)}>×</button></div><p><kbd>Ctrl / ⌘ + N</kbd> New Chat</p><p><kbd>Ctrl / ⌘ + O</kbd> Open Workspace</p><p><kbd>Ctrl / ⌘ + A</kbd> Select prompt text</p><p><kbd>Ctrl / ⌘ + I</kbd> Toggle NEXUS in the IDE workspace</p><button type="button" onClick={() => setHelpOpen(false)}>Done</button></section></div>}
       {minimized ? <div className="studio-minimized-view"><span className="studio-home-mark">O</span><strong>ODEI Studio is minimized</strong><button type="button" onClick={() => setMinimized(false)}>Restore ODEI Studio</button></div> : <div className="studio-home-layout">
         <aside className="studio-home-sidebar">
-          <div className="studio-home-nav" aria-label="Primary navigation">
+          <div className="studio-sidebar-shortcuts"><button type="button" aria-label="Toggle sidebar" onClick={() => setVoiceMessage("Sidebar is visible.")}>◧</button><button type="button" aria-label="Search" onClick={() => setContextOpen(true)}>⌕</button><span /><button type="button" aria-label="Back" onClick={() => setActiveSection("New Chat")}>‹</button><button type="button" aria-label="Forward" onClick={() => setActiveSection("New Chat")}>›</button></div><div className="studio-home-nav" aria-label="Primary navigation">
             <button className={activeSection === "New Chat" ? "studio-nav-item active" : "studio-nav-item"} onClick={() => { setActiveSection("New Chat"); onStartChat(""); }}>
               <span>✧</span>New Chat
             </button>
-            <button className="studio-nav-item disabled" disabled title="Automations are not connected yet"><span>◷</span>Automations <small>Coming soon</small></button>
+            <button className={activeSection === "Automations" ? "studio-nav-item active" : "studio-nav-item"} onClick={() => { setActiveSection("Automations"); setAutomationsOpen(true); }}><span>◷</span>Automations</button>
             <button className="studio-nav-item" onClick={onCustomize}><span>☷</span>Customize</button>
           </div>
 
           <section className="studio-sidebar-section">
-            <div className="studio-sidebar-heading"><span>Projects</span><button title="Open workspace" aria-label="Open workspace" onClick={onOpenWorkspace}>＋</button></div>
+            <div className="studio-sidebar-heading"><span>Projects</span><button title="New Project" aria-label="New Project" onClick={onOpenWorkspace}>＋ New Project</button></div>
             <button className="studio-project-row" onClick={onOpenWorkspace}>
               <span className="studio-project-icon">▱</span>
               <span><strong>{workspaceName || "Open a workspace"}</strong><small>{companionConnected ? "Local companion connected" : "No project open yet"}</small></span>
@@ -146,7 +163,7 @@ export default function ODEIStudioHome({
           </section>
 
           <section className="studio-sidebar-section studio-repositories">
-            <div className="studio-sidebar-heading"><span>Repositories</span><span className="studio-muted-count">LOCAL</span></div>
+            <div className="studio-sidebar-heading"><span>Repositories</span><span><button title="Filter repositories" aria-label="Filter repositories" onClick={() => setVoiceMessage("Repository filtering uses connected workspace inventory.")}>☰</button><button title="Add repository" aria-label="Add repository" onClick={onOpenWorkspace}>▱＋</button></span></div>
             <div className="studio-empty-repository">
               <span className="studio-folder-icon">▰</span>
               <p>Connect your local companion to browse repositories and folders you choose.</p>
@@ -154,6 +171,7 @@ export default function ODEIStudioHome({
             </div>
           </section>
 
+          <section className="studio-history-list" aria-label="Recent chats"><div className="studio-sidebar-heading"><span>Recent</span><button aria-label="New chat" onClick={() => onStartChat("")}>＋</button></div>{recentChats.length ? recentChats.map((chat, index) => <button key={chat + index} className="studio-history-item" onClick={() => onStartChat(chat)}>{chat}</button>) : <small>No recent chats in this session</small>}</section><button className="studio-connect-github" onClick={() => setGithubOpen(true)}>◉ Connect GitHub</button>
           <div className="studio-getting-started">
             <div className="studio-getting-heading"><strong>Getting Started</strong><span>0/3</span></div>
             <div className="studio-progress"><span /></div>
@@ -168,25 +186,18 @@ export default function ODEIStudioHome({
         </aside>
 
         <section className="studio-home-main">
-          <div className="studio-home-main-top"><span className="studio-context-chip"><span className="studio-context-dot" />{workspaceName || "No project selected"} <span>⌄</span></span><span className="studio-context-chip">▣ This PC <span>⌄</span></span></div>
+          <div className="studio-home-main-top"><button type="button" className="studio-context-chip" onClick={onOpenWorkspace}><span className="studio-context-dot" />{workspaceName || "Select repository"} <span>⌄</span></button><button type="button" className="studio-context-chip" onClick={() => setVoiceMessage(window.odeiDesktop ? "This PC is available through the native desktop host." : "This PC requires the native ODEI desktop host.")}>▣ This PC <span>⌄</span></button></div>
           <div className="studio-home-content">
-            <div className="studio-hero-mark">O</div>
-            <span className="studio-eyebrow">YOUR AI-NATIVE DEVELOPMENT WORKSPACE</span>
-            <h1>What are we building today?</h1>
-            <p className="studio-hero-copy">Plan, build, debug and ship software with ODEI NEXUS by your side.</p>
-
+            
             <form className="studio-prompt-card" onSubmit={submit}>
               <label className="studio-sr-only" htmlFor="studio-home-prompt">Describe what you want to build</label>
-              <textarea id="studio-home-prompt" rows={3} maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Plan, build, / for skills, @ for context" />
+              <textarea id="studio-home-prompt" rows={3} maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "@") setContextOpen(true); }} placeholder="Plan, Build, / for skills, @ for context" />{attachments.length > 0 && <div className="studio-attachment-list">{attachments.map((name, index) => <span key={name + index}>{name}<button type="button" aria-label={"Remove " + name} onClick={() => setAttachments((items) => items.filter((_, i) => i !== index))}>×</button></span>)}</div>}{contextOpen && <div className="studio-composer-popover studio-context-picker"><strong>ADD CONTEXT</strong><button type="button" onClick={() => chooseContext("workspace")}>Current workspace</button><button type="button" onClick={() => chooseContext("files")}>Files and folders</button><button type="button" onClick={() => chooseContext("terminal")}>Terminal context</button><button type="button" onClick={() => chooseContext("git-changes")}>Git changes</button><button type="button" onClick={() => chooseContext("browser")}>Browser context</button></div>}
               <div className="studio-prompt-toolbar">
-                <button type="button" className="studio-add-context" title="Open workspace context" onClick={onOpenWorkspace}>＋</button>
-                <span className="studio-prompt-hint">NEXUS · Project-aware assistance</span>
-                <span className="studio-model-indicator"><i />NEXUS</span>
-                <button className="studio-send-button" type="submit" disabled={!prompt.trim()} aria-label="Start with NEXUS">↑</button>
+                <div className="studio-composer-actions"><button type="button" className="studio-add-context" title="Attach files" aria-label="Attach files" onClick={() => fileInputRef.current?.click()}>＋</button><input ref={fileInputRef} className="studio-sr-only" type="file" multiple onChange={(event) => { setAttachments((items) => [...items, ...Array.from(event.target.files || []).map((file) => file.name)].slice(0, 10)); event.currentTarget.value = ""; }} /><button type="button" className="studio-tool-button" title="Add context" aria-label="Add context" onClick={() => setContextOpen((open) => !open)}>＠</button></div><span className="studio-prompt-hint">{voiceMessage || " "}</span><div className="studio-model-anchor"><button type="button" className="studio-model-indicator" aria-expanded={modelOpen} onClick={() => setModelOpen((open) => !open)}><i />{selectedModel}⌄</button>{modelOpen && <div className="studio-composer-popover studio-model-picker"><strong>MODEL</strong><button type="button" onClick={() => { setSelectedModel("ODEI NEXUS"); setModelOpen(false); }}>ODEI NEXUS <small>Configured assistant</small></button><button type="button" disabled>Grok 4.7 High <small>Provider not configured</small></button></div>}</div><button type="button" className="studio-tool-button" title="Microphone dictation" aria-label="Microphone dictation" onClick={() => setVoiceMessage("Microphone dictation requires browser speech-recognition support and permission.")}>🎙</button><button type="button" className="studio-voice-button" title="Voice" aria-label="Voice" onClick={() => setVoiceMessage("Voice sessions require a configured realtime speech provider.")}>◖)))</button><button className="studio-send-button" type="submit" disabled={!prompt.trim()} aria-label="Start with NEXUS">↑</button>
               </div>
             </form>
 
-            <div className="studio-quick-actions"><button onClick={() => onStartChat(prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable.")}>Start with a plan <kbd>↵</kbd></button><button onClick={onOpenWorkspace}>Open workspace</button></div>
+            <div className="studio-quick-actions"><button onClick={() => onStartChat(prompt.trim() || "Help me plan a new project. Start by clarifying the goal, constraints, architecture and first deliverable.")}>Plan New Idea <kbd>⇧Tab</kbd></button><button onClick={() => onStartChat((prompt.trim() + "\n\nWork on independent tasks in parallel where safe.").trim())}>Multitask</button></div>
 
             <div className="studio-suggestions" aria-label="Suggested starting points">
               {suggestions.map((item) => (
@@ -195,11 +206,13 @@ export default function ODEIStudioHome({
                 </button>
               ))}
             </div>
-            <p className="studio-home-footnote">Tip: use <kbd>/ask</kbd> in the workspace to research your codebase before making changes.</p>
+            <p className="studio-home-footnote">Use <kbd>/ask</kbd> to research your codebase before making changes.</p>
           </div>
           <div className="studio-home-status"><span>{companionConnected ? "Local companion connected" : "Local workspace not connected"}</span><span>ODEI Studio Window</span></div>
         </section>
       </div>}
+      {automationsOpen && <div className="studio-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAutomationsOpen(false); }}><section className="studio-feature-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-automations-title"><div className="studio-dialog-heading"><strong id="studio-automations-title">Automations</strong><button type="button" onClick={() => setAutomationsOpen(false)}>×</button></div><p>Save automation drafts. Live scheduling and background execution require the automation service to be configured.</p><form onSubmit={saveAutomationDraft}><label htmlFor="studio-automation-name">Automation name</label><input id="studio-automation-name" value={automationName} onChange={(event) => setAutomationName(event.target.value)} placeholder="Review open pull requests" required /><label htmlFor="studio-automation-schedule">Schedule</label><select id="studio-automation-schedule" value={automationSchedule} onChange={(event) => setAutomationSchedule(event.target.value)}><option>Daily</option><option>Weekly</option><option>On repository update</option><option>Manual</option></select><button type="submit" disabled={!automationName.trim()}>Save automation draft</button></form></section></div>}
+      {githubOpen && <div className="studio-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGithubOpen(false); }}><section className="studio-feature-dialog" role="dialog" aria-modal="true" aria-labelledby="studio-github-title"><div className="studio-dialog-heading"><strong id="studio-github-title">Connect GitHub</strong><button type="button" onClick={() => setGithubOpen(false)}>×</button></div><p>GitHub repository access requires a configured ODEI GitHub OAuth application or GitHub App installation. This deployment has not supplied that connection, so no repository permissions are requested here.</p><button type="button" onClick={() => { setGithubOpen(false); onOpenWorkspace(); }}>Open local workspace instead</button><button type="button" className="studio-secondary-action" onClick={() => window.open("https://github.com/settings/apps", "_blank", "noopener,noreferrer")}>Review GitHub app settings ↗</button></section></div>}
     </section>
   );
 }
