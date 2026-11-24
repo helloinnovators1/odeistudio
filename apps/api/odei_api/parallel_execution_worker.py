@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 import uuid
 
 from odei_api.config import get_settings
@@ -60,7 +61,25 @@ async def _main() -> None:
     )
     try:
         logger.info("NEXUS parallel worker started")
-        await worker.serve()
+        loop = asyncio.get_running_loop()
+        stop = asyncio.Event()
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(signum, stop.set)
+            except NotImplementedError:
+                pass
+        serving = asyncio.create_task(worker.serve())
+        stopping = asyncio.create_task(stop.wait())
+        done, pending = await asyncio.wait(
+            {serving, stopping}, return_when=asyncio.FIRST_COMPLETED,
+        )
+        if serving in done:
+            await serving
+        else:
+            serving.cancel()
+            await asyncio.gather(serving, return_exceptions=True)
+        stopping.cancel()
+        await asyncio.gather(stopping, return_exceptions=True)
     finally:
         await client.close()
 
