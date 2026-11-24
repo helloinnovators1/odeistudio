@@ -20,8 +20,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from odei_api.services.workspace_transaction_journal import workspace_root_key
-
 from odei_api.services.project_files import (
     DEFAULT_MAX_FILES,
     DEFAULT_MAX_TOTAL_BYTES,
@@ -32,6 +30,7 @@ from odei_api.services.project_files import (
     read_project_text_file_from_posix_fd,
     read_project_text_file_from_windows_handle,
 )
+from odei_api.services.workspace_transaction_journal import workspace_root_key
 
 
 class WorkspaceHandleError(RuntimeError):
@@ -136,7 +135,9 @@ class WorkspaceHandleRegistry:
                 )
             grant.root_key = workspace_root_key(selected_path, identity)
             if self._journal is not None:
-                from odei_api.services.workspace_patch_apply import recover_pending_patch_transactions
+                from odei_api.services.workspace_patch_apply import (
+                    recover_pending_patch_transactions,
+                )
                 recover_pending_patch_transactions(grant, self._journal, grant.root_key)
         except Exception:
             if grant.platform == "nt":
