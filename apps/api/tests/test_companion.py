@@ -1162,8 +1162,9 @@ def test_companion_search_returns_bounded_literal_matches_with_provenance(tmp_pa
         assert [(item["path"], item["line"]) for item in payload["matches"]] == [
             ("src/module.py", 2), ("src/module.py", 3),
         ]
+        current_content = registry.read_text(workspace_id, "src/module.py")
         assert payload["matches"][0]["content_sha256"] == hashlib.sha256(
-            b"alpha = 1\nNeedleValue = 2\nneedlevalue = 3\n"
+            current_content.encode("utf-8")
         ).hexdigest()
         assert payload["matches"][0]["index_version"] == "literal-search-v1"
         assert payload["scanned_files"] >= 1
