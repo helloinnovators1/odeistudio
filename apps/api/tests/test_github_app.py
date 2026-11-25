@@ -111,7 +111,7 @@ async def test_worker_commit_is_based_on_pinned_head_and_creates_review_pr_witho
         Response(201, {"ref": "refs/heads/odei/nexus/run-1"}),
         Response(201, {
             "number": 12, "html_url": "https://github.com/Acme/Service/pull/12",
-            "head": {"sha": "e" * 40}, "base": {"ref": "main"},
+            "head": {"sha": "e" * 40}, "base": {"ref": "main", "sha": "a" * 40},
         }),
     ])
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
