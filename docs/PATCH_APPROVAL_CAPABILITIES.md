@@ -1,6 +1,6 @@
 # Local patch-application capabilities
 
-**Status: one-file local application is implemented and merged in PR #24.** The API issues a short-lived Ed25519 capability; the paired local companion independently verifies it and applies one approved file. The API itself never writes to a local filesystem. The response field `application_enabled: false` means that no cloud-side write is performed; it does not disable the separately authorized companion apply operation.
+**Status: bounded multi-file local application is implemented.** The API issues a short-lived Ed25519 capability; the paired local companion independently verifies it and applies the exact approved batch. The API itself never writes to a local filesystem. The response field `application_enabled: false` means that no cloud-side write is performed; it does not disable the separately authorized companion apply operation.
 
 ## End-to-end route
 
@@ -39,12 +39,12 @@ The local verifier recomputes the canonical digest from the exact payload, compa
 
 ## Implemented scope and limitations
 
-- Exactly one file operation is accepted per apply request. Multi-file proposals are rejected rather than partially applied.
+- One to twenty file operations are accepted per apply request, subject to per-file and aggregate content limits. The API and companion bind the complete ordered-independent canonical batch digest to the approved proposal/version and one-use challenge.
 - Create operations refuse to overwrite an existing path. Update/delete operations re-read the live file and compare its SHA-256 with the approved base hash.
 - POSIX uses retained directory descriptors and no-follow operations. Windows uses retained directory handles, reparse-point protections, a staged same-directory file and `NtSetInformationFile(FileRenameInformationEx=65)` with POSIX-semantics replacement. Unsupported filesystems fail closed; there is no absolute-path fallback.
-- The companion reports whether directory-metadata durability was confirmed. Windows flushes staged file contents before rename but does not claim that directory metadata was durably flushed.
+- The companion reports whether directory-metadata durability was confirmed. POSIX flushes staged file contents and parent directory metadata; Windows flushes staged file contents before rename but does not claim that directory metadata was durably flushed.
 - The browser exposes Apply only for an approved one-file proposal when the paired companion advertises `patch:apply`. Pairing, explicit local write opt-in, signed capability and a fresh challenge are all required.
-- The operation is single-file atomic replacement, not a multi-file transaction. Durable rollback journals, crash recovery and multi-file rollback are not implemented.
+- Each file replacement is atomic; the batch uses a durable SQLite write-ahead journal with bounded before-images, reverse-order hash-guarded compensation, startup crash recovery, conflict receipts and workspace-open blocking when recovery would overwrite an external edit. This is a recoverable multi-file transaction, not a single filesystem-wide atomic primitive. A response must not claim success without a durable terminal receipt.
 - Shell, process execution, network tools, package installation and arbitrary filesystem writes remain unavailable.
 
 ## Verification and release gates
@@ -52,3 +52,8 @@ The local verifier recomputes the canonical digest from the exact payload, compa
 PR #24 merged as `1a5e6d9479b4a5b0dfac6d09b6dba61aac42163b`. Its exact source head passed Windows and Ubuntu CI on Python 3.10/3.12, MongoDB replica-set integration, web tests/build, CodeQL, secret scanning and Python/web dependency audits.
 
 The companion has not yet been installed and exercised on the user's Windows 10 build 18362 device. Before production use, configure the matched API signer and companion public key through managed configuration, perform a real ODID-to-browser-to-local-companion staging test, validate the user's exact Windows/filesystem combination, and verify backup/restore and operational monitoring. Do not paste secrets or tokens into chat.
+
+
+### Journal crash-recovery validation
+
+The API CI suite injects process termination after a multi-file batch has durably prepared its journal and after update, create and delete namespace mutations at the filesystem-flush boundary. Restarting the workspace registry must restore the exact pre-transaction state without overwriting external edits. The CI matrix covers Windows and POSIX runners; it does not replace acceptance on the user's physical Windows 10 build 18362 device and target filesystem.

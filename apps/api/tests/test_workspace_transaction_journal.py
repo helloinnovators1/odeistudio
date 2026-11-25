@@ -275,3 +275,76 @@ def test_journal_enforces_combined_before_and_after_byte_budget(tmp_path):
     ]
     with pytest.raises(ValueError, match="aggregate"):
         journal.prepare("5" * 64, patches, [before, before, before])
+
+
+@pytest.mark.parametrize(
+    ("operation", "crash_on_fsync"),
+    [("update", 2), ("delete", 1), ("create", 2)],
+)
+def test_restart_recovers_crash_after_namespace_mutation_before_directory_flush(
+    tmp_path, monkeypatch, operation, crash_on_fsync,
+):
+    from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "main.py").write_text("before", encoding="utf-8")
+    (project / "deleted.py").write_text("preserve", encoding="utf-8")
+    journal = DurableWorkspaceJournal(tmp_path / "state" / "journal.sqlite3")
+    registry = WorkspaceHandleRegistry(journal=journal)
+    workspace_id = registry.register_selected_root(project, allow_patch_apply=True)
+
+    if operation == "update":
+        item = {
+            "path": "main.py", "operation": "update",
+            "base_sha256": hashlib.sha256(b"before").hexdigest(),
+            "result_sha256": hashlib.sha256(b"after").hexdigest(),
+            "content": "after",
+        }
+    elif operation == "delete":
+        item = {
+            "path": "deleted.py", "operation": "delete",
+            "base_sha256": hashlib.sha256(b"preserve").hexdigest(),
+            "result_sha256": None, "content": None,
+        }
+    else:
+        item = {
+            "path": "created.py", "operation": "create",
+            "base_sha256": None,
+            "result_sha256": hashlib.sha256(b"created").hexdigest(),
+            "content": "created",
+        }
+
+    real_fsync = os.fsync
+    calls = {"count": 0}
+
+    def crash_at_flush_boundary(descriptor):
+        calls["count"] += 1
+        if calls["count"] == crash_on_fsync:
+            raise KeyboardInterrupt("simulated host crash at filesystem flush boundary")
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", crash_at_flush_boundary)
+    with pytest.raises(KeyboardInterrupt):
+        registry.apply_patch_batch(workspace_id, [item])
+    registry.close()
+    monkeypatch.setattr(os, "fsync", real_fsync)
+
+    restarted = WorkspaceHandleRegistry(journal=journal)
+    try:
+        recovered_id = restarted.register_selected_root(project, allow_patch_apply=True)
+        if operation == "update":
+            assert restarted.read_text(recovered_id, "main.py") == "before"
+        elif operation == "delete":
+            assert restarted.read_text(recovered_id, "deleted.py") == "preserve"
+        else:
+            assert restarted.read_text(recovered_id, "created.py") is None
+        pending = journal.pending(
+            workspace_root_key(
+                project,
+                f"posix:{os.stat(project).st_dev}:{os.stat(project).st_ino}",
+            ) if os.name != "nt" else "0" * 64
+        )
+        assert pending == []
+    finally:
+        restarted.close()
