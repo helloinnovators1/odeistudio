@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from odei_api.config import get_settings
@@ -24,15 +24,15 @@ principal_dependency = Depends(get_current_principal)
 
 class BindRepositoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    installation_id: int = Field(ge=1)
+    installation_id: StrictInt = Field(ge=1)
     owner: str = Field(min_length=1, max_length=39, pattern=r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
     repository: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_.-]+$")
-    expected_version: int | None = Field(default=None, ge=1)
+    expected_version: StrictInt | None = Field(default=None, ge=1)
 
 
 class RemoveRepositoryBindingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    expected_version: int = Field(ge=1)
+    expected_version: StrictInt = Field(ge=1)
 
 
 def _public_binding(document: dict) -> dict:

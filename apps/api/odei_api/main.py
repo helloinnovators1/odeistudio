@@ -44,8 +44,8 @@ from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
 from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
 from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
-from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.nexus_repository_bindings import router as nexus_repository_bindings_router
+from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.parallel_jobs import MongoParallelJobStore
 from odei_api.services.parallel_jobs_api import router as parallel_jobs_router
 from odei_api.services.planning import PlanningError, create_task_plan

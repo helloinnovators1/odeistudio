@@ -84,7 +84,7 @@ class GitHubAppInstallationClient:
 
             token_response = await self.http.post(
                 f"https://api.github.com/app/installations/{installation_id}/access_tokens",
-                headers=headers, json={},
+                headers=headers, json={"repositories": [name]},
             )
             if token_response.status_code != 201:
                 raise GitHubRepositoryVerificationError("GitHub installation token could not be issued")
