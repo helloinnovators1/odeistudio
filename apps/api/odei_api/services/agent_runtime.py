@@ -7,7 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from odei_api.services.governed_tool_registry import GovernedToolInputError, GovernedToolRegistry
+from odei_api.services.governed_tool_registry import (
+    GovernedToolInputError,
+    GovernedToolRegistry,
+)
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError

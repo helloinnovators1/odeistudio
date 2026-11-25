@@ -260,7 +260,7 @@ class GovernedToolRegistry:
             try:
                 self._audit({"event": "nexus.tool.failed", **event, "error_type": type(exc).__name__})
             except Exception as audit_exc:
-                raise GovernedToolError("audit unavailable; tool failure could not be recorded") from audit_exc
+                raise GovernedToolAuditError("audit unavailable; tool failure could not be recorded") from audit_exc
             raise GovernedToolError("tool execution failed") from exc
         try:
             self._audit({"event": "nexus.tool.completed", **event})
