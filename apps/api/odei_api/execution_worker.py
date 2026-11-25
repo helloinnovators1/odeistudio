@@ -285,7 +285,7 @@ async def _main() -> None:
     os.chmod(workspace_root, 0o700)
     client, database_name = create_mongo_client(settings)
     database = client[database_name]
-    github_http = httpx.AsyncClient(timeout=20.0)
+    github_http = httpx.AsyncClient(timeout=10.0)
     github_app = GitHubAppInstallationClient(
         app_id=settings.github_app_id,
         private_key_b64=settings.github_app_private_key_b64,
