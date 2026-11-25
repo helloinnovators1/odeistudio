@@ -25,7 +25,6 @@ from odei_api.services.project_files import (
     DEFAULT_MAX_TOTAL_BYTES,
     MAX_TEXT_FILE_BYTES,
     ProjectFile,
-    ProjectFileError,
     list_project_files_from_posix_fd,
     list_project_files_from_windows_handle,
     read_project_text_file_from_posix_fd,
@@ -268,7 +267,7 @@ class WorkspaceHandleRegistry:
                         content = read_project_text_file_from_posix_fd(
                             int(grant.handle), item.path, max_bytes=MAX_SEARCH_FILE_BYTES
                         )
-                except (ProjectFileError, OSError, UnicodeError):
+                except (ValueError, OSError, UnicodeError):
                     skipped_files += 1
                     stale = grant.search_cache.pop(item.path, None)
                     if stale is not None:
