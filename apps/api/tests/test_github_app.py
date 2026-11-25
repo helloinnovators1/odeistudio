@@ -100,6 +100,7 @@ async def test_worker_commit_is_based_on_pinned_head_and_creates_review_pr_witho
             "truncated": False,
             "tree": [
                 {"type": "blob", "mode": "100644", "path": "README.md", "sha": "e" * 40},
+                {"type": "blob", "mode": "100644", "path": "gone.txt", "sha": "f" * 40},
             ],
         }),
         Response(201, {"sha": "c" * 40}),
