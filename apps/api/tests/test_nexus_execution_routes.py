@@ -4,7 +4,7 @@ import base64
 from dataclasses import replace
 import io
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -124,7 +124,10 @@ class MergeApprovalStore:
 
     async def create(self, **values):
         self.document = {
-            **values, "approval_id": "a" * 32, "status": "pending",
+            **values,
+            "created_by_issuer": values["actor_issuer"],
+            "created_by_subject": values["actor_subject"],
+            "approval_id": "a" * 32, "status": "pending",
             "version": 1, "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
         }
         return dict(self.document)
