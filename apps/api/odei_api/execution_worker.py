@@ -15,7 +15,6 @@ import uuid
 from pathlib import Path
 
 import httpx
-
 from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings

@@ -123,8 +123,7 @@ class ExecutionRun:
             self.repository_installation_id, self.repository_owner, self.repository_name,
             self.repository_default_branch, self.repository_base_sha,
         )
-        if any(value is not None for value in repository_fields):
-            if (
+        if any(value is not None for value in repository_fields) and (
                 any(value is None for value in repository_fields)
                 or isinstance(self.repository_binding_version, bool)
                 or not isinstance(self.repository_binding_version, int)
@@ -140,15 +139,14 @@ class ExecutionRun:
                 or not isinstance(self.repository_default_branch, str) or not self.repository_default_branch
                 or not isinstance(self.repository_base_sha, str)
                 or not re.fullmatch(r"[0-9a-f]{40}", self.repository_base_sha)
-            ):
-                raise ValueError("trusted repository execution binding is incomplete or invalid")
+        ):
+            raise ValueError("trusted repository execution binding is incomplete or invalid")
         provenance_fields = (
             self.worker_commit_sha, self.worker_tree_sha, self.worker_branch,
             self.worker_pull_request_number, self.worker_pull_request_url,
             self.worker_provenance_at,
         )
-        if any(value is not None for value in provenance_fields):
-            if (
+        if any(value is not None for value in provenance_fields) and (
                 any(value is None for value in provenance_fields)
                 or not self.repository_binding_version
                 or not isinstance(self.worker_commit_sha, str)
@@ -162,8 +160,8 @@ class ExecutionRun:
                 or not isinstance(self.worker_pull_request_url, str)
                 or self.worker_pull_request_url.casefold() != f"https://github.com/{self.repository_owner}/{self.repository_name}/pull/{self.worker_pull_request_number}".casefold()
                 or not isinstance(self.worker_provenance_at, datetime)
-            ):
-                raise ValueError("worker repository provenance is incomplete or invalid")
+        ):
+            raise ValueError("worker repository provenance is incomplete or invalid")
 
 def _event(run: ExecutionRun, *, event_type: str, version: int,
            actor_id: str, **fields: Any) -> dict[str, Any]:

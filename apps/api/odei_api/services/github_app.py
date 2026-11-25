@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import logging
 import os
 import re
 import time
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+import httpx
 import jwt
 
 from odei_api.services.secret_redaction import redact_secrets
@@ -20,6 +22,9 @@ from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapsh
 
 class GitHubAppNotConfigured(RuntimeError):
     """The GitHub App credentials required for trusted binding are unavailable."""
+
+
+logger = logging.getLogger(__name__)
 
 
 class GitHubRepositoryVerificationError(RuntimeError):
@@ -401,11 +406,19 @@ class GitHubAppInstallationClient:
         except Exception:
             if branch_created:
                 try:
-                    await self.http.delete(
+                    cleanup = await self.http.delete(
                         f"{prefix}/git/refs/heads/{quote(branch, safe='')}", headers=headers,
                     )
-                except Exception:
-                    pass
+                    if cleanup.status_code not in {204, 404}:
+                        logger.warning(
+                            "Failed to remove abandoned NEXUS worker branch",
+                            extra={"repository_id": repository_id, "run_id": run_id},
+                        )
+                except httpx.HTTPError:
+                    logger.warning(
+                        "Failed to remove abandoned NEXUS worker branch",
+                        extra={"repository_id": repository_id, "run_id": run_id},
+                    )
             raise
 
 
