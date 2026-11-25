@@ -171,3 +171,25 @@ def test_repository_binding_remove_requires_exact_version():
         assert removed.json() == {"removed": True, "binding_version": 3}
     finally:
         restore(previous)
+
+
+
+def test_repository_binding_cannot_change_while_execution_is_active():
+    previous, database, _audit = install(Principal(
+        subject="owner", issuer="https://id.example/",
+    ))
+    database["execution_runs"].rows.append({
+        "organization_id": "org", "project_id": "project", "status": "running",
+    })
+    try:
+        url = "/api/v1/organizations/org/projects/project/repository-binding"
+        bind = TestClient(app).put(url, json={
+            "installation_id": 77, "owner": "acme", "repository": "service",
+        })
+        assert bind.status_code == 409
+        assert bind.json()["detail"]["code"] == "REPOSITORY_BINDING_LOCKED"
+        remove = TestClient(app).request("DELETE", url, json={"expected_version": 1})
+        assert remove.status_code == 409
+        assert remove.json()["detail"]["code"] == "REPOSITORY_BINDING_LOCKED"
+    finally:
+        restore(previous)
