@@ -18,8 +18,8 @@ from odei_api.services.audit_store import MongoAuditEventStore
 from odei_api.services.execution_runs import MongoExecutionRunStore
 from odei_api.services.mad_telemetry import MongoWorkerHeartbeatStore
 from odei_api.services.nexus_parallel_execution import NexusParallelExecutionHandler
-from odei_api.services.parallel_jobs import MongoParallelJobStore
 from odei_api.services.parallel_job_worker import ParallelJobWorker
+from odei_api.services.parallel_jobs import MongoParallelJobStore
 
 
 logger = logging.getLogger("odei.parallel.worker")

@@ -231,5 +231,5 @@ class ParallelJobWorker:
             if self.heartbeats is not None:
                 try:
                     await self.heartbeats.mark_stopped(worker_id=self.worker_id)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - shutdown telemetry must never mask worker cleanup
                     logger.warning("Parallel worker shutdown heartbeat failed (error=%s)", type(exc).__name__)
