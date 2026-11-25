@@ -1795,19 +1795,20 @@ export default function NexusChatPanel({
                 {taskBusy ? "Saving…" : "Approve plan"}
               </button>
             )}
-            {["awaiting_approval", "approved", "executing", "validating"].includes(taskPlan.status) && (
+            {["awaiting_approval", "approved", "executing", "validating", "repairing"].includes(taskPlan.status) && (
               <button type="button" className="nexus-link-button" onClick={() => void cancelTaskPlan()} disabled={taskBusy || executionBusy}>
                 Cancel task
               </button>
             )}
-            {taskPlan.status === "approved" && !executionRun && (
+            {["approved", "repairing"].includes(taskPlan.status)
+              && (!executionRun || executionRun.status === "failed") && (
               <div className="nexus-execution-controls">
-                <strong>ISOLATED EXECUTION</strong>
+                <strong>{taskPlan.status === "repairing" ? "REPAIR VERIFICATION" : "ISOLATED EXECUTION"}</strong>
                 {!workspaceContext ? (
                   <p className="nexus-muted">Connect the local companion and select a workspace before creating an execution snapshot.</p>
                 ) : (
                   <>
-                    <p>{workspaceContext.files.length} local files are visible to the companion. A filtered snapshot is created only after both consent checks and your confirmation.</p>
+                    <p>{workspaceContext.files.length} local files are visible to the companion. A filtered snapshot is created only after both consent checks and your confirmation.{taskPlan.status === "repairing" ? " After reviewing and applying an approved repair proposal, capture a fresh snapshot and rerun verification." : ""}</p>
                     {workspaceContext.files.length === 0 && <p className="nexus-muted">No readable files are currently listed for this workspace.</p>}
                     <label className="nexus-execution-label" htmlFor="nexus-execution-profile">Server-approved execution profile</label>
                     <select id="nexus-execution-profile" value={executionProfileId}
@@ -1840,7 +1841,8 @@ export default function NexusChatPanel({
                     <button type="button" className="nexus-secondary-button"
                       onClick={() => void startExecution()}
                       disabled={executionBusy || workspaceContext.files.length === 0 || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent}>
-                      {executionBusy ? "Preparing snapshot and queueing…" : "Create isolated execution"}
+                      {executionBusy ? "Preparing snapshot and queueing…"
+                        : taskPlan.status === "repairing" ? "Run verification again" : "Create isolated execution"}
                     </button>
                   </>
                 )}
@@ -1935,15 +1937,6 @@ export default function NexusChatPanel({
                     {executionDiagnostics.evidence.map((line, index) => <pre key={index}>{line}</pre>)}
                     <p className="nexus-muted">{executionDiagnostics.next_step}</p>
                   </section>
-                )}
-                {taskPlan.status === "repairing" && executionRun.status === "failed" && (
-                  <div className="nexus-execution-controls">
-                    <button type="button" className="nexus-secondary-button"
-                      onClick={() => void startExecution()} disabled={executionBusy || !workspaceUploadConsent || !codeExecutionConsent}>
-                      Run approved verification profile again
-                    </button>
-                    <p className="nexus-muted">After reviewing and applying an approved patch, capture a fresh workspace snapshot and explicitly consent to another isolated verification run.</p>
-                  </div>
                 )}
                 {executionRun.status === "failed" && executionDiagnostics
                   && executionDiagnostics.category !== "succeeded" && (
