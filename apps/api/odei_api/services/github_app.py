@@ -172,7 +172,7 @@ class GitHubAppInstallationClient:
             raise GitHubRepositoryVerificationError("GitHub repository verification failed") from exc
 
 
-    async def create_workspace_pull_request(
+    async def _create_workspace_pull_request(
         self, *, binding: dict[str, Any], workspace: str | Path,
         run_id: str, base_sha: str,
     ) -> dict[str, Any] | None:
@@ -395,3 +395,20 @@ class GitHubAppInstallationClient:
                 except Exception:
                     pass
             raise
+
+
+    async def create_workspace_pull_request(
+        self, *, binding: dict[str, Any], workspace: str | Path,
+        run_id: str, base_sha: str,
+    ) -> dict[str, Any] | None:
+        """Publish a bounded worker review proposal; normalize provider errors for the worker."""
+        try:
+            return await self._create_workspace_pull_request(
+                binding=binding, workspace=workspace, run_id=run_id, base_sha=base_sha,
+            )
+        except GitHubRepositoryVerificationError:
+            raise
+        except Exception as exc:
+            raise GitHubRepositoryVerificationError(
+                "Worker repository publication failed",
+            ) from exc
