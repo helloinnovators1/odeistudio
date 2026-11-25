@@ -104,3 +104,36 @@ def test_clear_drops_content_and_advances_revision(tmp_path):
     assert index.revision == previous + 1
     assert index.search("classified") == []
     assert index.file_provenance("a.txt") is None
+
+
+def test_rejects_hard_linked_files_to_avoid_indexing_external_content(tmp_path):
+    source = tmp_path.parent / "outside-sensitive.txt"
+    source.write_text("external private material", encoding="utf-8")
+    root = tmp_path / "workspace"
+    root.mkdir()
+    try:
+        (root / "linked.txt").hardlink_to(source)
+    except (OSError, NotImplementedError):
+        pytest.skip("hard links are unavailable on this platform")
+
+    index = RepositoryIndex(root)
+    result = index.rebuild_or_update()
+
+    assert result.indexed == 0
+    assert result.skipped == 1
+    assert index.search("external private material") == []
+
+
+def test_descriptor_reader_rejects_final_symlink_even_when_target_is_inside_root(tmp_path):
+    from odei_api.services.repository_index import _read_index_file
+
+    target = tmp_path / "target.txt"
+    target.write_text("must not be reached through a link", encoding="utf-8")
+    link = tmp_path / "linked.txt"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this platform")
+
+    with pytest.raises(OSError):
+        _read_index_file(tmp_path, link, 1024)
