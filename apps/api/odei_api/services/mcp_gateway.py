@@ -166,6 +166,7 @@ class McpGateway:
         self._next_id = 0
         self._sessions: dict[str, str] = {}
         self._initialized: set[str] = set()
+        self._tool_schema_digests: dict[tuple[str, str], str] = {}
 
     @property
     def configured(self) -> bool:
@@ -285,9 +286,19 @@ class McpGateway:
                     raise McpGatewayError("MCP tool names collide after namespacing")
                 names.add(name)
                 description = tool.get("description", "Approved read-only MCP integration tool")
-                if not isinstance(description, str) or len(description) > 1000:
-                    raise McpGatewayError("MCP tool description is invalid")
-                schema = _strict_tool_schema(tool.get("inputSchema", {"type": "object"}))
+                annotations = tool.get("annotations")
+                if (
+                    not isinstance(description, str) or len(description) > 1000
+                    or not isinstance(annotations, dict)
+                    or annotations.get("readOnlyHint") is not True
+                    or annotations.get("destructiveHint") is True
+                ):
+                    raise McpGatewayError("MCP tool is not explicitly annotated as read-only")
+                raw_schema = tool.get("inputSchema", {"type": "object"})
+                schema = _strict_tool_schema(raw_schema)
+                self._tool_schema_digests[(server.server_id, tool_name)] = __import__("hashlib").sha256(
+                    json.dumps(raw_schema, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                ).hexdigest()
                 exposed.append({
                     "name": name,
                     "description": redact_secrets(description)[:1000],
@@ -308,6 +319,23 @@ class McpGateway:
         if not isinstance(arguments, dict) or len(json.dumps(arguments, separators=(",", ":"))) > 16_384:
             raise McpGatewayError("MCP tool arguments exceed the size limit")
         self._initialize(server)
+        current = self._rpc(server, "tools/list", {}).get("tools")
+        if not isinstance(current, list):
+            raise McpGatewayError("MCP tool catalogue is invalid")
+        current_tool = next(
+            (item for item in current if isinstance(item, dict) and item.get("name") == tool_name),
+            None,
+        )
+        if current_tool is None:
+            raise McpGatewayError("MCP tool is no longer available")
+        current_digest = __import__("hashlib").sha256(
+            json.dumps(current_tool.get("inputSchema", {"type": "object"}), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if current_digest != self._tool_schema_digests.get((server_id, tool_name)):
+            raise McpGatewayError("MCP tool schema changed after it was approved for this session")
+        annotations = current_tool.get("annotations")
+        if not isinstance(annotations, dict) or annotations.get("readOnlyHint") is not True or annotations.get("destructiveHint") is True:
+            raise McpGatewayError("MCP tool is no longer marked read-only")
         result = self._rpc(server, "tools/call", {"name": tool_name, "arguments": arguments})
         if result.get("isError") is True:
             raise McpGatewayError("MCP tool reported an execution error")
