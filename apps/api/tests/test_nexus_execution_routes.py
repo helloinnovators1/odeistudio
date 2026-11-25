@@ -94,7 +94,12 @@ class Snapshots:
 
 
 class Artifacts:
+    def __init__(self):
+        self.document = None
+
     async def get_for_tenant(self, **_values):
+        if self.document is not None:
+            return self.document
         return {
             "artifact_id": "artifact-1", "run_id": "run-1",
             "exit_code": 0, "duration_ms": 12, "timed_out": False,
