@@ -143,3 +143,58 @@ def test_semantic_search_requires_explicit_cloud_consent():
         assert response.json()["detail"]["code"] == "CLOUD_MODEL_CONSENT_REQUIRED"
     finally:
         _restore_state(previous)
+
+def test_project_regex_search_is_bounded_and_returns_provenance():
+    previous, audit = _install_state(Principal(
+        subject="owner", issuer="https://identity.example/",
+    ))
+    try:
+        response = TestClient(app).get(
+            "/api/v1/organizations/org-1/projects/project-1/repository-index/search",
+            params={"q": r"needle\\s+found", "regex": "true"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["mode"] == "regex"
+        result, = response.json()["results"]
+        assert result["path"] == "src/main.py"
+        assert result["sha256"] == "a" * 64
+        assert audit.events[-1]["action"] == "repository.search.regex"
+    finally:
+        _restore_state(previous)
+
+
+def test_project_regex_search_rejects_invalid_expression():
+    previous, _audit_store = _install_state(Principal(
+        subject="owner", issuer="https://identity.example/",
+    ))
+    try:
+        response = TestClient(app).get(
+            "/api/v1/organizations/org-1/projects/project-1/repository-index/search",
+            params={"q": "(", "regex": "true"},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "REGEX_INVALID"
+    finally:
+        _restore_state(previous)
+
+
+def test_project_regex_search_times_out_pathological_expression():
+    previous, _audit_store = _install_state(Principal(
+        subject="owner", issuer="https://identity.example/",
+    ))
+    class PathologicalStore(RepositoryStore):
+        async def get_active_files(self, *, organization_id, project_id):
+            return [{
+                "path": "src/large.txt", "content": "a" * 100_000 + "!",
+                "sha256": "b" * 64,
+            }]
+    app.state.repository_index_store = PathologicalStore()
+    try:
+        response = TestClient(app).get(
+            "/api/v1/organizations/org-1/projects/project-1/repository-index/search",
+            params={"q": r"^(a+)+$", "regex": "true"},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "REGEX_SEARCH_BUDGET_EXCEEDED"
+    finally:
+        _restore_state(previous)

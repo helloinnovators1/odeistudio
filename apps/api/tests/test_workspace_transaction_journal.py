@@ -238,3 +238,36 @@ def test_conflicted_transaction_keeps_recovery_payload_and_scoped_receipt(tmp_pa
         "receipt": {"recovery_conflicts": ["main.py"]},
     }
     assert journal.receipt("f" * 64, transaction_id) is None
+
+def test_journal_rejects_casefolded_duplicate_paths_and_traversal(tmp_path):
+    journal = DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    first = _patch("src/Main.py", "old", "new")
+    second = _patch("src/main.py", "old", "new")
+    with pytest.raises(ValueError, match="duplicate paths"):
+        journal.prepare("1" * 64, [first, second], ["old", "old"])
+    unsafe = _patch("../outside.py", "old", "new")
+    with pytest.raises(ValueError, match="path is invalid"):
+        journal.prepare("2" * 64, [unsafe], ["old"])
+
+
+def test_journal_rejects_before_image_hash_mismatch_and_invalid_operation(tmp_path):
+    journal = DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    patch = _patch("main.py", "old", "new")
+    with pytest.raises(ValueError, match="hashes are inconsistent"):
+        journal.prepare("3" * 64, [patch], ["different"])
+    invalid = {**patch, "operation": "move"}
+    with pytest.raises(ValueError, match="operation or content hashes"):
+        journal.prepare("4" * 64, [invalid], ["old"])
+
+
+def test_journal_enforces_combined_before_and_after_byte_budget(tmp_path):
+    journal = DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    half = "x" * (2 * 1024 * 1024 + 1)
+    patch = {
+        "path": "main.py", "operation": "update",
+        "base_sha256": hashlib.sha256(half.encode()).hexdigest(),
+        "result_sha256": hashlib.sha256(half.encode()).hexdigest(),
+        "content": half,
+    }
+    with pytest.raises(ValueError, match="aggregate"):
+        journal.prepare("5" * 64, [patch], [half])

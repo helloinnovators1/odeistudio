@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-import re
+import time
+import regex as bounded_regex
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
@@ -401,6 +402,7 @@ async def search_repository(
     request: Request,
     q: str = Query(min_length=1, max_length=512),
     case_sensitive: bool = False,
+    regex: bool = False,
     limit: int = Query(default=20, ge=1, le=100),
     organization_id: str = ApiPath(min_length=1, max_length=128),
     project_id: str = ApiPath(min_length=1, max_length=128),
@@ -417,25 +419,54 @@ async def search_repository(
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"}) from exc
     if state is None:
         raise HTTPException(status_code=404, detail={"code": "REPOSITORY_INDEX_NOT_FOUND"})
-    pattern = re.compile(re.escape(q), 0 if case_sensitive else re.IGNORECASE)
+    if regex and len(q) > 256:
+        raise HTTPException(status_code=422, detail={"code": "REGEX_QUERY_TOO_LONG"})
+    try:
+        pattern = bounded_regex.compile(
+            q if regex else bounded_regex.escape(q),
+            0 if case_sensitive else bounded_regex.IGNORECASE,
+        )
+    except bounded_regex.error as exc:
+        raise HTTPException(status_code=422, detail={"code": "REGEX_INVALID"}) from exc
+
+    # A timeout on each line bounds pathological expressions; a request-wide
+    # deadline bounds the aggregate cost across all indexed files and lines.
+    deadline = time.monotonic() + 2.0
     hits = []
-    for record in files:
-        for line_number, line in enumerate(record["content"].splitlines(), start=1):
-            if pattern.search(line):
-                hits.append({
-                    "path": record["path"], "line": line_number,
-                    "snippet": line[:500], "sha256": record["sha256"],
-                    "revision": state["revision"], "snapshot_id": state["snapshot_id"],
-                })
-                if len(hits) >= limit:
-                    break
-        if len(hits) >= limit:
-            break
+    try:
+        for record in files:
+            for line_number, line in enumerate(record["content"].splitlines(), start=1):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("repository search budget exceeded")
+                if pattern.search(line, timeout=0.02):
+                    hits.append({
+                        "path": record["path"], "line": line_number,
+                        "snippet": line[:500], "sha256": record["sha256"],
+                        "revision": state["revision"], "snapshot_id": state["snapshot_id"],
+                    })
+                    if len(hits) >= limit:
+                        break
+            if len(hits) >= limit:
+                break
+    except TimeoutError as exc:
+        await _audit(
+            request, principal, organization_id, project_id,
+            "repository.search.regex.timeout",
+            {"query_length": len(q), "revision": state["revision"]},
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "REGEX_SEARCH_BUDGET_EXCEEDED", "message": "The expression exceeded the bounded search budget."},
+        ) from exc
     await _audit(
         request, principal, organization_id, project_id,
-        "repository.search.exact", {"query_length": len(q), "result_count": len(hits)},
+        "repository.search.regex" if regex else "repository.search.exact",
+        {"query_length": len(q), "result_count": len(hits), "revision": state["revision"]},
     )
-    return {"revision": state["revision"], "results": hits, "limit": limit}
+    return {
+        "revision": state["revision"], "results": hits, "limit": limit,
+        "mode": "regex" if regex else "exact",
+    }
 
 
 @router.get(
