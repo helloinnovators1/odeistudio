@@ -8,6 +8,7 @@ be restricted by the deployment firewall/proxy.
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import os
@@ -296,7 +297,7 @@ class McpGateway:
                     raise McpGatewayError("MCP tool is not explicitly annotated as read-only")
                 raw_schema = tool.get("inputSchema", {"type": "object"})
                 schema = _strict_tool_schema(raw_schema)
-                self._tool_schema_digests[(server.server_id, tool_name)] = __import__("hashlib").sha256(
+                self._tool_schema_digests[(server.server_id, tool_name)] = hashlib.sha256(
                     json.dumps(raw_schema, sort_keys=True, separators=(",", ":")).encode("utf-8")
                 ).hexdigest()
                 exposed.append({
