@@ -34,7 +34,7 @@ class Http:
 
 
 @pytest.mark.asyncio
-async def test_github_app_verifies_installation_and_write_repository_without_persisting_token():
+async def test_github_app_uses_ephemeral_installation_token_only_for_provider_request():
     http = Http([
         Response(200, {"id": 77, "app_id": 42}),
         Response(201, {"token": "short-lived-secret", "expires_at": "soon"}),
@@ -44,29 +44,30 @@ async def test_github_app_verifies_installation_and_write_repository_without_per
             "owner": {"login": "Acme"}, "permissions": {"contents": "write"},
         }),
     ])
-    client = GitHubAppInstallationClient(
-        app_id=42,
-        private_key_b64=SimpleNamespace(get_secret_value=lambda: base64.b64encode(
-            b"-----BEGIN PRIVATE KEY-----\\nnot-a-real-key\\n-----END PRIVATE KEY-----"
-        ).decode()),
-        http_client=http,
-    )
-    # Signing validates the PEM, so use a generated test key.
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem = key.private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
         serialization.NoEncryption(),
     )
-    client.private_key_b64 = SimpleNamespace(
-        get_secret_value=lambda: base64.b64encode(pem).decode(),
+    client = GitHubAppInstallationClient(
+        app_id=42,
+        private_key_b64=SimpleNamespace(
+            get_secret_value=lambda: base64.b64encode(pem).decode(),
+        ),
+        http_client=http,
     )
     verified = await client.verify_repository(installation_id=77, owner="acme", name="service")
     assert verified.repository_id == 123
     assert verified.full_name == "Acme/Service"
     assert verified.default_branch == "main"
     assert verified.contents_permission == "write"
-    assert all("short-lived-secret" not in str(call) for call in http.calls)
-
+    assert http.calls[-1][2]["headers"]["Authorization"] == "Bearer short-lived-secret"
+    assert all("short-lived-secret" not in url for _method, url, _kwargs in http.calls)
+    assert all(
+        "short-lived-secret" not in str(kwargs.get("json"))
+        for _method, _url, kwargs in http.calls
+    )
+    assert "short-lived-secret" not in repr(verified)
 
 @pytest.mark.asyncio
 async def test_github_app_rejects_installation_from_another_app():
