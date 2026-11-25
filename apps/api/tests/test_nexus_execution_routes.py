@@ -132,6 +132,9 @@ class MergeApprovalStore:
         }
         return dict(self.document)
 
+    async def get_for_run(self, **_values):
+        return dict(self.document) if self.document is not None else None
+
     async def consume(self, **values):
         if (
             self.document is None or self.document["status"] != "pending"
@@ -469,6 +472,10 @@ def test_owner_must_create_and_consume_single_use_merge_approval(execution_state
     assert approval["status"] == "pending"
     assert approval["approval_id"] == "a" * 32
     assert github.verified[0][1]["commit_sha"] == "c" * 40
+    approval_state = TestClient(app).get(path)
+    assert approval_state.status_code == 200, approval_state.text
+    assert approval_state.json()["repository_merge_approval"]["status"] == "pending"
+    assert approval_state.json()["repository_merge_approval"]["approval_id"] == approval["approval_id"]
 
     merge_response = TestClient(app).post(
         path + "/merge",
@@ -479,6 +486,10 @@ def test_owner_must_create_and_consume_single_use_merge_approval(execution_state
     assert merge_response.json()["merge_commit_sha"] == "e" * 40
     assert store.document["status"] == "consumed"
     assert len(github.merged) == 1
+    merged_state = TestClient(app).get(path)
+    assert merged_state.status_code == 200, merged_state.text
+    assert merged_state.json()["repository_merge_approval"]["status"] == "consumed"
+    assert merged_state.json()["repository_merge_approval"]["merge_commit_sha"] == "e" * 40
 
     replay = TestClient(app).post(
         path + "/merge",
