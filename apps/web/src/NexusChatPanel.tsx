@@ -207,8 +207,8 @@ export default function NexusChatPanel({
         expires_at: approvalState.expires_at,
         pull_request_url: review.pull_request_url,
         pull_request_number: review.pull_request_number,
-        commit_sha: review.commit_sha ?? "",
-        base_sha: review.base_sha ?? "",
+        commit_sha: review.commit_sha,
+        base_sha: review.base_sha,
         confirmation_required: "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE",
       });
     } else if (approvalState?.status === "expired") {
