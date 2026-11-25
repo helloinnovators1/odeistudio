@@ -5,7 +5,7 @@ import base64
 import binascii
 import logging
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -724,6 +724,7 @@ async def create_repository_merge_approval(
     )
     try:
         await github.verify_pull_request(binding=binding, expected=expected)
+        binding = await _trusted_binding_for_run(database, run)
     except GitHubAppNotConfigured as exc:
         raise HTTPException(status_code=503, detail={
             "code": "GITHUB_APP_NOT_CONFIGURED",
@@ -771,13 +772,16 @@ async def create_repository_merge_approval(
             "code": "MERGE_APPROVAL_STORAGE_UNAVAILABLE",
             "message": "The merge approval could not be stored.",
         }) from exc
-    await _append_decision(
-        request, principal, organization_id, run_id,
-        "nexus.repository_merge_approval.create", "success",
-        {"approval_id": approval["approval_id"],
-         "pull_request_number": expected["pull_request_number"],
-         "commit_sha": expected["commit_sha"], "expires_at": approval["expires_at"].isoformat()},
-    )
+    try:
+        await _append_decision(
+            request, principal, organization_id, run_id,
+            "nexus.repository_merge_approval.create", "success",
+            {"approval_id": approval["approval_id"],
+             "pull_request_number": expected["pull_request_number"],
+             "commit_sha": expected["commit_sha"], "expires_at": approval["expires_at"].isoformat()},
+        )
+    except HTTPException:
+        logger.exception("Merge approval was durably stored but final audit append failed")
     return {
         "approval_id": approval["approval_id"], "status": approval["status"],
         "expires_at": approval["expires_at"].isoformat(),
