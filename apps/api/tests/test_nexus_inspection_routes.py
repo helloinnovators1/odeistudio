@@ -35,8 +35,10 @@ class FakeConversationStore:
 class FakeResponses:
     def __init__(self):
         self.calls = 0
+        self.requests = []
 
-    def create(self, **_kwargs):
+    def create(self, **kwargs):
+        self.requests.append(kwargs)
         self.calls += 1
         if self.calls == 1:
             return SimpleNamespace(
@@ -63,6 +65,8 @@ def inspection_state(monkeypatch):
         "audit_event_store": getattr(app.state, "audit_event_store", None),
         "conversation_store": getattr(app.state, "conversation_store", None),
         "patch_proposal_store": getattr(app.state, "patch_proposal_store", None),
+        "execution_run_store": getattr(app.state, "execution_run_store", None),
+        "execution_artifact_store": getattr(app.state, "execution_artifact_store", None),
     }
     audit = FakeAuditStore()
     app.state.audit_event_store = audit
@@ -148,3 +152,83 @@ def test_inspection_fails_closed_before_tool_dispatch_when_audit_is_unavailable(
     # invoking it when the required durable "started" audit event could not commit.
     assert fake_client.responses.calls == 1
     assert "nexus.tool.completed" not in [event["action"] for event in audit.events]
+
+
+class FakeExecutionRunStore:
+    def __init__(self, run):
+        self.run = run
+
+    async def get(self, **_kwargs):
+        return self.run
+
+
+class FakeExecutionArtifactStore:
+    async def get_for_tenant(self, **_kwargs):
+        return {
+            "exit_code": 1, "duration_ms": 1200, "timed_out": False,
+            "stdout": "", "stderr": "ModuleNotFoundError: No module named 'missing_pkg'",
+        }
+
+
+def test_failed_execution_context_is_authorized_audited_and_proposal_only(
+    inspection_state, monkeypatch,
+):
+    from types import SimpleNamespace
+
+    audit = inspection_state
+    previous_run_store = getattr(app.state, "execution_run_store", None)
+    previous_artifact_store = getattr(app.state, "execution_artifact_store", None)
+    app.state.execution_run_store = FakeExecutionRunStore(SimpleNamespace(
+        project_id="project-1", task_id="task-1", status="failed",
+    ))
+    app.state.execution_artifact_store = FakeExecutionArtifactStore()
+
+    async def authorize_execution(*_args, **_kwargs):
+        return (None, {"owner_issuer": "https://identity.example.test/"}, SimpleNamespace(id="task-1"))
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection._authorize_execution_resource",
+        authorize_execution,
+    )
+    fake_client = FakeClient()
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection.get_openai_client",
+        lambda: (fake_client, "test-model"),
+    )
+    payload = _payload()
+    payload.update({
+        "execution_repair_task_id": "task-1",
+        "execution_repair_run_id": "run-1",
+        "execution_repair_consent": True,
+    })
+    try:
+        response = TestClient(app).post(
+            "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+            json=payload,
+        )
+        assert response.status_code == 200, response.text
+        first_input = fake_client.responses.requests[0]["input"][-1]["content"]
+        assert "UNTRUSTED EXECUTION DIAGNOSTICS" in first_input
+        assert "ModuleNotFoundError" in first_input
+        assert response.json()["read_only"] is True
+        repair_audit = next(event for event in audit.events if event["action"] == "nexus.execution.repair_context.read")
+        assert repair_audit["target_id"] == "run-1"
+        assert repair_audit["metadata"]["category"] == "failed"
+        assert "ModuleNotFoundError" not in str(repair_audit)
+    finally:
+        app.state.execution_run_store = previous_run_store
+        app.state.execution_artifact_store = previous_artifact_store
+
+
+def test_execution_repair_context_requires_explicit_consent(inspection_state):
+    payload = _payload()
+    payload.update({
+        "execution_repair_task_id": "task-1",
+        "execution_repair_run_id": "run-1",
+    })
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+        json=payload,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "EXECUTION_REPAIR_CONSENT_REQUIRED"

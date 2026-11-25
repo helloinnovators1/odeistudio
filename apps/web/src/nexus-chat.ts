@@ -19,6 +19,9 @@ export interface NexusChatRequest {
   signal?: AbortSignal;
   conversationId?: string;
   mode?: "ask" | "debug" | "agent";
+  executionRepairTaskId?: string;
+  executionRepairRunId?: string;
+  executionRepairConsent?: true;
 }
 
 export interface NexusChatResponse {
@@ -388,6 +391,14 @@ export async function sendNexusChatStream(
   const organizationId = requireIdentifier(request.organizationId, "Organization ID");
   const projectId = requireIdentifier(request.projectId, "Project ID");
   const conversationId = requireIdentifier(request.conversationId ?? "", "Conversation ID");
+  const repairFieldsPresent = request.executionRepairTaskId !== undefined ||
+    request.executionRepairRunId !== undefined || request.executionRepairConsent !== undefined;
+  if (repairFieldsPresent && (
+    !request.executionRepairTaskId || !request.executionRepairRunId ||
+    request.executionRepairConsent !== true
+  )) throw new TypeError("Execution-guided repair requires a task, failed run and explicit consent.");
+  if (request.executionRepairTaskId) requireIdentifier(request.executionRepairTaskId, "Task ID");
+  if (request.executionRepairRunId) requireIdentifier(request.executionRepairRunId, "Execution run ID");
   const accessToken = request.accessToken.trim();
   if (!accessToken || accessToken.length > 16_384) throw new TypeError("A valid in-memory access token is required.");
   if (request.cloudModelConsent !== true) throw new TypeError("Explicit cloud-model consent is required.");
@@ -609,6 +620,11 @@ export async function sendNexusChatInspection(
         cloud_model_consent: true,
         conversation_id: conversationId,
         mode: "agent",
+        ...(request.executionRepairTaskId && request.executionRepairRunId && request.executionRepairConsent === true ? {
+          execution_repair_task_id: request.executionRepairTaskId,
+          execution_repair_run_id: request.executionRepairRunId,
+          execution_repair_consent: true,
+        } : {}),
       }),
       cache: "no-store",
       credentials: "omit",
