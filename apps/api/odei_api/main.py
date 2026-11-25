@@ -44,6 +44,7 @@ from odei_api.services.nexus_inspection import router as nexus_inspection_router
 from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
 from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
+from odei_api.services.nexus_repository_bindings import router as nexus_repository_bindings_router
 from odei_api.services.parallel_jobs import MongoParallelJobStore
 from odei_api.services.parallel_jobs_api import router as parallel_jobs_router
 from odei_api.services.planning import PlanningError, create_task_plan
@@ -153,6 +154,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             repository_index_store = MongoRepositoryIndexStore(application.state.mongo_database)
             await repository_index_store.initialize()
             application.state.repository_index_store = repository_index_store
+            await application.state.mongo_database["nexus_repository_bindings"].create_index(
+                [("organization_id", 1), ("project_id", 1)], unique=True,
+            )
             artifact_store = MongoExecutionArtifactStore(application.state.mongo_database)
             await artifact_store.initialize()
             application.state.execution_artifact_store = artifact_store
@@ -189,6 +193,7 @@ app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
 app.include_router(nexus_patch_proposals_router)
 app.include_router(repository_intelligence_router)
+app.include_router(nexus_repository_bindings_router)
 app.include_router(projects_router)
 app.include_router(mac_environment_router)
 

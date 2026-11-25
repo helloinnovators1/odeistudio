@@ -35,15 +35,17 @@ class Settings(BaseSettings):
     patch_approval_key_id: str | None = None
     patch_approval_private_key_b64: SecretStr | None = None
     patch_approval_ttl_seconds: int = Field(default=60, ge=30, le=300)
+    github_app_id: int | None = Field(default=None, ge=1)
+    github_app_private_key_b64: SecretStr | None = None
 
     @model_validator(mode="after")
-    def validate_patch_approval_signing(self):
-        configured = (
+    def validate_configuration(self):
+        patch_configured = (
             self.patch_approval_issuer is not None,
             self.patch_approval_key_id is not None,
             self.patch_approval_private_key_b64 is not None,
         )
-        if any(configured) and not all(configured):
+        if any(patch_configured) and not all(patch_configured):
             raise ValueError(
                 "PATCH_APPROVAL_ISSUER, PATCH_APPROVAL_KEY_ID and "
                 "PATCH_APPROVAL_PRIVATE_KEY_B64 must be configured together"
@@ -56,9 +58,24 @@ class Settings(BaseSettings):
                 or parsed.path not in {"", "/"}
             ):
                 raise ValueError("PATCH_APPROVAL_ISSUER must be an exact HTTPS origin")
+        github_configured = (
+            self.github_app_id is not None,
+            self.github_app_private_key_b64 is not None,
+        )
+        if any(github_configured) and not all(github_configured):
+            raise ValueError("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY_B64 must be configured together")
+        if self.github_app_private_key_b64 is not None:
+            import base64
+            try:
+                key = base64.b64decode(
+                    self.github_app_private_key_b64.get_secret_value(), validate=True,
+                )
+            except (ValueError, TypeError) as exc:
+                raise ValueError("GITHUB_APP_PRIVATE_KEY_B64 must be valid base64") from exc
+            if b"-----BEGIN" not in key or b"PRIVATE KEY-----" not in key:
+                raise ValueError("GITHUB_APP_PRIVATE_KEY_B64 must contain a PEM private key")
         if self.mac_platform_operators_json.strip():
             from odei_api.security.mac_rbac import parse_mac_operator_registry
-
             parse_mac_operator_registry(self.mac_platform_operators_json)
         factory_reference = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$")
         for setting_name, raw in (
@@ -113,22 +130,16 @@ def parse_cors_origins(value: str) -> list[str]:
         try:
             parsed = urlsplit(origin)
             hostname = parsed.hostname
-            # Accessing .port also validates malformed port syntax.
             port = parsed.port
         except ValueError as exc:
             raise ValueError("CORS_ALLOWED_ORIGINS contains an invalid origin") from exc
         loopback = hostname in {"localhost", "127.0.0.1", "::1"}
         if (
             parsed.scheme not in ({"https", "http"} if loopback else {"https"})
-            or not parsed.netloc
-            or not hostname
+            or not parsed.netloc or not hostname
             or (port is not None and not 1 <= port <= 65535)
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.path not in ("", "/")
-            or parsed.query
-            or parsed.fragment
-            or origin == "*"
+            or parsed.username is not None or parsed.password is not None
+            or parsed.path not in ("", "/") or parsed.query or parsed.fragment or origin == "*"
         ):
             raise ValueError("CORS_ALLOWED_ORIGINS must contain explicit HTTPS origins (HTTP only for loopback)")
         normalized = f"{parsed.scheme}://{parsed.netloc}"
