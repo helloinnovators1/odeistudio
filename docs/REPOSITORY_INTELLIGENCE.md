@@ -22,7 +22,7 @@ All routes are under `/api/v1/organizations/{organization_id}/projects/{project_
 | GET | `/dependency-graph` | Read import edges |
 | POST | `/semantic-search` | Retrieve semantically similar code chunks |
 
-Index refresh requires JSON `{"cloud_embedding_consent": true}`. Semantic search requires `{"query": "...", "cloud_model_consent": true}`. These explicit confirmations are required before repository excerpts or the query are sent to the configured OpenAI embedding provider.
+Every retrieval verifies that the active index still references the newest unexpired project snapshot. If a newer snapshot arrives after indexing, search/symbol/reference/graph/semantic retrieval fails closed with `REPOSITORY_INDEX_STALE`; the index-state endpoint reports `stale: true`. Refresh rechecks the latest snapshot immediately before publishing to avoid publishing a superseded snapshot.\n\nIndex refresh requires JSON `{"cloud_embedding_consent": true}`. Semantic search requires `{"query": "...", "cloud_model_consent": true}`. These explicit confirmations are required before repository excerpts or the query are sent to the configured OpenAI embedding provider.
 
 ## Persistence and bounds
 

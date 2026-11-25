@@ -159,6 +159,37 @@ async def _embed_new_chunks(
     return result
 
 
+async def _require_current_index(
+    request: Request, store: MongoRepositoryIndexStore, *,
+    organization_id: str, project_id: str,
+) -> dict:
+    """Reject retrieval from an index that no longer represents the newest snapshot."""
+    state = await store.get_state(
+        organization_id=organization_id, project_id=project_id,
+    )
+    if state is None:
+        raise HTTPException(status_code=404, detail={"code": "REPOSITORY_INDEX_NOT_FOUND"})
+    snapshots = getattr(request.app.state, "workspace_snapshot_store", None)
+    if snapshots is None:
+        raise HTTPException(status_code=503, detail={"code": "SNAPSHOT_STORE_UNAVAILABLE"})
+    latest = await snapshots.get_latest_for_tenant(
+        organization_id=organization_id, project_id=project_id,
+    )
+    if (
+        latest is None
+        or latest.get("_id") != state.get("snapshot_id")
+        or latest.get("sha256") != state.get("snapshot_sha256")
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "REPOSITORY_INDEX_STALE",
+                "message": "The project workspace has a newer snapshot; refresh the repository index before retrieval.",
+            },
+        )
+    return state
+
+
 def _active_state_response(state: dict | None) -> dict:
     if state is None:
         return {"indexed": False}
@@ -183,11 +214,24 @@ async def get_repository_index_state(
         state = await store.get_state(organization_id=organization_id, project_id=project_id)
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"}) from exc
+    stale = False
+    if state is not None:
+        snapshots = getattr(request.app.state, "workspace_snapshot_store", None)
+        if snapshots is None:
+            raise HTTPException(status_code=503, detail={"code": "SNAPSHOT_STORE_UNAVAILABLE"})
+        latest = await snapshots.get_latest_for_tenant(
+            organization_id=organization_id, project_id=project_id,
+        )
+        stale = (
+            latest is None
+            or latest.get("_id") != state.get("snapshot_id")
+            or latest.get("sha256") != state.get("snapshot_sha256")
+        )
     await _audit(
         request, principal, organization_id, project_id,
-        "repository.index.read", {"indexed": state is not None},
+        "repository.index.read", {"indexed": state is not None, "stale": stale},
     )
-    return _active_state_response(state)
+    return {**_active_state_response(state), "stale": stale}
 
 
 @router.post(
@@ -328,6 +372,21 @@ async def refresh_repository_index(
                     chunks = await _embed_new_chunks(
                         chunks, existing_chunks, client=None
                     )
+                latest_snapshot = await snapshots.get_latest_for_tenant(
+                    organization_id=organization_id, project_id=project_id,
+                )
+                if (
+                    latest_snapshot is None
+                    or latest_snapshot.get("_id") != snapshot.get("_id")
+                    or latest_snapshot.get("sha256") != snapshot.get("sha256")
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "WORKSPACE_SNAPSHOT_CHANGED",
+                            "message": "A newer workspace snapshot arrived during indexing; retry the refresh.",
+                        },
+                    )
                 state = await store.publish(
                     organization_id=organization_id, project_id=project_id,
                     snapshot=snapshot, files=files, symbols=symbols,
@@ -413,7 +472,9 @@ async def search_repository(
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
     try:
-        state = await store.get_state(organization_id=organization_id, project_id=project_id)
+        state = await _require_current_index(
+            request, store, organization_id=organization_id, project_id=project_id,
+        )
         files = await store.get_active_files(organization_id=organization_id, project_id=project_id)
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"}) from exc
@@ -486,6 +547,9 @@ async def search_repository_symbols(
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
     try:
+        await _require_current_index(
+            request, store, organization_id=organization_id, project_id=project_id,
+        )
         results = await store.search_symbols(
             organization_id=organization_id, project_id=project_id, name=name, limit=limit,
         )
@@ -522,6 +586,9 @@ async def search_repository_references(
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
     try:
+        await _require_current_index(
+            request, store, organization_id=organization_id, project_id=project_id,
+        )
         results = await store.search_references(
             organization_id=organization_id, project_id=project_id, name=name, limit=limit,
         )
@@ -555,6 +622,9 @@ async def get_repository_dependency_graph(
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
     try:
+        await _require_current_index(
+            request, store, organization_id=organization_id, project_id=project_id,
+        )
         graph = await store.dependency_graph(
             organization_id=organization_id, project_id=project_id,
         )
@@ -588,11 +658,9 @@ async def semantic_repository_search(
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
     try:
-        state = await store.get_state(
-            organization_id=organization_id, project_id=project_id,
+        state = await _require_current_index(
+            request, store, organization_id=organization_id, project_id=project_id,
         )
-        if state is None:
-            raise HTTPException(status_code=404, detail={"code": "REPOSITORY_INDEX_NOT_FOUND"})
         config = get_settings()
         if config.openai_api_key is None or not config.openai_api_key.get_secret_value():
             raise ModelConfigurationError("Embedding API key is not configured")
