@@ -689,10 +689,13 @@ async def create_repository_merge_approval(
         request, organization_id, project_id, task_id, principal,
     )
     _require_project_owner(project, principal)
-    if task.status is not TaskStatus.APPROVED:
+    if task.status not in {
+        TaskStatus.EXECUTING, TaskStatus.VALIDATING,
+        TaskStatus.REVIEW_READY, TaskStatus.COMPLETED,
+    }:
         raise HTTPException(status_code=409, detail={
-            "code": "TASK_APPROVAL_REQUIRED",
-            "message": "The task must remain approved before merge-back can be authorized.",
+            "code": "TASK_NOT_MERGE_READY",
+            "message": "The task must remain active or review-ready before merge-back can be authorized.",
         })
     run_store = getattr(request.app.state, "execution_run_store", None)
     approval_store = getattr(request.app.state, "repository_merge_approval_store", None)
@@ -806,10 +809,13 @@ async def merge_approved_repository_changes(
         request, organization_id, project_id, task_id, principal,
     )
     _require_project_owner(project, principal)
-    if task.status is not TaskStatus.APPROVED:
+    if task.status not in {
+        TaskStatus.EXECUTING, TaskStatus.VALIDATING,
+        TaskStatus.REVIEW_READY, TaskStatus.COMPLETED,
+    }:
         raise HTTPException(status_code=409, detail={
-            "code": "TASK_APPROVAL_REQUIRED",
-            "message": "The task must remain approved before merge-back can be executed.",
+            "code": "TASK_NOT_MERGE_READY",
+            "message": "The task must remain active or review-ready before merge-back can be executed.",
         })
     run_store = getattr(request.app.state, "execution_run_store", None)
     approval_store = getattr(request.app.state, "repository_merge_approval_store", None)

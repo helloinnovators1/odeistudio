@@ -443,6 +443,7 @@ def test_owner_must_create_and_consume_single_use_merge_approval(execution_state
         json=payload(),
     )
     assert created.status_code == 200, created.text
+    tasks.task = replace(tasks.task, status=TaskStatus.EXECUTING)
     run = runs.run
     runs.run = replace(
         run, status=ExecutionRunStatus.COMPLETED,
