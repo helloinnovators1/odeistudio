@@ -236,7 +236,7 @@ class MongoExecutionRunStore:
         self, run: ExecutionRun, *, tasks: Any, task_events: Any,
         expected_task_version: int, audit_event: Mapping[str, Any],
     ) -> ExecutionRun:
-        """Atomically consume a project-owner-approved task and enqueue exactly one run."""
+        """Atomically consume an approved or repairable task and enqueue exactly one run."""
         if run.status is not ExecutionRunStatus.QUEUED or run.version != 0 or run.attempts != 0:
             raise ValueError("new execution runs must begin queued at version and attempt zero")
         if not run.snapshot_id:
@@ -395,7 +395,7 @@ class MongoExecutionRunStore:
                         task_updated = await tasks.find_one_and_update(
                             {"_id": task["_id"], "organization_id": run.organization_id,
                              "version": task["version"], "status": "executing"},
-                            {"$set": {"status": "failed", "updated_at": now},
+                            {"$set": {"status": "repairing", "updated_at": now},
                              "$inc": {"version": 1}},
                             return_document=ReturnDocument.AFTER, session=session,
                         )
@@ -405,7 +405,7 @@ class MongoExecutionRunStore:
                             "event_id": str(uuid4()), "organization_id": run.organization_id,
                             "project_id": run.project_id, "task_id": run.task_id,
                             "actor_id": actor_id, "type": "task.status_changed",
-                            "from_status": "executing", "to_status": "failed",
+                            "from_status": "executing", "to_status": "repairing",
                             "version": task_updated["version"], "occurred_at": now,
                         }, session=session)
                 await self._audit_in_transaction({
