@@ -1,6 +1,7 @@
 """Authenticated NEXUS inspection and review-only patch generation over attached excerpts."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from uuid import uuid4
 
@@ -11,8 +12,13 @@ from starlette.concurrency import run_in_threadpool
 from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal
-from odei_api.services.agent_runtime import AgentRuntimeError, run_nexus_agent
+from odei_api.services.agent_runtime import AgentAuditError, AgentRuntimeError, run_nexus_agent
 from odei_api.services.conversation_store import ConversationStoreError
+from odei_api.services.governed_tool_registry import (
+    GovernedToolAuditError,
+    GovernedToolRegistry,
+    ToolDefinition,
+)
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_patch_proposals import _audit_proposal
 from odei_api.services.nexus_tasks import (
@@ -112,10 +118,98 @@ async def inspect_attached_project_excerpts(
     )
     try:
         client, model = get_openai_client()
+        audit_store = getattr(request.app.state, "audit_event_store", None)
+        if audit_store is None:
+            raise HTTPException(status_code=503, detail={
+                "code": "AUDIT_STORE_UNAVAILABLE",
+                "message": "NEXUS tool audit storage is not configured.",
+            })
+        event_loop = asyncio.get_running_loop()
+        agent_run_id = uuid4().hex
+
+        def persist_audit_event(event: dict) -> None:
+            event_name = event.get("event")
+            is_tool_event = event_name in {
+                "nexus.tool.started", "nexus.tool.completed", "nexus.tool.failed",
+            }
+            tool_name = event.get("tool_name") if is_tool_event else None
+            target_type = "nexus_tool" if is_tool_event else "nexus_agent_run"
+            target_id = tool_name or agent_run_id
+            outcome = (
+                "started" if event_name.endswith((".started", ".requested"))
+                else "success" if event_name.endswith(".completed")
+                else "failure"
+            )
+            metadata = {
+                "project_id": project_id,
+                "mode": payload.mode,
+                "model": model,
+            }
+            for key in ("arguments_sha256", "approval_id", "elapsed_ms", "tool_calls",
+                        "tool_rounds", "timeout_seconds", "request_number"):
+                if key in event and event[key] is not None:
+                    metadata[key] = event[key]
+            if tool_name:
+                metadata["tool_name"] = tool_name
+            future = asyncio.run_coroutine_threadsafe(
+                audit_store.append(
+                    organization_id=organization_id,
+                    actor_issuer=principal.issuer,
+                    actor_subject=principal.subject,
+                    action=event_name,
+                    target_type=target_type,
+                    target_id=target_id,
+                    outcome=outcome,
+                    request_id=uuid4().hex,
+                    metadata=metadata,
+                ),
+                event_loop,
+            )
+            try:
+                future.result(timeout=10)
+            except TimeoutError as exc:
+                future.cancel()
+                raise RuntimeError("NEXUS audit delivery timed out") from exc
+
+        def persist_runtime_event(event: dict) -> None:
+            # Tool start/completion is durably emitted by GovernedToolRegistry.
+            if event.get("event", "").startswith("agent.tool."):
+                return
+            persist_audit_event(event)
+
+        governed_tools = GovernedToolRegistry(
+            mode=payload.mode,
+            organization_id=organization_id,
+            project_id=project_id,
+            actor_issuer=principal.issuer,
+            actor_subject=principal.subject,
+            audit_sink=persist_audit_event,
+        )
+        for definition in tools.schemas():
+            tool_name = definition["name"]
+            capability = (
+                "patch.propose" if tool_name == "propose_attached_file_change"
+                else "workspace.read"
+            )
+            if tool_name == "propose_attached_file_change" and not NexusCapabilityPolicy.allows(
+                payload.mode, "patch.propose",
+            ):
+                # Keep inspection available while withholding proposal authority.
+                continue
+            governed_tools.register(ToolDefinition(
+                name=tool_name,
+                capability=capability,
+                schema=definition["parameters"],
+                handler=lambda arguments, name=tool_name: tools.execute(name, arguments),
+                description=definition["description"],
+                approval_required=False,
+            ))
         result = await run_in_threadpool(
             run_nexus_agent, client, model=model,
             task=payload.messages[-1]["content"], workspace_tools=tools,
             cloud_model_consent=True, prior_messages=prior_messages,
+            mode=payload.mode, event_sink=persist_runtime_event,
+            governed_registry=governed_tools,
         )
     except ModelConfigurationError as exc:
         await _append_nexus_chat_audit(
@@ -124,6 +218,16 @@ async def inspect_attached_project_excerpts(
             file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
+    except (AgentAuditError, GovernedToolAuditError) as exc:
+        await _append_nexus_chat_audit(
+            request, principal, organization_id, project_id,
+            outcome="failure", message_count=message_count,
+            file_count=len(payload.workspace_files), mode=payload.mode,
+        )
+        raise HTTPException(status_code=503, detail={
+            "code": "AUDIT_STORE_UNAVAILABLE",
+            "message": "NEXUS stopped because durable tool audit storage is unavailable.",
+        }) from exc
     except (AgentRuntimeError, SelectedExcerptToolError, ValueError) as exc:
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,

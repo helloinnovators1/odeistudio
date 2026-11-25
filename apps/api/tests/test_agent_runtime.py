@@ -312,3 +312,49 @@ def test_agent_fails_closed_when_audit_event_delivery_fails(tmp_path):
         assert client.responses.calls == []
     finally:
         registry.close()
+
+
+
+def test_agent_dispatches_through_the_governed_registry(tmp_path):
+    from odei_api.services.governed_tool_registry import (
+        GovernedToolRegistry,
+        ToolDefinition,
+    )
+    from odei_api.services.selected_excerpt_tools import SelectedExcerptTools
+
+    tools = SelectedExcerptTools([{"path": "src/main.py", "content": "print('ODEI')"}])
+    audit_events = []
+    governed = GovernedToolRegistry(
+        mode="agent", organization_id="org-1", project_id="project-1",
+        actor_issuer="https://identity.example", actor_subject="user-1",
+        audit_sink=audit_events.append,
+    )
+    for definition in tools.schemas():
+        name = definition["name"]
+        governed.register(ToolDefinition(
+            name=name,
+            capability="patch.propose" if name == "propose_attached_file_change" else "workspace.read",
+            schema=definition["parameters"],
+            handler=lambda arguments, tool_name=name: tools.execute(tool_name, arguments),
+            description=definition["description"],
+            approval_required=False,
+        ))
+    client = FakeClient([
+        _response([
+            SimpleNamespace(
+                type="function_call", name="read_attached_excerpt",
+                arguments='{"path":"src/main.py"}', call_id="governed_call_1",
+            )
+        ]),
+        _response([SimpleNamespace(type="message")], "The file prints ODEI."),
+    ])
+    result = run_nexus_agent(
+        client, model="test-model", task="Inspect the file",
+        workspace_tools=tools, cloud_model_consent=True,
+        governed_registry=governed,
+    )
+    assert result.tool_names == ("read_attached_excerpt",)
+    assert client.responses.calls[0]["tools"][0]["description"] == tools.schemas()[0]["description"]
+    assert [event["event"] for event in audit_events] == [
+        "nexus.tool.started", "nexus.tool.completed",
+    ]
