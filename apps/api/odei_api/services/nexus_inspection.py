@@ -136,7 +136,7 @@ async def inspect_attached_project_excerpts(
             target_type = "nexus_tool" if is_tool_event else "nexus_agent_run"
             target_id = tool_name or agent_run_id
             outcome = (
-                "started" if event_name.endswith(".started") or event_name.endswith(".requested")
+                "started" if event_name.endswith((".started", ".requested"))
                 else "success" if event_name.endswith(".completed")
                 else "failure"
             )
