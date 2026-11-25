@@ -1380,7 +1380,7 @@ def test_companion_exact_search_is_bounded_redacted_and_respects_exclusions(tmp_
         assert [item["path"] for item in payload["matches"]] == ["main.py"]
         assert payload["matches"][0]["line"] == 1
         assert len(payload["matches"][0]["content_sha256"]) == 64
-        assert payload["files_scanned"] >= 1
+        assert payload["scanned_files"] >= 1
         assert payload["bytes_scanned"] <= 20_000_000
         assert payload["skipped_files"] >= 1
         assert ".env" not in response.text

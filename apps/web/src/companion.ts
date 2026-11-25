@@ -68,7 +68,7 @@ export interface WorkspaceSearchMatch {
 export interface WorkspaceSearchResponse {
   workspace_id: string;
   matches: WorkspaceSearchMatch[];
-  files_scanned: number;
+  scanned_files: number;
   bytes_scanned: number;
   skipped_files: number;
   truncated: boolean;
@@ -90,7 +90,7 @@ export async function searchWorkspaceFiles(
   );
   const valid = response && response.workspace_id === workspaceId &&
     Array.isArray(response.matches) && response.matches.length <= 50 &&
-    Number.isInteger(response.files_scanned) && response.files_scanned >= 0 &&
+    Number.isInteger(response.scanned_files) && response.scanned_files >= 0 &&
     Number.isInteger(response.bytes_scanned) && response.bytes_scanned >= 0 &&
     response.bytes_scanned <= 20_000_000 &&
     Number.isInteger(response.skipped_files) && response.skipped_files >= 0 &&

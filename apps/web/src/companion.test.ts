@@ -230,7 +230,7 @@ describe("searchWorkspaceFiles", () => {
         path: "src/main.ts", line: 12, snippet: "const value = NEXUS;",
         content_sha256: "a".repeat(64), index_version: "literal-search-v2",
       }],
-      files_scanned: 4, bytes_scanned: 12_345, skipped_files: 1,
+      scanned_files: 4, bytes_scanned: 12_345, skipped_files: 1,
       truncated: false, index_version: "literal-search-v2",
     };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), {
@@ -263,7 +263,7 @@ describe("searchWorkspaceFiles", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-      workspace_id: "other-workspace", matches: [], files_scanned: 0,
+      workspace_id: "other-workspace", matches: [], scanned_files: 0,
       bytes_scanned: 0, skipped_files: 0, truncated: false, index_version: "v2",
     }), { status: 200 }));
     await expect(searchWorkspaceFiles("token", "workspace-1", "NEXUS"))
@@ -275,7 +275,7 @@ describe("searchWorkspaceFiles", () => {
         path: "../.env", line: 1, snippet: "secret",
         content_sha256: "a".repeat(64), index_version: "v2",
       }],
-      files_scanned: 1, bytes_scanned: 6, skipped_files: 0,
+      scanned_files: 1, bytes_scanned: 6, skipped_files: 0,
       truncated: false, index_version: "v2",
     }), { status: 200 }));
     await expect(searchWorkspaceFiles("token", "workspace-1", "NEXUS"))

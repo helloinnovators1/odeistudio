@@ -322,7 +322,7 @@ class WorkspaceHandleRegistry:
 
         return {
             "matches": matches,
-            "files_scanned": files_scanned,
+            "scanned_files": files_scanned,
             "bytes_scanned": bytes_scanned,
             "skipped_files": skipped_files,
             "truncated": truncated,

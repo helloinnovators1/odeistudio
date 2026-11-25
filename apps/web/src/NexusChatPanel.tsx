@@ -2071,7 +2071,7 @@ export default function NexusChatPanel({
                 {workspaceSearchResults && (
                   <div className="nexus-workspace-search-results">
                     <p className="nexus-muted">
-                      {workspaceSearchResults.matches.length} matches · {workspaceSearchResults.files_scanned} files scanned · {workspaceSearchResults.bytes_scanned.toLocaleString()} bytes · {workspaceSearchResults.skipped_files} skipped
+                      {workspaceSearchResults.matches.length} matches · {workspaceSearchResults.scanned_files} files scanned · {workspaceSearchResults.bytes_scanned.toLocaleString()} bytes · {workspaceSearchResults.skipped_files} skipped
                       {workspaceSearchResults.truncated ? " · Results capped; refine the query." : ""}
                     </p>
                     {workspaceSearchResults.matches.map((match, index) => {
