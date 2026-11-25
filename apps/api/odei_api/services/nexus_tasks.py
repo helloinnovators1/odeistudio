@@ -54,6 +54,9 @@ class NexusChatRequest(BaseModel):
     cloud_model_consent: StrictBool
     conversation_id: StrictStr | None = Field(default=None, min_length=1, max_length=128)
     mode: Literal["ask", "debug", "agent"] = "ask"
+    execution_repair_task_id: StrictStr | None = Field(default=None, min_length=1, max_length=128)
+    execution_repair_run_id: StrictStr | None = Field(default=None, min_length=1, max_length=128)
+    execution_repair_consent: StrictBool = False
 
 
 async def _append_nexus_chat_audit(
