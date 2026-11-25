@@ -26,6 +26,10 @@ class GovernedToolInputError(GovernedToolError):
     """Model-supplied tool arguments do not satisfy the registered schema."""
 
 
+class GovernedToolAuditError(GovernedToolError):
+    """A durable tool audit event could not be written."""
+
+
 @dataclass(frozen=True)
 class ToolApproval:
     """Short-lived approval bound to one actor, resource, tool and argument digest."""
@@ -238,7 +242,7 @@ class GovernedToolRegistry:
         try:
             self._audit({"event": "nexus.tool.started", **event})
         except Exception as exc:
-            raise GovernedToolError("audit unavailable; tool execution stopped") from exc
+            raise GovernedToolAuditError("audit unavailable; tool execution stopped") from exc
         try:
             result = definition.handler(dict(arguments))
             rendered = result if isinstance(result, str) else json.dumps(
@@ -250,7 +254,7 @@ class GovernedToolRegistry:
             try:
                 self._audit({"event": "nexus.tool.failed", **event, "error_type": type(exc).__name__})
             except Exception as audit_exc:
-                raise GovernedToolError("audit unavailable; tool failure could not be recorded") from audit_exc
+                raise GovernedToolAuditError("audit unavailable; tool failure could not be recorded") from audit_exc
             raise
         except Exception as exc:
             try:

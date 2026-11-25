@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.governed_tool_registry import GovernedToolInputError, GovernedToolRegistry
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
 
@@ -45,6 +45,10 @@ class AgentRuntimeError(RuntimeError):
 
 class AgentRunCancelled(AgentRuntimeError):
     """Raised when the caller cancels an in-flight NEXUS agent run."""
+
+
+class AgentAuditError(AgentRuntimeError):
+    """Raised when durable agent lifecycle audit delivery fails."""
 
 
 @dataclass(frozen=True)
@@ -106,7 +110,7 @@ def run_nexus_agent(
         try:
             event_sink(payload)
         except Exception as exc:
-            raise AgentRuntimeError("NEXUS audit event delivery failed; execution stopped") from exc
+            raise AgentAuditError("NEXUS audit event delivery failed; execution stopped") from exc
 
     def remaining_seconds() -> float:
         if cancel_check is not None and cancel_check():

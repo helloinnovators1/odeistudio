@@ -12,9 +12,13 @@ from starlette.concurrency import run_in_threadpool
 from odei_api.config import get_settings
 from odei_api.model_client import ModelConfigurationError, get_openai_client
 from odei_api.security.auth import Principal, get_current_principal
-from odei_api.services.agent_runtime import AgentRuntimeError, run_nexus_agent
+from odei_api.services.agent_runtime import AgentAuditError, AgentRuntimeError, run_nexus_agent
 from odei_api.services.conversation_store import ConversationStoreError
-from odei_api.services.governed_tool_registry import GovernedToolRegistry, ToolDefinition
+from odei_api.services.governed_tool_registry import (
+    GovernedToolAuditError,
+    GovernedToolRegistry,
+    ToolDefinition,
+)
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_patch_proposals import _audit_proposal
 from odei_api.services.nexus_tasks import (
@@ -125,7 +129,9 @@ async def inspect_attached_project_excerpts(
 
         def persist_audit_event(event: dict) -> None:
             event_name = event.get("event")
-            is_tool_event = event_name in {"nexus.tool.started", "nexus.tool.completed"}
+            is_tool_event = event_name in {
+                "nexus.tool.started", "nexus.tool.completed", "nexus.tool.failed",
+            }
             tool_name = event.get("tool_name") if is_tool_event else None
             target_type = "nexus_tool" if is_tool_event else "nexus_agent_run"
             target_id = tool_name or agent_run_id
@@ -207,6 +213,16 @@ async def inspect_attached_project_excerpts(
             file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
+    except (AgentAuditError, GovernedToolAuditError) as exc:
+        await _append_nexus_chat_audit(
+            request, principal, organization_id, project_id,
+            outcome="failure", message_count=message_count,
+            file_count=len(payload.workspace_files), mode=payload.mode,
+        )
+        raise HTTPException(status_code=503, detail={
+            "code": "AUDIT_STORE_UNAVAILABLE",
+            "message": "NEXUS stopped because durable tool audit storage is unavailable.",
+        }) from exc
     except (AgentRuntimeError, SelectedExcerptToolError, ValueError) as exc:
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,
