@@ -836,7 +836,7 @@ async def merge_approved_repository_changes(
             "code": "EXECUTION_NOT_FOUND", "message": "Execution run was not found.",
         })
     expected = _expected_worker_pull_request(run)
-    binding = await _trusted_binding_for_run(database, run)
+    await _trusted_binding_for_run(database, run)
     await _append_decision(
         request, principal, organization_id, run_id,
         "nexus.repository_merge.execute", "started",
@@ -916,7 +916,7 @@ async def merge_approved_repository_changes(
             "code": "GITHUB_PROVENANCE_OR_MERGE_FAILED",
             "message": "GitHub rejected the merge or the approved pull request changed. A new execution and approval are required.",
         }) from exc
-    except HTTPException as exc:
+    except HTTPException:
         try:
             await approval_store.finish(
                 approval_id=payload.approval_id, organization_id=organization_id,
