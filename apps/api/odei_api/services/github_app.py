@@ -14,6 +14,9 @@ from urllib.parse import quote
 
 import jwt
 
+from odei_api.services.secret_redaction import redact_secrets
+from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
+
 
 class GitHubAppNotConfigured(RuntimeError):
     """The GitHub App credentials required for trusted binding are unavailable."""
@@ -259,9 +262,18 @@ class GitHubAppInstallationClient:
                 if path.is_symlink() or not path.is_file():
                     raise GitHubRepositoryVerificationError("Worker workspace contains a link or special file")
                 relative = path.relative_to(root).as_posix()
-                if any(part in {"", ".", "..", ".git"} for part in relative.split("/")):
-                    raise GitHubRepositoryVerificationError("Worker workspace contains an unsafe path")
+                try:
+                    WorkspaceSnapshotIngestor._safe_parts(relative, is_directory=False)
+                except SnapshotError as exc:
+                    raise GitHubRepositoryVerificationError(
+                        "Worker workspace contains a sensitive or unsafe path",
+                    ) from exc
                 data = path.read_bytes()
+                decoded = data.decode("utf-8", errors="ignore")
+                if redact_secrets(decoded) != decoded:
+                    raise GitHubRepositoryVerificationError(
+                        "Worker workspace contains a credential-like value and cannot be published",
+                    )
                 total_bytes += len(data)
                 if len(data) > 64 * 1024 * 1024 or total_bytes > 512 * 1024 * 1024:
                     raise GitHubRepositoryVerificationError("Worker workspace exceeds repository commit limits")
@@ -273,7 +285,7 @@ class GitHubAppInstallationClient:
         changed_bytes = 0
         for path, data in workspace_files.items():
             blob_header = f"blob {len(data)}\0".encode("ascii")
-            blob_sha = hashlib.sha1(blob_header + data).hexdigest()
+            blob_sha = hashlib.sha1(blob_header + data, usedforsecurity=False).hexdigest()
             existing = base_files.get(path)
             if existing is None or existing["sha"] != blob_sha:
                 changed.append((path, data, existing.get("mode", "100644") if existing else "100644"))
