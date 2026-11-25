@@ -30,11 +30,11 @@ def build_execution_diagnostics(artifact: Mapping[str, Any]) -> dict[str, Any]:
     stdout = artifact.get("stdout", "")
     stderr = artifact.get("stderr", "")
     if isinstance(exit_code, bool) or not isinstance(exit_code, int):
-        raise ValueError("execution exit code is invalid")
+        raise TypeError("execution exit code is invalid")
     if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or duration_ms < 0:
         raise ValueError("execution duration is invalid")
     if not isinstance(timed_out, bool) or not isinstance(stdout, str) or not isinstance(stderr, str):
-        raise ValueError("execution artifact fields are invalid")
+        raise TypeError("execution artifact fields are invalid")
 
     if timed_out:
         category = "timed_out"
