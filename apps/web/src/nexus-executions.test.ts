@@ -94,7 +94,7 @@ describe("NEXUS execution API client", () => {
       .mockResolvedValueOnce(response({ run_id: "run-1", status: "cancelled" }))
       .mockResolvedValueOnce(response({ events: [], has_more: false, next_after_version: 4 }))
       .mockResolvedValueOnce(response({ run_id: "run-1", stdout: "redacted", stderr: "" }))
-      .mockResolvedValueOnce(response({ run_id: "run-1", category: "failed", summary: "Execution exited with status 1.", exit_code: 1, duration_ms: 12, timed_out: false, signals: ["TEST_FAILURE"], evidence: ["FAILED test.py"], next_step: "Review evidence." }));
+      .mockResolvedValueOnce(response({ run_id: "run", category: "failed", summary: "Execution exited with status 1.", exit_code: 1, duration_ms: 12, timed_out: false, signals: ["TEST_FAILURE"], evidence: ["FAILED test.py"], next_step: "Review evidence." }));
     await getNexusExecution("https://api.example.test", "org", "project", "task", "run", "token", fetcher);
     await cancelNexusExecution("https://api.example.test", "org", "project", "task", "run", "token", fetcher);
     await listNexusExecutionEvents("https://api.example.test", "org", "project", "task", "run", "token", 3, fetcher);
