@@ -303,7 +303,6 @@ class GitHubAppInstallationClient:
             if existing is None or existing["sha"] != blob_sha:
                 changed.append((path, data, existing.get("mode", "100644") if existing else "100644"))
                 changed_bytes += len(data)
-        deleted: list[str] = []
         if len(changed) > 500 or changed_bytes > 10 * 1024 * 1024:
             raise GitHubRepositoryVerificationError("Repository change set exceeds bounded commit limits")
         if not changed:
