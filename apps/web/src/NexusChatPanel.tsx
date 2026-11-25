@@ -318,6 +318,7 @@ export default function NexusChatPanel({
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
       macRequestGenerationRef.current.invalidate();
       setMacOpen(false); setMacRecord(null); setMacError(""); setMacBusy(false);
       setNotice(message);
@@ -521,6 +522,7 @@ export default function NexusChatPanel({
     executionGenerationRef.current += 1;
     setWorkspaceUploadConsent(false);
     setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
     setExecutionError("");
   }, [workspaceContext?.workspaceId]);
 
@@ -566,6 +568,7 @@ export default function NexusChatPanel({
     setSnapshotSummary("");
     setWorkspaceUploadConsent(false);
     setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
     setConsent(false);
     try {
       const result = await listNexusProjects(
@@ -979,6 +982,7 @@ export default function NexusChatPanel({
     setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null); setExecutionDiagnostics(null);
     setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
     setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
     setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
     setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
     setChatError(""); setProjectError(""); setOrganizationError("");
