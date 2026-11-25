@@ -564,7 +564,7 @@ async def get_execution(
     run_id: str = PathParam(min_length=1, max_length=128),
     principal: Principal = principal_dependency,
 ) -> dict:
-    database, project, _task = await _authorize_execution_resource(
+    _database, project, _task = await _authorize_execution_resource(
         request, organization_id, project_id, task_id, principal,
     )
     store = getattr(request.app.state, "execution_run_store", None)

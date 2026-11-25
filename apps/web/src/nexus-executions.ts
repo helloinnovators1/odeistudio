@@ -28,6 +28,8 @@ export interface NexusExecutionRun {
   version: number; attempts: number; max_attempts: number; cancel_requested: boolean;
   created_at: string | null; updated_at: string | null;
   repository_review?: NexusRepositoryReview | null;
+  repository_merge_available?: boolean;
+  repository_merge_approval?: NexusRepositoryMergeApprovalState | null;
 }
 export interface NexusExecutionCreateResponse {
   run_id: string; status: "queued"; task_id: string; profile_id: string;

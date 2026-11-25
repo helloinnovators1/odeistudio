@@ -199,7 +199,9 @@ export default function NexusChatPanel({
     setMergeError("");
     const approvalState = executionRun?.repository_merge_approval;
     const review = executionRun?.repository_review;
-    if (approvalState?.status === "pending" && approvalState.approval_id && review?.pull_request_url) {
+    if (approvalState?.status === "pending" && approvalState.approval_id
+      && review?.pull_request_url && typeof review.pull_request_number === "number"
+      && typeof review.commit_sha === "string" && typeof review.base_sha === "string") {
       setMergeApproval({
         approval_id: approvalState.approval_id, status: "pending",
         expires_at: approvalState.expires_at,
