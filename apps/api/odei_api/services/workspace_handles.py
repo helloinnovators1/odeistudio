@@ -33,13 +33,6 @@ from odei_api.services.project_files import (
 from odei_api.services.workspace_transaction_journal import workspace_root_key
 
 
-MAX_SEARCH_QUERY_CHARS = 200
-MAX_SEARCH_RESULTS = 50
-MAX_SEARCH_FILES = 1_000
-MAX_SEARCH_TOTAL_BYTES = 20_000_000
-MAX_SEARCH_FILE_BYTES = 128_000
-
-
 class WorkspaceHandleError(RuntimeError):
     """Base error for selected workspace handle operations."""
 
@@ -211,17 +204,22 @@ class WorkspaceHandleRegistry:
 
 
     def search_text(
-        self, workspace_id: str, query: str, *, limit: int = MAX_SEARCH_RESULTS
+        self, workspace_id: str, query: str, *, limit: int = 50
     ) -> dict[str, Any]:
         """Search eligible UTF-8 files with strict scan budgets and redacted snippets."""
         from odei_api.services.secret_redaction import redact_secrets
 
+        max_query_chars = 200
+        max_results = 50
+        max_files = 1_000
+        max_total_bytes = 20_000_000
+        max_file_bytes = 128_000
         if (
             not isinstance(query, str) or not query.strip()
-            or len(query) > MAX_SEARCH_QUERY_CHARS or "\x00" in query
+            or len(query) > max_query_chars or "\x00" in query
         ):
             raise ValueError("Search query must contain 1–200 non-NUL characters")
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_SEARCH_RESULTS:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= max_results:
             raise ValueError("Search result limit must be between 1 and 50")
 
         needle = query.strip().casefold()
@@ -234,35 +232,35 @@ class WorkspaceHandleRegistry:
             if grant.platform == "nt":
                 files = list_project_files_from_windows_handle(
                     grant.handle, kernel32=grant.kernel32,
-                    max_files=MAX_SEARCH_FILES + 1, max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
+                    max_files=max_files + 1, max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
                 )
             else:
                 files = list_project_files_from_posix_fd(
                     int(grant.handle), max_files=MAX_SEARCH_FILES + 1,
                     max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
                 )
-            if len(files) > MAX_SEARCH_FILES:
+            if len(files) > max_files:
                 truncated = True
-            files = files[:MAX_SEARCH_FILES]
+            files = files[:max_files]
             seen_paths = {item.path for item in files}
 
             for item in files:
                 if len(matches) >= limit:
                     truncated = True
                     break
-                if item.size > MAX_SEARCH_FILE_BYTES:
+                if item.size > max_file_bytes:
                     skipped_files += 1
                     stale = grant.search_cache.pop(item.path, None)
                     if stale is not None:
                         grant.search_cache_bytes -= stale[2]
                     continue
-                if bytes_scanned + item.size > MAX_SEARCH_TOTAL_BYTES:
+                if bytes_scanned + item.size > max_total_bytes:
                     truncated = True
                     break
                 try:
                     if grant.platform == "nt":
                         content = read_project_text_file_from_windows_handle(
-                            grant.handle, item.path, max_bytes=MAX_SEARCH_FILE_BYTES
+                            grant.handle, item.path, max_bytes=max_file_bytes
                         )
                     else:
                         content = read_project_text_file_from_posix_fd(
@@ -276,10 +274,10 @@ class WorkspaceHandleRegistry:
                     continue
 
                 encoded = content.encode("utf-8")
-                if len(encoded) > MAX_SEARCH_FILE_BYTES:
+                if len(encoded) > max_file_bytes:
                     skipped_files += 1
                     continue
-                if bytes_scanned + len(encoded) > MAX_SEARCH_TOTAL_BYTES:
+                if bytes_scanned + len(encoded) > max_total_bytes:
                     truncated = True
                     break
                 files_scanned += 1
