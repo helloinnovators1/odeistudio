@@ -40,6 +40,7 @@ class CreateExecutionRequest(BaseModel):
     expected_task_version: int = Field(ge=0)
     workspace_upload_consent: StrictBool
     execution_consent: StrictBool
+    repository_publish_consent: StrictBool = False
     snapshot_zip_base64: StrictStr = Field(min_length=1, max_length=_MAX_BASE64_CHARS)
 
 
@@ -333,6 +334,11 @@ async def create_execution(
             "organization_id": organization_id, "project_id": project_id,
         })
         if binding is not None:
+            if not payload.repository_publish_consent:
+                raise HTTPException(status_code=400, detail={
+                    "code": "REPOSITORY_PUBLISH_CONSENT_REQUIRED",
+                    "message": "Explicit consent is required before NEXUS can publish a review branch and pull request.",
+                })
             if binding.get("state") != "verified":
                 raise HTTPException(status_code=409, detail={
                     "code": "TRUSTED_REPOSITORY_BINDING_UNVERIFIED",
@@ -398,7 +404,9 @@ async def create_execution(
                 "nexus.execution.create", {"project_id": project_id, "task_id": task_id,
                 "profile_id": payload.profile_id, "mode": payload.mode,
                 "snapshot_id": snapshot["snapshot_id"],
-                "snapshot_file_count": file_count, "snapshot_bytes": total_bytes}),
+                "snapshot_file_count": file_count, "snapshot_bytes": total_bytes,
+                "repository_binding_version": run.repository_binding_version,
+                "repository_publish_consent": payload.repository_publish_consent}),
         )
     except ExecutionRunConflict as exc:
         if snapshot is not None:
@@ -422,6 +430,7 @@ async def create_execution(
         "snapshot": snapshot, "profile_id": payload.profile_id,
         "repository_binding_version": run.repository_binding_version,
         "repository_base_sha": run.repository_base_sha,
+        "repository_publish_consent": payload.repository_publish_consent,
     }
 
 
