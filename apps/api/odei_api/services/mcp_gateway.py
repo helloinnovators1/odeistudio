@@ -44,7 +44,7 @@ class McpServerConfig:
     bearer_token_env: str | None = None
 
     @classmethod
-    def parse(cls, value: Any) -> "McpServerConfig":
+    def parse(cls, value: Any) -> McpServerConfig:
         if not isinstance(value, dict) or set(value) - {
             "id", "endpoint", "allowed_tools", "bearer_token_env"
         }:

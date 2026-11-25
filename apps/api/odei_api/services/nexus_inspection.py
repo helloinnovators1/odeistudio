@@ -21,8 +21,8 @@ from odei_api.services.governed_tool_registry import (
     GovernedToolRegistry,
     ToolDefinition,
 )
-from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.mcp_gateway import McpGatewayError
+from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_execution import _authorize_execution_resource
 from odei_api.services.nexus_patch_proposals import _audit_proposal
 from odei_api.services.nexus_tasks import (
