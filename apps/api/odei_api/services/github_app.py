@@ -189,6 +189,19 @@ class GitHubAppInstallationClient:
         repository_id, node_id = binding.get("repository_id"), binding.get("repository_node_id")
         default_branch = binding.get("default_branch")
         binding_version = binding.get("binding_version")
+        if (
+            isinstance(installation_id, bool) or not isinstance(installation_id, int) or installation_id < 1
+            or not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,39}", owner)
+            or not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", name)
+            or isinstance(repository_id, bool) or not isinstance(repository_id, int) or repository_id < 1
+            or not isinstance(node_id, str) or not node_id
+            or isinstance(binding_version, bool) or not isinstance(binding_version, int) or binding_version < 1
+            or not isinstance(default_branch, str)
+            or not re.fullmatch(r"[A-Za-z0-9._/-]{1,255}", default_branch)
+            or default_branch.startswith("/") or default_branch.endswith("/")
+            or ".." in default_branch.split("/")
+        ):
+            raise GitHubRepositoryVerificationError("Trusted repository binding metadata is invalid")
         token = await self._installation_token(
             installation_id=installation_id, repository_name=name,
         )
@@ -372,11 +385,13 @@ class GitHubAppInstallationClient:
             pull = pull_response.json()
             head_sha = (pull.get("head") or {}).get("sha")
             base_ref = (pull.get("base") or {}).get("ref")
+            published_base_sha = (pull.get("base") or {}).get("sha")
             number, url = pull.get("number"), pull.get("html_url")
+            expected_url = f"https://github.com/{owner}/{name}/pull/{number}"
             if (
-                head_sha != commit_sha or base_ref != default_branch
+                head_sha != commit_sha or base_ref != default_branch or published_base_sha != base_sha
                 or isinstance(number, bool) or not isinstance(number, int) or number < 1
-                or not isinstance(url, str) or not url.startswith("https://github.com/")
+                or not isinstance(url, str) or url.casefold() != expected_url.casefold()
             ):
                 raise GitHubRepositoryVerificationError("GitHub pull request provenance is incomplete")
             return {

@@ -160,7 +160,7 @@ class ExecutionRun:
                 or not isinstance(self.worker_pull_request_number, int)
                 or self.worker_pull_request_number < 1
                 or not isinstance(self.worker_pull_request_url, str)
-                or not self.worker_pull_request_url.startswith("https://github.com/")
+                or self.worker_pull_request_url.casefold() != f"https://github.com/{self.repository_owner}/{self.repository_name}/pull/{self.worker_pull_request_number}".casefold()
                 or not isinstance(self.worker_provenance_at, datetime)
             ):
                 raise ValueError("worker repository provenance is incomplete or invalid")
