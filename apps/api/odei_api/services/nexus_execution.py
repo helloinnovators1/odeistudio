@@ -5,7 +5,7 @@ import base64
 import binascii
 import logging
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -82,6 +82,49 @@ async def _trusted_binding_for_run(database, run: ExecutionRun) -> dict:
         })
     return binding
 
+
+
+
+async def _acquire_repository_merge_lock(database, run: ExecutionRun, approval_id: str) -> None:
+    collection = database["nexus_repository_bindings"]
+    key = f"{run.organization_id}:{run.project_id}"
+    now = datetime.now(timezone.utc)
+    await collection.update_one(
+        {"_id": key, "merge_lock.expires_at": {"$lte": now}},
+        {"$unset": {"merge_lock": ""}},
+    )
+    result = await collection.update_one(
+        {
+            "_id": key, "organization_id": run.organization_id,
+            "project_id": run.project_id, "state": "verified",
+            "binding_version": run.repository_binding_version,
+            "repository_id": run.repository_id,
+            "repository_node_id": run.repository_node_id,
+            "merge_lock": {"$exists": False},
+        },
+        {"$set": {
+            "merge_lock": {
+                "approval_id": approval_id, "run_id": run.id,
+                "expires_at": now + timedelta(minutes=2),
+            },
+        }},
+    )
+    if result.modified_count != 1:
+        raise HTTPException(status_code=409, detail={
+            "code": "REPOSITORY_MERGE_LOCKED",
+            "message": "The trusted repository binding is being changed or another merge is in progress.",
+        })
+
+
+async def _release_repository_merge_lock(database, run: ExecutionRun, approval_id: str) -> None:
+    await database["nexus_repository_bindings"].update_one(
+        {
+            "_id": f"{run.organization_id}:{run.project_id}",
+            "merge_lock.approval_id": approval_id,
+            "merge_lock.run_id": run.id,
+        },
+        {"$unset": {"merge_lock": ""}},
+    )
 
 def _expected_worker_pull_request(run: ExecutionRun) -> dict:
     if (
@@ -894,6 +937,7 @@ async def merge_approved_repository_changes(
             "code": "MERGE_APPROVAL_INVALID_OR_EXPIRED",
             "message": "The approval is expired, already used, or belongs to another project owner.",
         })
+    lock_acquired = False
     try:
         if (
             approval.get("repository_id") != run.repository_id
@@ -911,6 +955,8 @@ async def merge_approved_repository_changes(
                 "message": "The approval no longer matches the immutable worker provenance.",
             })
         current_binding = await _trusted_binding_for_run(database, run)
+        await _acquire_repository_merge_lock(database, run, payload.approval_id)
+        lock_acquired = True
         result = await github.merge_pull_request(
             binding=current_binding,
             expected={
@@ -966,6 +1012,12 @@ async def merge_approved_repository_changes(
             "code": "MERGE_OUTCOME_RECONCILIATION_REQUIRED",
             "message": "GitHub may have completed the merge, but the durable approval record could not be finalized. Do not retry this approval; reconcile the GitHub pull request first.",
         }) from exc
+    finally:
+        if lock_acquired:
+            try:
+                await _release_repository_merge_lock(database, run, payload.approval_id)
+            except PyMongoError:
+                logger.exception("NEXUS repository merge lock will expire automatically")
     try:
         await _append_decision(
             request, principal, organization_id, run_id,

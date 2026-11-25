@@ -211,6 +211,7 @@ async def bind_repository(
         else:
             result = await collection.replace_one({
                 "_id": key, "binding_version": payload.expected_version,
+                "merge_lock": {"$exists": False},
             }, document, upsert=False)
             if result.modified_count != 1:
                 raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})
@@ -253,6 +254,7 @@ async def remove_repository_binding(
             "_id": f"{organization_id}:{project_id}",
             "organization_id": organization_id, "project_id": project_id,
             "binding_version": payload.expected_version,
+            "merge_lock": {"$exists": False},
         })
         if result.deleted_count != 1:
             raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})
