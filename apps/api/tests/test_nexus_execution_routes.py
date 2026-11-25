@@ -540,7 +540,7 @@ def test_owner_must_create_and_consume_single_use_merge_approval(execution_state
 
 def test_repairing_task_can_start_a_new_explicitly_consented_execution(execution_state):
     _database, _audit, tasks, _snapshots, runs = execution_state
-    tasks.task.status = TaskStatus.REPAIRING
+    tasks.task = replace(tasks.task, status=TaskStatus.REPAIRING)
     response = TestClient(app).post(
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
         json=payload(),
