@@ -57,13 +57,12 @@ class MongoTaskStore:
         max_iterations: int, audit_event: Mapping[str, Any],
     ) -> int | None:
         """Atomically consume one task-scoped repair iteration and its audit event."""
-        if (
-            isinstance(max_iterations, bool) or not isinstance(max_iterations, int)
-            or not 1 <= max_iterations <= 3
-        ):
+        if isinstance(max_iterations, bool) or not isinstance(max_iterations, int):
+            raise TypeError("repair iteration ceiling must be an integer")
+        if not 1 <= max_iterations <= 3:
             raise ValueError("repair iteration ceiling must be between one and three")
         if not isinstance(audit_event, Mapping):
-            raise ValueError("repair iteration audit event is required")
+            raise TypeError("repair iteration audit event must be a mapping")
         now = datetime.now(timezone.utc)
         query = {
             "_id": task_id, "organization_id": organization_id,
