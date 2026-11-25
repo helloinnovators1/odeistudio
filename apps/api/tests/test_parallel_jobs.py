@@ -1,0 +1,587 @@
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
+
+from odei_api.services.nexus_parallel_execution import NexusParallelExecutionHandler
+from odei_api.services.parallel_job_worker import (
+    ParallelJobWorker,
+    RetryableParallelJobError,
+)
+from odei_api.services.parallel_jobs import (
+    GitWorktreeManager,
+    MongoParallelJobStore,
+    ParallelJob,
+    ParallelJobConflict,
+)
+
+
+class Result:
+    def __init__(self, modified_count=1):
+        self.modified_count = modified_count
+
+
+class Cursor:
+    def __init__(self, rows):
+        self.rows = rows
+    def sort(self, *_):
+        return self
+    def limit(self, _):
+        return self
+    async def to_list(self, length=None):
+        return self.rows[:length]
+
+
+class Collection:
+    def __init__(self):
+        self.rows = {}
+        self.events = []
+    async def create_index(self, *_args, **_kwargs):
+        return None
+    async def insert_one(self, row):
+        self.rows[row.get("_id", row.get("job_id"))] = dict(row)
+        self.events.append(dict(row))
+    async def insert_many(self, rows, ordered=True):
+        for row in rows:
+            self.rows[row["_id"]] = dict(row)
+    async def delete_one(self, query):
+        self.rows.pop(query["_id"], None)
+    def find(self, query):
+        rows = list(self.rows.values())
+        for key, value in query.items():
+            if isinstance(value, dict) and "$lte" in value:
+                rows = [r for r in rows if r.get(key) and r[key] <= value["$lte"]]
+            elif isinstance(value, dict) and "$in" in value:
+                rows = [r for r in rows if r.get(key) in value["$in"]]
+            elif isinstance(value, dict) and "$gt" in value:
+                rows = [r for r in rows if r.get(key) and r[key] > value["$gt"]]
+            elif value is not None and not isinstance(value, dict):
+                rows = [r for r in rows if (value in r.get(key, []) if isinstance(r.get(key), list) else r.get(key) == value)]
+        return Cursor(rows)
+    async def find_one(self, query):
+        rows = await self.find(query).to_list(100)
+        return rows[0] if rows else None
+    async def find_one_and_update(self, query, update, return_document=None):
+        row = await self.find_one(query)
+        if row is None:
+            return None
+        row.update(update.get("$set", {}))
+        for key, amount in update.get("$inc", {}).items():
+            row[key] = row.get(key, 0) + amount
+        return row
+    async def update_one(self, query, update):
+        row = await self.find_one(query)
+        if row is None:
+            return Result(0)
+        row.update(update.get("$set", {}))
+        for key, amount in update.get("$inc", {}).items():
+            row[key] = row.get(key, 0) + amount
+        return Result()
+    async def update_many(self, query, update):
+        rows = await self.find(query).to_list(1000)
+        for row in rows:
+            row.update(update.get("$set", {}))
+            for key, amount in update.get("$inc", {}).items():
+                row[key] = row.get(key, 0) + amount
+        return Result(len(rows))
+
+
+@pytest.mark.asyncio
+async def test_parallel_jobs_claim_checkpoint_and_resume_with_lease():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.initialize()
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="group",
+        jobs=[{"job_id": "one"}, {"job_id": "two", "depends_on": ["one"]}],
+    )
+    claimed = await store.claim_next(worker_id="worker-a")
+    assert claimed.id == "one" and claimed.attempt == 1
+    saved = await store.checkpoint(
+        organization_id="org", job_id="one", worker_id="worker-a",
+        lease_token=claimed.lease_token, expected_version=claimed.version,
+        checkpoint={"step": 2, "cursor": "abc"},
+    )
+    assert saved.checkpoint_sha256
+    done = await store.finish(
+        organization_id="org", job_id="one", worker_id="worker-a",
+        lease_token=claimed.lease_token, expected_version=saved.version, outcome="completed",
+    )
+    assert done.status == "completed"
+    next_job = await store.claim_next(worker_id="worker-b")
+    assert next_job.id == "two"
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_rejects_stale_lease_and_bounds_payload():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="g",
+        jobs=[{"job_id": "job"}],
+    )
+    job = await store.claim_next(worker_id="worker")
+    with pytest.raises(ParallelJobConflict):
+        await store.checkpoint(
+            organization_id="org", job_id="job", worker_id="other",
+            lease_token=job.lease_token, expected_version=job.version,
+            checkpoint={"step": 1},
+        )
+    with pytest.raises(ValueError, match="size limit"):
+        await store.checkpoint(
+            organization_id="org", job_id="job", worker_id="worker",
+            lease_token=job.lease_token, expected_version=job.version,
+            checkpoint={"data": "x" * 300_000},
+        )
+    with pytest.raises(ValueError, match="secret-bearing"):
+        await store.checkpoint(
+            organization_id="org", job_id="job", worker_id="worker",
+            lease_token=job.lease_token, expected_version=job.version,
+            checkpoint={"session_token": "should-not-be-persisted"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_dependency_cycles_and_unknown_dependencies_are_rejected():
+    store = MongoParallelJobStore(Collection(), Collection(), Collection())
+    with pytest.raises(ValueError, match="dependencies"):
+        await store.create_group(
+            organization_id="org", project_id="project", group_id="g",
+            jobs=[{"job_id": "a", "depends_on": ["b"]}],
+        )
+    with pytest.raises(ValueError, match="cycle"):
+        await store.create_group(
+            organization_id="org", project_id="project", group_id="g",
+            jobs=[{"job_id": "a", "depends_on": ["b"]}, {"job_id": "b", "depends_on": ["a"]}],
+        )
+
+
+def test_worktree_manager_requires_safe_repository_and_base_commit(tmp_path):
+    import subprocess
+    repository = tmp_path / "repo"
+    root = tmp_path / "worktrees"
+    repository.mkdir()
+    root.mkdir()
+    subprocess.run(["git", "init", str(repository)], check=True, capture_output=True)
+    (repository / "README.md").write_text("hello", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "."], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "-c", "user.name=Test", "-c",
+         "user.email=test@example.com", "commit", "-m", "init"],
+        check=True, capture_output=True,
+    )
+    commit = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"], text=True).strip()
+    manager = GitWorktreeManager(repository, root)
+    worktree = manager.create(job_id="job-1", base_commit=commit)
+    assert (worktree / "README.md").read_text(encoding="utf-8") == "hello"
+    manager.remove(worktree)
+    with pytest.raises(ValueError):
+        manager.create(job_id="../escape", base_commit=commit)
+
+@pytest.mark.asyncio
+async def test_worker_can_renew_only_its_current_lease():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="lease-group",
+        jobs=[{"job_id": "lease-job"}],
+    )
+    job = await store.claim_next(worker_id="worker-a")
+    await store.heartbeat(
+        organization_id="org", job_id=job.id, worker_id="worker-a",
+        lease_token=job.lease_token, lease_seconds=90,
+    )
+    with pytest.raises(ParallelJobConflict):
+        await store.heartbeat(
+            organization_id="org", job_id=job.id, worker_id="worker-b",
+            lease_token=job.lease_token, lease_seconds=90,
+        )
+
+
+@pytest.mark.asyncio
+async def test_parallel_worker_restores_checkpoint_and_persists_new_progress():
+    initial = ParallelJob(
+        id="resume-job", group_id="resume-group", organization_id="org",
+        project_id="project", status="leased", version=4, attempt=2,
+        max_attempts=3, checkpoint={"step": 2}, checkpoint_sha256=None,
+        worker_id="worker-a", lease_token="lease-token",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+
+    class JobRows:
+        async def find_one(self, query):
+            assert query["lease_token"] == "lease-token"
+            return {
+                "payload": {"task": "continue safely"},
+                "checkpoint": {"step": 2},
+                "checkpoint_sha256": __import__("hashlib").sha256(
+                    b'{"step":2}'
+                ).hexdigest(),
+            }
+
+    class Store:
+        _jobs = JobRows()
+
+        def __init__(self):
+            self.saved = None
+            self.finished = None
+
+        async def claim_next(self, **kwargs):
+            assert kwargs["worker_id"] == "worker-a"
+            return initial
+
+        async def get_claimed(self, **kwargs):
+            return {"payload": {"task": "continue safely"}, "checkpoint": {"step": 2}, "version": 4}
+
+        async def checkpoint(self, **kwargs):
+            self.saved = kwargs["checkpoint"]
+            return ParallelJob(
+                **{**initial.__dict__, "version": kwargs["expected_version"] + 1,
+                   "checkpoint": kwargs["checkpoint"]}
+            )
+
+        async def cancellation_requested(self, **kwargs):
+            return False
+
+        async def finish(self, **kwargs):
+            self.finished = kwargs
+
+        async def heartbeat(self, **kwargs):
+            return None
+
+    seen = {}
+    async def handler(job, payload, checkpoint, save_checkpoint, is_cancelled):
+        seen.update(payload=payload, checkpoint=checkpoint)
+        assert await is_cancelled() is False
+        await save_checkpoint({"step": 3, "result": "partial"})
+
+    store = Store()
+    worker = ParallelJobWorker(
+        store, worker_id="worker-a", handler=handler,
+        lease_seconds=30, heartbeat_seconds=5,
+    )
+    assert await worker.run_once() == "completed"
+    assert seen == {
+        "payload": {"task": "continue safely"},
+        "checkpoint": {"step": 2},
+    }
+    assert store.saved == {"step": 3, "result": "partial"}
+    assert store.finished["expected_version"] == 5
+    assert store.finished["outcome"] == "completed"
+
+
+def test_safe_worktree_merge_back_uses_expected_base_compare_and_swap(tmp_path):
+    import subprocess
+
+    from odei_api.services.safe_worktree_merge import (
+        SafeWorktreeMerger,
+        WorktreeMergeConflict,
+    )
+
+    repository = tmp_path / "merge-repo"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-b", "main", str(repository)], check=True, capture_output=True)
+    (repository / "README.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "."], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "-c", "user.name=Test", "-c",
+         "user.email=test@example.com", "commit", "-m", "base"],
+        check=True, capture_output=True,
+    )
+    base = subprocess.check_output(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True,
+    ).strip()
+    worktree = tmp_path / "worker"
+    subprocess.run(
+        ["git", "-C", str(repository), "worktree", "add", "--detach", str(worktree), base],
+        check=True, capture_output=True,
+    )
+    (worktree / "feature.txt").write_text("isolated change\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(worktree), "add", "."], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(worktree), "-c", "user.name=Test", "-c",
+         "user.email=test@example.com", "commit", "-m", "worker change"],
+        check=True, capture_output=True,
+    )
+    worker_commit = subprocess.check_output(
+        ["git", "-C", str(worktree), "rev-parse", "HEAD"], text=True,
+    ).strip()
+
+    merger = SafeWorktreeMerger(repository)
+    merge_commit = merger.merge_back(
+        target_branch="main", expected_base_commit=base,
+        worker_commit=worker_commit,
+    )
+    assert subprocess.check_output(
+        ["git", "-C", str(repository), "rev-parse", "main"], text=True,
+    ).strip() == merge_commit
+    merged_content = subprocess.check_output(
+        ["git", "-C", str(repository), "show", f"{merge_commit}:feature.txt"],
+        text=True,
+    )
+    assert merged_content == "isolated change\n"
+    author = subprocess.check_output(
+        ["git", "-C", str(repository), "show", "-s", "--format=%an <%ae>", merge_commit],
+        text=True,
+    ).strip()
+    assert author == "ODEI NEXUS <nexus@odei.invalid>"
+    with pytest.raises(WorktreeMergeConflict, match="moved"):
+        merger.merge_back(
+            target_branch="main", expected_base_commit=base,
+            worker_commit=worker_commit,
+        )
+
+
+@pytest.mark.asyncio
+async def test_parallel_job_retry_is_bounded_and_respects_cancellation():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="retry-group",
+        jobs=[{"job_id": "retry-job"}], max_attempts=2,
+    )
+    first = await store.claim_next(worker_id="worker-a")
+    retried = await store.retry(
+        organization_id="org", job_id=first.id, worker_id="worker-a",
+        lease_token=first.lease_token, expected_version=first.version,
+        delay_seconds=0,
+    )
+    assert retried.status == "queued"
+    assert retried.attempt == 1
+    second = await store.claim_next(worker_id="worker-b")
+    terminal = await store.retry(
+        organization_id="org", job_id=second.id, worker_id="worker-b",
+        lease_token=second.lease_token, expected_version=second.version,
+        delay_seconds=0,
+    )
+    assert terminal.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_nexus_parallel_handler_resumes_existing_execution_run():
+    from odei_api.services.execution_runs import ExecutionRunStatus
+
+    class Runs:
+        def __init__(self):
+            self.reads = 0
+
+        async def get(self, *, organization_id, run_id):
+            self.reads += 1
+            status = (
+                ExecutionRunStatus.QUEUED
+                if self.reads == 1 else ExecutionRunStatus.COMPLETED
+            )
+            return SimpleNamespace(
+                id=run_id, organization_id=organization_id, project_id="project",
+                task_id="task", requester_issuer="https://identity.example",
+                requester_subject="subject-1", status=status, version=self.reads,
+                cancel_requested=False,
+            )
+
+    saved = []
+    async def save_checkpoint(value):
+        saved.append(value)
+
+    async def not_cancelled():
+        return False
+
+    job = ParallelJob(
+        id="orchestrator-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker", lease_token="lease",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+    handler = NexusParallelExecutionHandler(
+        runs=Runs(), audit=object(), tasks=object(), task_events=object(),
+        poll_seconds=0.25,
+    )
+    result = await handler(
+        job,
+        {
+            "execution_run_id": "execution-1",
+            "requested_by_issuer": "https://identity.example",
+            "requested_by_subject": "subject-1",
+        },
+        None, save_checkpoint, not_cancelled,
+    )
+    assert result == {"outcome": "completed", "execution_run_id": "execution-1"}
+    assert saved == [
+        {
+            "execution_run_id": "execution-1",
+            "execution_run_version": 1,
+            "execution_run_status": "queued",
+        },
+        {
+            "execution_run_id": "execution-1",
+            "execution_run_version": 2,
+            "execution_run_status": "completed",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_nexus_parallel_handler_rejects_cross_project_and_requester_runs():
+    from odei_api.services.execution_runs import ExecutionRunStatus
+
+    class Runs:
+        async def get(self, *, organization_id, run_id):
+            return SimpleNamespace(
+                id=run_id, organization_id=organization_id, project_id="other-project",
+                task_id="task", requester_issuer="https://identity.example",
+                requester_subject="subject-1", status=ExecutionRunStatus.QUEUED,
+                version=1, cancel_requested=False,
+            )
+
+    async def save_checkpoint(_):
+        return None
+
+    async def not_cancelled():
+        return False
+
+    job = ParallelJob(
+        id="scoped-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker", lease_token="lease",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+    handler = NexusParallelExecutionHandler(
+        runs=Runs(), audit=object(), tasks=object(), task_events=object(),
+    )
+    with pytest.raises(ValueError, match="outside this project"):
+        await handler(
+            job,
+            {
+                "execution_run_id": "execution-1",
+                "requested_by_issuer": "https://identity.example",
+                "requested_by_subject": "subject-1",
+            },
+            None, save_checkpoint, not_cancelled,
+        )
+
+
+@pytest.mark.asyncio
+async def test_nexus_parallel_handler_propagates_job_cancellation_to_execution_run():
+    from odei_api.services.execution_runs import ExecutionRunStatus
+
+    class Runs:
+        def __init__(self):
+            self.status = ExecutionRunStatus.RUNNING
+            self.cancelled = False
+
+        async def get(self, *, organization_id, run_id):
+            return SimpleNamespace(
+                id=run_id, organization_id=organization_id, project_id="project",
+                task_id="task", requester_issuer="https://identity.example",
+                requester_subject="subject-1", status=self.status, version=2,
+                cancel_requested=self.cancelled,
+            )
+
+        async def request_cancel(self, **kwargs):
+            self.cancelled = True
+            self.status = ExecutionRunStatus.CANCELLED
+
+    runs = Runs()
+    async def save_checkpoint(_):
+        return None
+
+    async def is_cancelled():
+        return True
+
+    job = ParallelJob(
+        id="cancel-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker", lease_token="lease",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+    handler = NexusParallelExecutionHandler(
+        runs=runs, audit=object(), tasks=object(), task_events=object(),
+    )
+    result = await handler(
+        job,
+        {
+            "execution_run_id": "execution-1",
+            "requested_by_issuer": "https://identity.example",
+            "requested_by_subject": "subject-1",
+        },
+        None, save_checkpoint, is_cancelled,
+    )
+    assert runs.cancelled is True
+    assert result == {"outcome": "cancelled", "execution_run_id": "execution-1"}
+
+
+@pytest.mark.asyncio
+async def test_worker_schedules_retry_for_transient_nexus_state_failure():
+    initial = ParallelJob(
+        id="transient-job", group_id="group", organization_id="org",
+        project_id="project", status="leased", version=1, attempt=1,
+        max_attempts=3, checkpoint=None, checkpoint_sha256=None,
+        worker_id="worker-a", lease_token="lease-token",
+        lease_expires_at=datetime.now(timezone.utc),
+    )
+
+    class Store:
+        def __init__(self):
+            self.retry_args = None
+
+        async def claim_next(self, **kwargs):
+            return initial
+
+        async def get_claimed(self, **kwargs):
+            return {"payload": {"execution_run_id": "run"}, "checkpoint": None, "version": 1}
+
+        async def heartbeat(self, **kwargs):
+            return None
+
+        async def retry(self, **kwargs):
+            self.retry_args = kwargs
+
+        async def finish(self, **kwargs):
+            raise AssertionError("transient errors must not be finalized as failed")
+
+    async def handler(*_args):
+        raise RetryableParallelJobError("temporary database outage")
+
+    store = Store()
+    worker = ParallelJobWorker(
+        store, worker_id="worker-a", handler=handler,
+        lease_seconds=30, heartbeat_seconds=5, retry_base_seconds=0,
+    )
+    assert await worker.run_once() == "retry_scheduled"
+    assert store.retry_args["expected_version"] == 1
+    assert store.retry_args["delay_seconds"] == 0
+
+
+@pytest.mark.asyncio
+async def test_group_cancellation_makes_dependency_blocked_jobs_claimable_for_cleanup():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    store = MongoParallelJobStore(jobs, groups, events)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="cancel-dependencies",
+        jobs=[
+            {"job_id": "parent"},
+            {"job_id": "child", "depends_on": ["parent"]},
+        ],
+    )
+    assert await store.cancel_group(
+        organization_id="org", project_id="project", group_id="cancel-dependencies",
+    ) == 2
+    first = await store.claim_next(worker_id="worker-a")
+    assert first is not None and first.id == "parent"
+    assert await store.cancellation_requested(
+        organization_id="org", job_id=first.id, worker_id="worker-a",
+        lease_token=first.lease_token,
+    )
+    await store.finish(
+        organization_id="org", job_id=first.id, worker_id="worker-a",
+        lease_token=first.lease_token, expected_version=first.version,
+        outcome="cancelled",
+    )
+    second = await store.claim_next(worker_id="worker-b")
+    assert second is not None and second.id == "child"
+    assert await store.cancellation_requested(
+        organization_id="org", job_id=second.id, worker_id="worker-b",
+        lease_token=second.lease_token,
+    )

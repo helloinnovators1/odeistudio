@@ -44,6 +44,8 @@ from odei_api.services.nexus_inspection import router as nexus_inspection_router
 from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
 from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
+from odei_api.services.parallel_jobs import MongoParallelJobStore
+from odei_api.services.parallel_jobs_api import router as parallel_jobs_router
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
 from odei_api.services.repository_index_store import MongoRepositoryIndexStore
@@ -138,6 +140,13 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             )
             await execution_run_store.initialize()
             application.state.execution_run_store = execution_run_store
+            parallel_job_store = MongoParallelJobStore(
+                application.state.mongo_database["nexus_parallel_jobs"],
+                application.state.mongo_database["nexus_parallel_job_groups"],
+                application.state.mongo_database["nexus_parallel_job_events"],
+            )
+            await parallel_job_store.initialize()
+            application.state.parallel_job_store = parallel_job_store
             snapshot_store = MongoWorkspaceSnapshotStore(application.state.mongo_database)
             await snapshot_store.initialize()
             application.state.workspace_snapshot_store = snapshot_store
@@ -154,6 +163,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             application.state.conversation_store = None
             application.state.patch_proposal_store = None
             application.state.execution_run_store = None
+            application.state.parallel_job_store = None
             application.state.workspace_snapshot_store = None
             application.state.repository_index_store = None
             application.state.execution_artifact_store = None
@@ -173,6 +183,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(nexus_tasks_router)
+app.include_router(parallel_jobs_router)
 app.include_router(nexus_execution_router)
 app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
