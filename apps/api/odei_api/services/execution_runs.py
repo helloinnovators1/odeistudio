@@ -89,6 +89,20 @@ class ExecutionRun:
     cancel_requested: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    repository_binding_version: int | None = None
+    repository_id: int | None = None
+    repository_node_id: str | None = None
+    repository_installation_id: int | None = None
+    repository_owner: str | None = None
+    repository_name: str | None = None
+    repository_default_branch: str | None = None
+    repository_base_sha: str | None = None
+    worker_commit_sha: str | None = None
+    worker_tree_sha: str | None = None
+    worker_branch: str | None = None
+    worker_pull_request_number: int | None = None
+    worker_pull_request_url: str | None = None
+    worker_provenance_at: datetime | None = None
 
     def __post_init__(self) -> None:
         for name in ("id", "organization_id", "project_id", "task_id"):
@@ -104,6 +118,52 @@ class ExecutionRun:
         validate_execution_request(profile_id=self.profile_id,
                                    snapshot_sha256=self.snapshot_sha256,
                                    arguments=self.arguments)
+        repository_fields = (
+            self.repository_binding_version, self.repository_id, self.repository_node_id,
+            self.repository_installation_id, self.repository_owner, self.repository_name,
+            self.repository_default_branch, self.repository_base_sha,
+        )
+        if any(value is not None for value in repository_fields):
+            if (
+                any(value is None for value in repository_fields)
+                or isinstance(self.repository_binding_version, bool)
+                or not isinstance(self.repository_binding_version, int)
+                or self.repository_binding_version < 1
+                or isinstance(self.repository_id, bool) or not isinstance(self.repository_id, int)
+                or self.repository_id < 1
+                or isinstance(self.repository_installation_id, bool)
+                or not isinstance(self.repository_installation_id, int)
+                or self.repository_installation_id < 1
+                or not isinstance(self.repository_node_id, str) or not self.repository_node_id
+                or not isinstance(self.repository_owner, str) or not self.repository_owner
+                or not isinstance(self.repository_name, str) or not self.repository_name
+                or not isinstance(self.repository_default_branch, str) or not self.repository_default_branch
+                or not isinstance(self.repository_base_sha, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", self.repository_base_sha)
+            ):
+                raise ValueError("trusted repository execution binding is incomplete or invalid")
+        provenance_fields = (
+            self.worker_commit_sha, self.worker_tree_sha, self.worker_branch,
+            self.worker_pull_request_number, self.worker_pull_request_url,
+            self.worker_provenance_at,
+        )
+        if any(value is not None for value in provenance_fields):
+            if (
+                any(value is None for value in provenance_fields)
+                or not self.repository_binding_version
+                or not isinstance(self.worker_commit_sha, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", self.worker_commit_sha)
+                or not isinstance(self.worker_tree_sha, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", self.worker_tree_sha)
+                or self.worker_branch != f"odei/nexus/{self.id}"
+                or isinstance(self.worker_pull_request_number, bool)
+                or not isinstance(self.worker_pull_request_number, int)
+                or self.worker_pull_request_number < 1
+                or not isinstance(self.worker_pull_request_url, str)
+                or not self.worker_pull_request_url.startswith("https://github.com/")
+                or not isinstance(self.worker_provenance_at, datetime)
+            ):
+                raise ValueError("worker repository provenance is incomplete or invalid")
 
 def _event(run: ExecutionRun, *, event_type: str, version: int,
            actor_id: str, **fields: Any) -> dict[str, Any]:
@@ -145,6 +205,20 @@ class MongoExecutionRunStore:
                 "version": run.version, "attempts": run.attempts, "max_attempts": run.max_attempts,
                 "worker_id": None, "lease_token": None, "lease_expires_at": None,
                 "cancel_requested": False, "active_task_id": run.task_id,
+                "repository_binding_version": run.repository_binding_version,
+                "repository_id": run.repository_id,
+                "repository_node_id": run.repository_node_id,
+                "repository_installation_id": run.repository_installation_id,
+                "repository_owner": run.repository_owner,
+                "repository_name": run.repository_name,
+                "repository_default_branch": run.repository_default_branch,
+                "repository_base_sha": run.repository_base_sha,
+                "worker_commit_sha": run.worker_commit_sha,
+                "worker_tree_sha": run.worker_tree_sha,
+                "worker_branch": run.worker_branch,
+                "worker_pull_request_number": run.worker_pull_request_number,
+                "worker_pull_request_url": run.worker_pull_request_url,
+                "worker_provenance_at": run.worker_provenance_at,
                 "available_at": now, "created_at": now, "updated_at": now}
 
     async def create(self, run: ExecutionRun, *, audit_event: Mapping[str, Any] | None = None) -> ExecutionRun:
@@ -362,6 +436,69 @@ class MongoExecutionRunStore:
             raise ExecutionRunConflict("worker lease is missing, expired or no longer owned")
         return expiry
 
+
+    async def record_worker_provenance(
+        self, *, organization_id: str, run_id: str, worker_id: str,
+        lease_token: str, provenance: Mapping[str, Any],
+        audit_event: Mapping[str, Any] | None = None,
+    ) -> ExecutionRun:
+        """Persist verified GitHub commit and PR provenance under the active worker lease."""
+        required = {
+            "repository_id", "repository_node_id", "installation_id", "binding_version",
+            "owner", "name", "default_branch", "base_sha", "commit_sha", "tree_sha",
+            "branch", "pull_request_number", "pull_request_url",
+        }
+        if not isinstance(provenance, Mapping) or not required.issubset(provenance):
+            raise ValueError("worker provenance payload is incomplete")
+        now = datetime.now(timezone.utc)
+        async with self._client.start_session() as session, await session.start_transaction():
+            current = await self._runs.find_one({
+                "_id": run_id, "organization_id": organization_id,
+                "worker_id": worker_id, "lease_token": lease_token,
+                "status": ExecutionRunStatus.COLLECTING.value,
+                "lease_expires_at": {"$gt": now},
+            }, session=session)
+            if current is None:
+                raise ExecutionRunConflict("worker lease is missing or no longer collecting")
+            if (
+                current.get("worker_commit_sha") is not None
+                or current.get("repository_binding_version") != provenance["binding_version"]
+                or current.get("repository_id") != provenance["repository_id"]
+                or current.get("repository_node_id") != provenance["repository_node_id"]
+                or current.get("repository_installation_id") != provenance["installation_id"]
+                or current.get("repository_owner") != provenance["owner"]
+                or current.get("repository_name") != provenance["name"]
+                or current.get("repository_default_branch") != provenance["default_branch"]
+                or current.get("repository_base_sha") != provenance["base_sha"]
+            ):
+                raise ExecutionRunConflict("worker provenance does not match the run's trusted repository binding")
+            updated = await self._runs.find_one_and_update(
+                {"_id": run_id, "organization_id": organization_id,
+                 "version": current["version"], "worker_id": worker_id,
+                 "lease_token": lease_token, "status": ExecutionRunStatus.COLLECTING.value,
+                 "lease_expires_at": {"$gt": now}},
+                {"$set": {
+                    "worker_commit_sha": provenance["commit_sha"],
+                    "worker_tree_sha": provenance["tree_sha"],
+                    "worker_branch": provenance["branch"],
+                    "worker_pull_request_number": provenance["pull_request_number"],
+                    "worker_pull_request_url": provenance["pull_request_url"],
+                    "worker_provenance_at": now, "updated_at": now,
+                }, "$inc": {"version": 1}},
+                return_document=ReturnDocument.AFTER, session=session,
+            )
+            if updated is None:
+                raise ExecutionRunConflict("execution run changed while worker provenance was recorded")
+            run = self._from_document(updated)
+            await self._events.insert_one(_event(
+                run, event_type="execution.repository_provenance_recorded",
+                version=run.version, actor_id=worker_id,
+                repository_id=run.repository_id, commit_sha=run.worker_commit_sha,
+                tree_sha=run.worker_tree_sha, pull_request_number=run.worker_pull_request_number,
+            ), session=session)
+            await self._audit_in_transaction(audit_event, session)
+        return run
+
     async def mark_running(self, *, organization_id: str, run_id: str,
                            worker_id: str, lease_token: str) -> ExecutionRun:
         return await self._worker_transition(organization_id=organization_id, run_id=run_id,
@@ -530,4 +667,15 @@ class MongoExecutionRunStore:
             version=row["version"], attempts=row["attempts"], max_attempts=row["max_attempts"],
             worker_id=row.get("worker_id"), lease_token=row.get("lease_token"),
             lease_expires_at=row.get("lease_expires_at"), cancel_requested=row.get("cancel_requested", False),
-            created_at=row.get("created_at"), updated_at=row.get("updated_at"))
+            created_at=row.get("created_at"), updated_at=row.get("updated_at"),
+            repository_binding_version=row.get("repository_binding_version"),
+            repository_id=row.get("repository_id"), repository_node_id=row.get("repository_node_id"),
+            repository_installation_id=row.get("repository_installation_id"),
+            repository_owner=row.get("repository_owner"), repository_name=row.get("repository_name"),
+            repository_default_branch=row.get("repository_default_branch"),
+            repository_base_sha=row.get("repository_base_sha"),
+            worker_commit_sha=row.get("worker_commit_sha"), worker_tree_sha=row.get("worker_tree_sha"),
+            worker_branch=row.get("worker_branch"),
+            worker_pull_request_number=row.get("worker_pull_request_number"),
+            worker_pull_request_url=row.get("worker_pull_request_url"),
+            worker_provenance_at=row.get("worker_provenance_at"))
