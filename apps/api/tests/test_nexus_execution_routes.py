@@ -15,6 +15,7 @@ from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import ExecutionRunStatus
+from odei_api.services.tasks import TaskStatus
 from odei_api.services.github_app import VerifiedGitHubRepository
 from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key
 
@@ -534,6 +535,20 @@ def test_owner_must_create_and_consume_single_use_merge_approval(execution_state
     assert replay.status_code == 409
     assert len(github.merged) == 1
     assert any(event["action"] == "nexus.repository_merge.execute" for event in audit.events)
+
+
+
+
+def test_repairing_task_can_start_a_new_explicitly_consented_execution(execution_state):
+    _database, _audit, tasks, _snapshots, runs = execution_state
+    tasks.task.status = TaskStatus.REPAIRING
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=payload(),
+    )
+    assert response.status_code == 200, response.text
+    assert runs.created["expected_task_version"] == 4
+    assert runs.run.task_id == "task-1"
 
 
 
