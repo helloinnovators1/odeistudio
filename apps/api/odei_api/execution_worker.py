@@ -160,6 +160,46 @@ class ExecutionWorker:
                 if result.exit_code == 0 and not result.timed_out
                 else ExecutionRunStatus.FAILED
             )
+            if outcome is ExecutionRunStatus.COMPLETED and run.repository_binding_version is not None:
+                if self.github_app is None or self.repository_bindings is None:
+                    raise RuntimeError("Trusted repository worker integration is not configured")
+                binding = await self.repository_bindings.find_one({
+                    "_id": f"{run.organization_id}:{run.project_id}",
+                    "organization_id": run.organization_id,
+                    "project_id": run.project_id,
+                    "state": "verified",
+                    "binding_version": run.repository_binding_version,
+                })
+                if binding is None:
+                    raise RuntimeError("Trusted repository binding changed during execution")
+                await self.runs.heartbeat(
+                    organization_id=run.organization_id, run_id=run.id,
+                    worker_id=self.worker_id, lease_token=lease_token, lease_seconds=300,
+                )
+                provenance = await self.github_app.create_workspace_pull_request(
+                    binding=binding, workspace=workspace, run_id=run.id,
+                    base_sha=run.repository_base_sha,
+                )
+                if provenance is not None:
+                    await self.runs.heartbeat(
+                        organization_id=run.organization_id, run_id=run.id,
+                        worker_id=self.worker_id, lease_token=lease_token, lease_seconds=300,
+                    )
+                    await self.runs.record_worker_provenance(
+                        organization_id=run.organization_id, run_id=run.id,
+                        worker_id=self.worker_id, lease_token=lease_token,
+                        provenance=provenance,
+                        audit_event=self._audit(
+                            run, action="nexus.execution.repository_provenance",
+                            outcome="success",
+                            metadata={
+                                "repository_id": provenance["repository_id"],
+                                "commit_sha": provenance["commit_sha"],
+                                "tree_sha": provenance["tree_sha"],
+                                "pull_request_number": provenance["pull_request_number"],
+                            },
+                        ),
+                    )
             await self.runs.finish(
                 organization_id=run.organization_id, run_id=run.id,
                 worker_id=self.worker_id, lease_token=lease_token, outcome=outcome,
