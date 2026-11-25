@@ -83,8 +83,13 @@ class MongoTaskStore:
             )
             if updated is None:
                 return None
-            await self._append_audit_in_transaction(audit_event, session)
-        return int(updated["repair_iterations"])
+            repair_iteration = int(updated["repair_iterations"])
+            event = dict(audit_event)
+            metadata = dict(event.get("metadata") or {})
+            metadata["repair_iteration"] = repair_iteration
+            event["metadata"] = metadata
+            await self._append_audit_in_transaction(event, session)
+        return repair_iteration
 
     async def create(
         self, task: TaskRecord, *, audit_event: Mapping[str, Any] | None = None
