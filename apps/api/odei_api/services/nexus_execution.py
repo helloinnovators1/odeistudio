@@ -22,6 +22,7 @@ from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCap
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import TaskStatus, identity_owner_key
 from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
+from odei_api.services.execution_diagnostics import build_execution_diagnostics
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -506,7 +507,6 @@ async def get_execution_diagnostics(
             "code": "EXECUTION_ARTIFACTS_NOT_FOUND",
             "message": "Execution artifacts are not available.",
         })
-    from odei_api.services.execution_diagnostics import build_execution_diagnostics
     report = build_execution_diagnostics(result)
     await _append_decision(
         request, principal, organization_id, run_id,

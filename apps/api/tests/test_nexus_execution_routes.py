@@ -347,7 +347,7 @@ def test_execution_artifact_route_is_tenant_and_task_scoped(execution_state):
 
 
 def test_execution_diagnostics_are_structured_bounded_and_audited(execution_state):
-    _database, audit, _tasks, _snapshots, runs = execution_state
+    _database, audit, _tasks, _snapshots, _runs = execution_state
     client = TestClient(app)
     created = client.post(
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
@@ -360,7 +360,7 @@ def test_execution_diagnostics_are_structured_bounded_and_audited(execution_stat
         "stdout_truncated": False, "stderr_truncated": False,
         "stdout_bytes": 60, "stderr_bytes": 75,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "stdout": "", "stderr": "Traceback (most recent call last):\\nModuleNotFoundError: No module named 'missing_pkg'",
+        "stdout": "", "stderr": "Traceback (most recent call last):\nModuleNotFoundError: No module named 'missing_pkg'",
     }
     response = client.get(
         f"/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions/{created['run_id']}/diagnostics"
@@ -377,7 +377,7 @@ def test_execution_diagnostics_are_structured_bounded_and_audited(execution_stat
 
 
 def test_execution_diagnostics_hide_cross_task_artifacts(execution_state):
-    _database, _audit, _tasks, _snapshots, runs = execution_state
+    _database, _audit, _tasks, _snapshots, _runs = execution_state
     client = TestClient(app)
     created = client.post(
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
