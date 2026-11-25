@@ -4,6 +4,7 @@ import {
   createNexusExecution,
   getNexusExecution,
   getNexusExecutionArtifacts,
+  getNexusExecutionDiagnostics,
   listNexusExecutionEvents,
   listNexusProjectExecutions,
   listNexusExecutionProfiles,
@@ -92,16 +93,20 @@ describe("NEXUS execution API client", () => {
       .mockResolvedValueOnce(response({ run_id: "run-1", status: "running" }))
       .mockResolvedValueOnce(response({ run_id: "run-1", status: "cancelled" }))
       .mockResolvedValueOnce(response({ events: [], has_more: false, next_after_version: 4 }))
-      .mockResolvedValueOnce(response({ run_id: "run-1", stdout: "redacted", stderr: "" }));
+      .mockResolvedValueOnce(response({ run_id: "run-1", stdout: "redacted", stderr: "" }))
+      .mockResolvedValueOnce(response({ run_id: "run", category: "failed", summary: "Execution exited with status 1.", exit_code: 1, duration_ms: 12, timed_out: false, signals: ["TEST_FAILURE"], evidence: ["FAILED test.py"], next_step: "Review evidence." }));
     await getNexusExecution("https://api.example.test", "org", "project", "task", "run", "token", fetcher);
     await cancelNexusExecution("https://api.example.test", "org", "project", "task", "run", "token", fetcher);
     await listNexusExecutionEvents("https://api.example.test", "org", "project", "task", "run", "token", 3, fetcher);
     await getNexusExecutionArtifacts("https://api.example.test", "org", "project", "task", "run", "token", fetcher);
+    const diagnostics = await getNexusExecutionDiagnostics("https://api.example.test", "org", "project", "task", "run", "token", fetcher);
+    expect(diagnostics.category).toBe("failed");
     expect(fetcher.mock.calls.map((call) => String(call[0]))).toEqual([
       "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run",
       "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/cancel",
       "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/events?after_version=3&limit=100",
       "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/artifacts",
+      "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/diagnostics",
     ]);
   });
 

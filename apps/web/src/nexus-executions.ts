@@ -34,6 +34,17 @@ export interface NexusExecutionHistoryPage {
 export interface NexusExecutionEventsPage {
   events: NexusExecutionEvent[]; has_more: boolean; next_after_version: number;
 }
+export interface NexusExecutionDiagnostics {
+  run_id: string;
+  category: "succeeded" | "failed" | "timed_out";
+  summary: string;
+  exit_code: number;
+  duration_ms: number;
+  timed_out: boolean;
+  signals: string[];
+  evidence: string[];
+  next_step: string;
+}
 export interface NexusExecutionArtifacts {
   artifact_id: string; run_id: string; exit_code: number; duration_ms: number;
   timed_out: boolean; stdout_truncated: boolean; stderr_truncated: boolean;
@@ -208,4 +219,27 @@ export async function getNexusExecutionArtifacts(
     route(baseUrl, organizationId, projectId, taskId) + "/" + encodeURIComponent(runId) + "/artifacts",
     accessToken, { fetcher, signal },
   );
+}
+
+
+export async function getNexusExecutionDiagnostics(
+  baseUrl: string, organizationId: string, projectId: string, taskId: string,
+  runId: string, accessToken: string, fetcher: Fetcher = fetch, signal?: AbortSignal,
+): Promise<NexusExecutionDiagnostics> {
+  const result = await request<NexusExecutionDiagnostics>(
+    route(baseUrl, organizationId, projectId, taskId) + "/" + encodeURIComponent(runId) + "/diagnostics",
+    accessToken, { fetcher, signal },
+  );
+  if (result.run_id !== runId ||
+    !["succeeded", "failed", "timed_out"].includes(result.category) ||
+    typeof result.summary !== "string" || !Number.isInteger(result.exit_code) ||
+    !Number.isInteger(result.duration_ms) || typeof result.timed_out !== "boolean" ||
+    !Array.isArray(result.signals) || result.signals.length > 8 ||
+    result.signals.some((item) => typeof item !== "string") ||
+    !Array.isArray(result.evidence) || result.evidence.length > 8 ||
+    result.evidence.some((item) => typeof item !== "string" || item.length > 240) ||
+    typeof result.next_step !== "string") {
+    throw new Error("Execution API returned an invalid diagnostics response.");
+  }
+  return result;
 }

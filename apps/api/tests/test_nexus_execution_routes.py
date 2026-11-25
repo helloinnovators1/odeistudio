@@ -94,7 +94,12 @@ class Snapshots:
 
 
 class Artifacts:
+    def __init__(self):
+        self.document = None
+
     async def get_for_tenant(self, **_values):
+        if self.document is not None:
+            return self.document
         return {
             "artifact_id": "artifact-1", "run_id": "run-1",
             "exit_code": 0, "duration_ms": 12, "timed_out": False,
@@ -344,3 +349,46 @@ def test_execution_artifact_route_is_tenant_and_task_scoped(execution_state):
     assert response.status_code == 200
     assert response.json()["stdout"] == "ok"
     assert audit.events[-1]["action"] == "nexus.execution.artifacts.read"
+
+
+def test_execution_diagnostics_are_structured_bounded_and_audited(execution_state):
+    _database, audit, _tasks, _snapshots, _runs = execution_state
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=payload(),
+    ).json()
+    artifacts = app.state.execution_artifact_store
+    artifacts.document = {
+        "artifact_id": "artifact-1", "run_id": created["run_id"],
+        "exit_code": 1, "duration_ms": 42, "timed_out": False,
+        "stdout_truncated": False, "stderr_truncated": False,
+        "stdout_bytes": 60, "stderr_bytes": 75,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "stdout": "", "stderr": "Traceback (most recent call last):\nModuleNotFoundError: No module named 'missing_pkg'",
+    }
+    response = client.get(
+        f"/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions/{created['run_id']}/diagnostics"
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["category"] == "failed"
+    assert "MODULE_NOT_FOUND" in body["signals"]
+    assert len(body["evidence"]) == 2
+    assert all(len(line) <= 240 for line in body["evidence"])
+    assert "stderr" not in body
+    assert audit.events[-1]["action"] == "nexus.execution.diagnostics.read"
+    assert audit.events[-1]["metadata"]["evidence_count"] == 2
+
+
+def test_execution_diagnostics_hide_cross_task_artifacts(execution_state):
+    _database, _audit, _tasks, _snapshots, _runs = execution_state
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=payload(),
+    ).json()
+    response = client.get(
+        f"/api/v1/organizations/org-1/projects/project-1/tasks/other-task/executions/{created['run_id']}/diagnostics"
+    )
+    assert response.status_code == 404
