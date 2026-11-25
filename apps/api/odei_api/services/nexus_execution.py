@@ -5,7 +5,7 @@ import base64
 import binascii
 import logging
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.execution_diagnostics import build_execution_diagnostics
-from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict
+from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict, ExecutionRunStatus
 from odei_api.services.github_app import GitHubAppNotConfigured, GitHubRepositoryVerificationError
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.project_access import require_project_access
@@ -42,6 +42,19 @@ class CreateExecutionRequest(BaseModel):
     execution_consent: StrictBool
     repository_publish_consent: StrictBool = False
     snapshot_zip_base64: StrictStr = Field(min_length=1, max_length=_MAX_BASE64_CHARS)
+
+
+
+
+class CreateMergeApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approve: StrictBool
+    expected_commit_sha: StrictStr = Field(pattern=r"^[0-9a-f]{40}$")
+
+
+class ConsumeMergeApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approval_id: StrictStr = Field(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")
 
 
 async def _authorize_execution_resource(
@@ -432,6 +445,222 @@ async def create_execution(
         "repository_base_sha": run.repository_base_sha,
         "repository_publish_consent": payload.repository_publish_consent,
     }
+
+
+
+@router.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/tasks/{{task_id}}/executions/{{run_id}}/merge-approvals",
+    tags=["execution"],
+)
+async def create_merge_approval(
+    payload: CreateMergeApprovalRequest, request: Request,
+    organization_id: str = PathParam(min_length=1, max_length=128),
+    project_id: str = PathParam(min_length=1, max_length=128),
+    task_id: str = PathParam(min_length=1, max_length=128),
+    run_id: str = PathParam(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    if payload.approve is not True:
+        raise HTTPException(status_code=400, detail={
+            "code": "MERGE_APPROVAL_REQUIRED", "message": "Explicit approval is required.",
+        })
+    database, project, _task = await _authorize_execution_resource(
+        request, organization_id, project_id, task_id, principal,
+    )
+    if project.get("owner_issuer") != principal.issuer or project.get("owner_subject") != principal.subject:
+        raise HTTPException(status_code=403, detail={
+            "code": "PROJECT_OWNER_REQUIRED", "message": "Only the project owner can approve repository merge-back.",
+        })
+    runs = getattr(request.app.state, "execution_run_store", None)
+    approvals = database["nexus_merge_approvals"]
+    if runs is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "EXECUTION_STORAGE_UNAVAILABLE", "message": "Execution storage is unavailable.",
+        })
+    run = await runs.get(organization_id=organization_id, run_id=run_id)
+    if (
+        run is None or run.project_id != project_id or run.task_id != task_id
+        or run.status is not ExecutionRunStatus.COMPLETED
+        or not run.worker_commit_sha or not run.worker_tree_sha
+        or not run.worker_pull_request_number or not run.worker_provenance_at
+        or run.worker_commit_sha != payload.expected_commit_sha
+    ):
+        raise HTTPException(status_code=409, detail={
+            "code": "WORKER_PROVENANCE_NOT_MERGEABLE",
+            "message": "The completed run has no matching verified worker commit to approve.",
+        })
+    binding = await database["nexus_repository_bindings"].find_one({
+        "_id": f"{organization_id}:{project_id}",
+        "organization_id": organization_id, "project_id": project_id, "state": "verified",
+    })
+    if (
+        binding is None
+        or binding.get("binding_version") != run.repository_binding_version
+        or binding.get("repository_id") != run.repository_id
+        or binding.get("repository_node_id") != run.repository_node_id
+        or binding.get("installation_id") != run.repository_installation_id
+        or binding.get("owner", "").casefold() != run.repository_owner.casefold()
+        or binding.get("name", "").casefold() != run.repository_name.casefold()
+        or binding.get("default_branch") != run.repository_default_branch
+    ):
+        raise HTTPException(status_code=409, detail={
+            "code": "TRUSTED_REPOSITORY_BINDING_CHANGED",
+            "message": "The trusted repository binding changed; a new execution is required.",
+        })
+    approval_id = uuid4().hex
+    now = datetime.now(timezone.utc)
+    approval = {
+        "_id": approval_id, "organization_id": organization_id, "project_id": project_id,
+        "task_id": task_id, "run_id": run_id,
+        "approver_issuer": principal.issuer, "approver_subject": principal.subject,
+        "repository_binding_version": run.repository_binding_version,
+        "repository_id": run.repository_id, "repository_node_id": run.repository_node_id,
+        "repository_owner": run.repository_owner, "repository_name": run.repository_name,
+        "repository_default_branch": run.repository_default_branch,
+        "base_sha": run.repository_base_sha, "commit_sha": run.worker_commit_sha,
+        "tree_sha": run.worker_tree_sha, "branch": run.worker_branch,
+        "pull_request_number": run.worker_pull_request_number,
+        "state": "pending", "created_at": now,
+        "expires_at": now + timedelta(minutes=5),
+    }
+    try:
+        await approvals.insert_one(approval)
+        await _append_decision(
+            request, principal, organization_id, run_id,
+            "nexus.repository.merge_approval.create", "success",
+            {"approval_id": approval_id, "repository_id": run.repository_id,
+             "binding_version": run.repository_binding_version,
+             "commit_sha": run.worker_commit_sha, "pull_request_number": run.worker_pull_request_number},
+        )
+    except Exception as exc:
+        try:
+            await approvals.delete_one({"_id": approval_id, "state": "pending"})
+        except Exception:
+            logger.exception("Failed to clean up an unaudited repository merge approval")
+        raise HTTPException(status_code=503, detail={
+            "code": "MERGE_APPROVAL_UNAVAILABLE",
+            "message": "The merge approval could not be durably audited.",
+        }) from exc
+    return {"approval_id": approval_id, "state": "pending", "expires_at": approval["expires_at"].isoformat(),
+            "commit_sha": run.worker_commit_sha, "pull_request_number": run.worker_pull_request_number}
+
+
+@router.post(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/tasks/{{task_id}}/executions/{{run_id}}/merge",
+    tags=["execution"],
+)
+async def consume_merge_approval(
+    payload: ConsumeMergeApprovalRequest, request: Request,
+    organization_id: str = PathParam(min_length=1, max_length=128),
+    project_id: str = PathParam(min_length=1, max_length=128),
+    task_id: str = PathParam(min_length=1, max_length=128),
+    run_id: str = PathParam(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    database, project, _task = await _authorize_execution_resource(
+        request, organization_id, project_id, task_id, principal,
+    )
+    if project.get("owner_issuer") != principal.issuer or project.get("owner_subject") != principal.subject:
+        raise HTTPException(status_code=403, detail={
+            "code": "PROJECT_OWNER_REQUIRED", "message": "Only the project owner can merge a worker proposal.",
+        })
+    approvals = database["nexus_merge_approvals"]
+    now = datetime.now(timezone.utc)
+    try:
+        consumed = await approvals.update_one({
+            "_id": payload.approval_id, "organization_id": organization_id,
+            "project_id": project_id, "task_id": task_id, "run_id": run_id,
+            "approver_issuer": principal.issuer, "approver_subject": principal.subject,
+            "state": "pending", "expires_at": {"$gt": now},
+        }, {"$set": {"state": "consumed", "consumed_at": now}})
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "MERGE_APPROVAL_UNAVAILABLE", "message": "Merge approval storage is unavailable.",
+        }) from exc
+    if getattr(consumed, "modified_count", 0) != 1:
+        raise HTTPException(status_code=409, detail={
+            "code": "MERGE_APPROVAL_INVALID_OR_USED",
+            "message": "The approval is expired, already used, or does not belong to this owner and execution.",
+        })
+    approval = await approvals.find_one({"_id": payload.approval_id})
+    if approval is None:
+        raise HTTPException(status_code=409, detail={
+            "code": "MERGE_APPROVAL_NOT_FOUND", "message": "The consumed approval record is unavailable.",
+        })
+    await _append_decision(
+        request, principal, organization_id, run_id,
+        "nexus.repository.merge_approval.consume", "success",
+        {"approval_id": payload.approval_id, "repository_id": approval["repository_id"],
+         "commit_sha": approval["commit_sha"], "pull_request_number": approval["pull_request_number"]},
+    )
+    runs = getattr(request.app.state, "execution_run_store", None)
+    run = await runs.get(organization_id=organization_id, run_id=run_id) if runs else None
+    if (
+        run is None or run.project_id != project_id or run.task_id != task_id
+        or run.status is not ExecutionRunStatus.COMPLETED
+        or run.repository_binding_version != approval["repository_binding_version"]
+        or run.repository_id != approval["repository_id"]
+        or run.repository_node_id != approval["repository_node_id"]
+        or run.repository_base_sha != approval["base_sha"]
+        or run.worker_commit_sha != approval["commit_sha"]
+        or run.worker_tree_sha != approval["tree_sha"]
+        or run.worker_pull_request_number != approval["pull_request_number"]
+    ):
+        await _append_decision(
+            request, principal, organization_id, run_id,
+            "nexus.repository.merge", "denied",
+            {"approval_id": payload.approval_id, "reason": "execution_provenance_changed"},
+        )
+        raise HTTPException(status_code=409, detail={
+            "code": "WORKER_PROVENANCE_CHANGED", "message": "Worker provenance changed after approval.",
+        })
+    binding = await database["nexus_repository_bindings"].find_one({
+        "_id": f"{organization_id}:{project_id}", "organization_id": organization_id,
+        "project_id": project_id, "state": "verified",
+    })
+    if (
+        binding is None or binding.get("binding_version") != approval["repository_binding_version"]
+        or binding.get("repository_id") != approval["repository_id"]
+        or binding.get("repository_node_id") != approval["repository_node_id"]
+    ):
+        await _append_decision(
+            request, principal, organization_id, run_id,
+            "nexus.repository.merge", "denied",
+            {"approval_id": payload.approval_id, "reason": "repository_binding_changed"},
+        )
+        raise HTTPException(status_code=409, detail={
+            "code": "TRUSTED_REPOSITORY_BINDING_CHANGED", "message": "Repository binding changed after approval.",
+        })
+    github = getattr(request.app.state, "github_app_client", None)
+    if github is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "GITHUB_APP_NOT_CONFIGURED", "message": "GitHub merge service is unavailable.",
+        })
+    try:
+        result = await github.merge_verified_pull_request(binding=binding, run=run)
+    except GitHubRepositoryVerificationError as exc:
+        await _append_decision(
+            request, principal, organization_id, run_id,
+            "nexus.repository.merge", "denied",
+            {"approval_id": payload.approval_id, "reason": "github_revalidation_failed"},
+        )
+        raise HTTPException(status_code=409, detail={
+            "code": "GITHUB_MERGE_REVALIDATION_FAILED",
+            "message": "GitHub repository, base branch or pull-request provenance changed; no merge was performed.",
+        }) from exc
+    except GitHubAppNotConfigured as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "GITHUB_APP_NOT_CONFIGURED", "message": "GitHub merge service is unavailable.",
+        }) from exc
+    await _append_decision(
+        request, principal, organization_id, run_id,
+        "nexus.repository.merge", "success",
+        {"approval_id": payload.approval_id, "repository_id": approval["repository_id"],
+         "commit_sha": approval["commit_sha"], "pull_request_number": approval["pull_request_number"]},
+    )
+    return {"merged": True, "run_id": run_id, "commit_sha": approval["commit_sha"],
+            "pull_request_number": approval["pull_request_number"], "merge_commit_sha": result["merge_commit_sha"]}
+
 
 
 @router.get(
