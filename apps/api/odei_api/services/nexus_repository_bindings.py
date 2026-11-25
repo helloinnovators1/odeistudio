@@ -93,12 +93,19 @@ async def _owner_only(request: Request, organization_id: str, project_id: str, p
 
 
 async def _audit(audit, principal, organization_id, project_id, action, outcome, metadata=None):
-    await audit.append(
-        organization_id=organization_id, actor_issuer=principal.issuer,
-        actor_subject=principal.subject, action=action,
-        target_type="nexus_repository_binding", target_id=project_id,
-        outcome=outcome, request_id=uuid4().hex, metadata=metadata or {},
-    )
+    try:
+        await audit.append(
+            organization_id=organization_id, actor_issuer=principal.issuer,
+            actor_subject=principal.subject, action=action,
+            target_type="nexus_repository_binding", target_id=project_id,
+            outcome=outcome, request_id=uuid4().hex, metadata=metadata or {},
+        )
+    except Exception as exc:
+        logger.error("Repository binding audit write failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail={
+            "code": "REPOSITORY_BINDING_AUDIT_UNAVAILABLE",
+            "message": "Repository binding operation could not be audited.",
+        }) from exc
 
 
 @router.get(
@@ -145,6 +152,9 @@ async def bind_repository(
         })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
+    await _audit(audit, principal, organization_id, project_id,
+                 "nexus.repository_binding.bind", "started",
+                 {"installation_id": payload.installation_id})
     try:
         existing = await collection.find_one({"_id": key})
         if existing is None and payload.expected_version is not None:
@@ -212,6 +222,9 @@ async def remove_repository_binding(
     principal: Principal = principal_dependency,
 ):
     database, audit = await _owner_only(request, organization_id, project_id, principal)
+    await _audit(audit, principal, organization_id, project_id,
+                 "nexus.repository_binding.remove", "started",
+                 {"binding_version": payload.expected_version})
     try:
         result = await database["nexus_repository_bindings"].delete_one({
             "_id": f"{organization_id}:{project_id}",

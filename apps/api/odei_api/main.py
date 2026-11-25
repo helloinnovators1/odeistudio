@@ -28,6 +28,7 @@ from odei_api.services.conversation_store import MongoConversationStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
+from odei_api.services.github_app import GitHubAppInstallationClient
 from odei_api.services.mac_deployments import MongoMacDeploymentStore
 from odei_api.services.mac_environment_api import router as mac_environment_router
 from odei_api.services.mac_revision_environment_store import MongoMacRevisionEnvironmentStore
@@ -74,6 +75,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database_name = None
     http_client = httpx.AsyncClient(timeout=5.0)
     application.state.http_client = http_client
+    application.state.github_app_client = GitHubAppInstallationClient(
+        app_id=settings.github_app_id,
+        private_key_b64=settings.github_app_private_key_b64,
+        http_client=http_client,
+    )
     application.state.jwks_cache = None
     application.state.jwks_lock = asyncio.Lock()
     application.state.execution_profile_registry = load_execution_profiles(settings)
