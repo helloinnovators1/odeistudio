@@ -306,6 +306,7 @@ def test_execution_upload_is_validated_and_atomically_enqueued(execution_state):
 
 def test_execution_run_pins_verified_repository_identity_and_base(execution_state):
     database, _audit, _tasks, _snapshots, runs = execution_state
+    database["projects"].document["owner_subject"] = "task-owner"
     database["nexus_repository_bindings"].document = {
         "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
         "state": "verified", "installation_id": 77, "repository_id": 123,
@@ -341,6 +342,25 @@ def test_bound_execution_requires_explicit_repository_publish_consent(execution_
     )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "REPOSITORY_PUBLISH_CONSENT_REQUIRED"
+
+
+
+def test_bound_execution_publish_requires_project_owner(execution_state):
+    database, _audit, _tasks, _snapshots, _runs = execution_state
+    database["nexus_repository_bindings"].document = {
+        "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
+        "state": "verified", "installation_id": 77, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "owner": "acme", "name": "service",
+        "full_name": "Acme/Service", "default_branch": "main", "binding_version": 4,
+    }
+    body = payload()
+    body["repository_publish_consent"] = True
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=body,
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "REPOSITORY_PUBLISH_OWNER_REQUIRED"
 
 
 def test_invalid_archive_never_creates_snapshot_or_run(execution_state):
