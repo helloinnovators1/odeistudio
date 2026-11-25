@@ -316,6 +316,11 @@ def test_safe_worktree_merge_back_uses_expected_base_compare_and_swap(tmp_path):
         ["git", "-C", str(repository), "rev-parse", "main"], text=True,
     ).strip() == merge_commit
     assert (repository / "feature.txt").read_text(encoding="utf-8") == "isolated change\n"
+    author = subprocess.check_output(
+        ["git", "-C", str(repository), "show", "-s", "--format=%an <%ae>", merge_commit],
+        text=True,
+    ).strip()
+    assert author == "ODEI NEXUS <nexus@odei.invalid>"
     with pytest.raises(WorktreeMergeConflict, match="moved"):
         merger.merge_back(
             target_branch="main", expected_base_commit=base,

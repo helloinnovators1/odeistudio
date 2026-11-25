@@ -61,7 +61,10 @@ class SafeWorktreeMerger:
         tree = merged_tree.stdout.splitlines()[0].strip()
         if not re.fullmatch(r"[a-f0-9]{40,64}", tree):
             raise WorktreeMergeConflict("Git did not produce a valid merged tree")
+        # commit-tree does not inherit the identity configured by `git commit` flags.
+        # Supply a stable, non-human service identity for this synthetic merge commit.
         commit = self._git(
+            "-c", "user.name=ODEI NEXUS", "-c", "user.email=nexus@odei.invalid",
             "commit-tree", tree, "-p", expected_base_commit, "-p", worker_commit,
             "-m", message,
         ).stdout.strip()
