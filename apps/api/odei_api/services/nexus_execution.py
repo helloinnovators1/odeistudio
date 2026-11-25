@@ -5,8 +5,9 @@ import base64
 import binascii
 import logging
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -18,8 +19,9 @@ from starlette.concurrency import run_in_threadpool
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.execution_diagnostics import build_execution_diagnostics
-from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict
+from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict, ExecutionRunStatus
 from odei_api.services.github_app import GitHubAppNotConfigured, GitHubRepositoryVerificationError
+from odei_api.services.repository_merge_approvals import RepositoryMergeApprovalConflict
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import TaskStatus, identity_owner_key
@@ -31,6 +33,82 @@ router = APIRouter()
 principal_dependency = Depends(get_current_principal)
 _MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 _MAX_BASE64_CHARS = ((_MAX_ARCHIVE_BYTES + 2) // 3) * 4
+
+
+
+
+_MERGE_CONFIRMATION = "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE"
+
+
+class CreateRepositoryMergeApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmation: Literal["I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE"]
+
+
+class MergeRepositoryChangesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approval_id: StrictStr = Field(pattern=r"^[0-9a-f]{32}$")
+    confirmation: Literal["I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE"]
+
+
+def _require_project_owner(project: dict, principal: Principal) -> None:
+    if (
+        project.get("owner_issuer") != principal.issuer
+        or project.get("owner_subject") != principal.subject
+    ):
+        raise HTTPException(status_code=403, detail={
+            "code": "PROJECT_OWNER_REQUIRED",
+            "message": "Only the project owner can approve repository merge-back.",
+        })
+
+
+async def _trusted_binding_for_run(database, run: ExecutionRun) -> dict:
+    binding = await database["nexus_repository_bindings"].find_one({
+        "_id": f"{run.organization_id}:{run.project_id}",
+        "organization_id": run.organization_id, "project_id": run.project_id,
+        "state": "verified",
+    })
+    if (
+        binding is None
+        or binding.get("binding_version") != run.repository_binding_version
+        or binding.get("repository_id") != run.repository_id
+        or binding.get("repository_node_id") != run.repository_node_id
+        or binding.get("installation_id") != run.repository_installation_id
+        or (binding.get("owner") or "").casefold() != (run.repository_owner or "").casefold()
+        or (binding.get("name") or "").casefold() != (run.repository_name or "").casefold()
+        or binding.get("default_branch") != run.repository_default_branch
+    ):
+        raise HTTPException(status_code=409, detail={
+            "code": "TRUSTED_REPOSITORY_BINDING_CHANGED",
+            "message": "The trusted repository binding changed after this execution; merge-back is blocked.",
+        })
+    return binding
+
+
+def _expected_worker_pull_request(run: ExecutionRun) -> dict:
+    if (
+        run.status is not ExecutionRunStatus.COMPLETED
+        or run.repository_binding_version is None
+        or run.worker_commit_sha is None
+        or run.worker_tree_sha is None
+        or run.worker_branch is None
+        or run.worker_pull_request_number is None
+        or run.worker_pull_request_url is None
+        or run.repository_base_sha is None
+    ):
+        raise HTTPException(status_code=409, detail={
+            "code": "WORKER_PROVENANCE_REQUIRED",
+            "message": "A completed execution with verified worker commit provenance is required.",
+        })
+    return {
+        "run_id": run.id,
+        "pull_request_number": run.worker_pull_request_number,
+        "pull_request_url": run.worker_pull_request_url,
+        "branch": run.worker_branch,
+        "base_sha": run.repository_base_sha,
+        "commit_sha": run.worker_commit_sha,
+        "tree_sha": run.worker_tree_sha,
+    }
 
 
 class CreateExecutionRequest(BaseModel):
