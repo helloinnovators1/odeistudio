@@ -315,7 +315,11 @@ def test_safe_worktree_merge_back_uses_expected_base_compare_and_swap(tmp_path):
     assert subprocess.check_output(
         ["git", "-C", str(repository), "rev-parse", "main"], text=True,
     ).strip() == merge_commit
-    assert (repository / "feature.txt").read_text(encoding="utf-8") == "isolated change\n"
+    merged_content = subprocess.check_output(
+        ["git", "-C", str(repository), "show", f"{merge_commit}:feature.txt"],
+        text=True,
+    )
+    assert merged_content == "isolated change\n"
     author = subprocess.check_output(
         ["git", "-C", str(repository), "show", "-s", "--format=%an <%ae>", merge_commit],
         text=True,
