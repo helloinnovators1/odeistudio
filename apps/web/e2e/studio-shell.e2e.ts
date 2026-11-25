@@ -77,8 +77,11 @@ test("workspace and NEXUS remain within common narrow and desktop viewports", as
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
     await page.locator(".studio-quick-actions button").nth(1).click();
-    await page.locator(".titlebar-actions").getByRole("button", { name: /^NEXUS/ }).click();
-    await expect(page.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
+    const nexusPanel = page.getByRole("complementary", { name: "NEXUS AI chat panel" });
+    if (!(await nexusPanel.isVisible())) {
+      await page.locator(".titlebar-actions").getByRole("button", { name: /^NEXUS/ }).click();
+    }
+    await expect(nexusPanel).toBeVisible();
 
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
