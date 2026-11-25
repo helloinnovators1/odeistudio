@@ -15,7 +15,6 @@ from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import ExecutionRunStatus
-from odei_api.services.tasks import TaskStatus
 from odei_api.services.github_app import VerifiedGitHubRepository
 from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key
 
