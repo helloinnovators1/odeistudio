@@ -146,15 +146,25 @@ class DurableWorkspaceJournal:
                         encoded = value.encode("utf-8", errors="strict")
                     except UnicodeEncodeError as exc:
                         raise ValueError("Journal content must be valid UTF-8") from exc
-                    if "\\x00" in value or len(encoded) > 1_048_576:
+                    if "\x00" in value or len(encoded) > 1_048_576:
                         raise ValueError("Journal content is binary or exceeds the per-file limit")
                     aggregate_bytes += len(encoded)
 
-            valid_hash = lambda value: isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value)
-            before_hash = hashlib.sha256(before.encode("utf-8")).hexdigest() if before is not None else None
-            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest() if content is not None else None
+            def valid_hash(value: Any) -> bool:
+                return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+            before_hash = (
+                hashlib.sha256(before.encode("utf-8")).hexdigest()
+                if before is not None else None
+            )
+            content_hash = (
+                hashlib.sha256(content.encode("utf-8")).hexdigest()
+                if content is not None else None
+            )
             if operation == "create":
-                valid = before is None and base_hash is None and content is not None and result_hash == content_hash
+                valid = (
+                    before is None and base_hash is None and content is not None
+                    and valid_hash(result_hash) and result_hash == content_hash
+                )
             elif operation == "update":
                 valid = (
                     before is not None and valid_hash(base_hash) and base_hash == before_hash

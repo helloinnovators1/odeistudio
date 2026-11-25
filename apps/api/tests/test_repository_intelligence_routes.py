@@ -151,7 +151,7 @@ def test_project_regex_search_is_bounded_and_returns_provenance():
     try:
         response = TestClient(app).get(
             "/api/v1/organizations/org-1/projects/project-1/repository-index/search",
-            params={"q": r"needle\\s+found", "regex": "true"},
+            params={"q": r"needle\s+found", "regex": "true"},
         )
         assert response.status_code == 200, response.text
         assert response.json()["mode"] == "regex"
