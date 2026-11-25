@@ -34,6 +34,9 @@ class Http:
     async def delete(self, url, **kwargs):
         self.calls.append(("DELETE", url, kwargs))
         return self.responses.pop(0)
+    async def put(self, url, **kwargs):
+        self.calls.append(("PUT", url, kwargs))
+        return self.responses.pop(0)
 
 
 @pytest.mark.asyncio
@@ -191,3 +194,100 @@ async def test_github_app_rejects_repository_without_contents_write_permission()
     )
     with pytest.raises(GitHubRepositoryVerificationError):
         await client.verify_repository(installation_id=77, owner="acme", name="service")
+
+
+
+@pytest.mark.asyncio
+async def test_merge_requires_exact_repo_base_pr_head_and_sha_guarded_merge():
+    http = Http([
+        Response(200, {"id": 77, "app_id": 42}),
+        Response(201, {"token": "ephemeral-merge-token"}),
+        Response(200, {
+            "id": 123, "node_id": "R_kgDOabc", "default_branch": "main",
+            "permissions": {"contents": "write", "pull_requests": "write"},
+        }),
+        Response(200, {"ref": "refs/heads/main", "object": {"sha": "a" * 40}}),
+        Response(200, {
+            "number": 12, "state": "open", "merged": False, "mergeable": True,
+            "html_url": "https://github.com/Acme/Service/pull/12",
+            "head": {"sha": "e" * 40, "ref": "odei/nexus/run-1",
+                     "repo": {"id": 123, "node_id": "R_kgDOabc"}},
+            "base": {"sha": "a" * 40, "ref": "main",
+                     "repo": {"id": 123, "node_id": "R_kgDOabc"}},
+        }),
+        Response(200, {"merged": True, "sha": "f" * 40}),
+    ])
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    client = GitHubAppInstallationClient(
+        app_id=42,
+        private_key_b64=SimpleNamespace(
+            get_secret_value=lambda: base64.b64encode(pem).decode(),
+        ),
+        http_client=http,
+    )
+    run = SimpleNamespace(
+        id="run-1", repository_owner="Acme", repository_name="Service",
+        repository_binding_version=4, repository_id=123,
+        repository_node_id="R_kgDOabc", repository_installation_id=77,
+        repository_default_branch="main", repository_base_sha="a" * 40,
+        worker_commit_sha="e" * 40, worker_branch="odei/nexus/run-1",
+        worker_pull_request_number=12,
+    )
+    binding = {
+        "state": "verified", "binding_version": 4, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "installation_id": 77,
+        "owner": "Acme", "name": "Service", "default_branch": "main",
+    }
+    result = await client.merge_verified_pull_request(binding=binding, run=run)
+    assert result == {"merge_commit_sha": "f" * 40}
+    merge_call = http.calls[-1]
+    assert merge_call[0] == "PUT"
+    assert merge_call[1].endswith("/pulls/12/merge")
+    assert merge_call[2]["json"] == {"sha": "e" * 40, "merge_method": "squash"}
+
+
+@pytest.mark.asyncio
+async def test_merge_refuses_advanced_base_without_provider_merge():
+    http = Http([
+        Response(200, {"id": 77, "app_id": 42}),
+        Response(201, {"token": "ephemeral-merge-token"}),
+        Response(200, {
+            "id": 123, "node_id": "R_kgDOabc", "default_branch": "main",
+            "permissions": {"contents": "write", "pull_requests": "write"},
+        }),
+        Response(200, {"ref": "refs/heads/main", "object": {"sha": "9" * 40}}),
+    ])
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    client = GitHubAppInstallationClient(
+        app_id=42,
+        private_key_b64=SimpleNamespace(
+            get_secret_value=lambda: base64.b64encode(pem).decode(),
+        ),
+        http_client=http,
+    )
+    run = SimpleNamespace(
+        id="run-1", repository_owner="Acme", repository_name="Service",
+        repository_binding_version=4, repository_id=123,
+        repository_node_id="R_kgDOabc", repository_installation_id=77,
+        repository_default_branch="main", repository_base_sha="a" * 40,
+        worker_commit_sha="e" * 40, worker_branch="odei/nexus/run-1",
+        worker_pull_request_number=12,
+    )
+    binding = {
+        "state": "verified", "binding_version": 4, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "installation_id": 77,
+        "owner": "Acme", "name": "Service", "default_branch": "main",
+    }
+    with pytest.raises(GitHubRepositoryVerificationError):
+        await client.merge_verified_pull_request(binding=binding, run=run)
+    assert all(method != "PUT" for method, _url, _kwargs in http.calls)
+
+
