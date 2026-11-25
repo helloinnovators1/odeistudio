@@ -275,7 +275,7 @@ class GitHubAppInstallationClient:
                         "Worker workspace contains a credential-like value and cannot be published",
                     )
                 total_bytes += len(data)
-                if len(data) > 64 * 1024 * 1024 or total_bytes > 512 * 1024 * 1024:
+                if len(data) > 64 * 1024 * 1024 or total_bytes > 100 * 1024 * 1024:
                     raise GitHubRepositoryVerificationError("Worker workspace exceeds repository commit limits")
                 workspace_files[relative] = data
                 if len(workspace_files) > 10_000:

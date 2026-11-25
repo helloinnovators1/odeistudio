@@ -182,6 +182,7 @@ class MongoExecutionRunStore:
         await self._runs.create_index([("status", 1), ("created_at", 1), ("available_at", 1)])
         await self._runs.create_index([("status", 1), ("lease_expires_at", 1)])
         await self._runs.create_index([("organization_id", 1), ("project_id", 1), ("created_at", -1)])
+        await self._runs.create_index([("organization_id", 1), ("project_id", 1), ("status", 1)])
         await self._runs.create_index(
             [("organization_id", 1), ("active_task_id", 1)], unique=True,
             partialFilterExpression={"active_task_id": {"$exists": True}},
