@@ -23,12 +23,46 @@ class Collection:
     def __init__(self, document):
         self.document = document
 
-    async def find_one(self, query):
+    def _value(self, key):
+        value = self.document
+        for part in key.split("."):
+            if not isinstance(value, dict):
+                return None
+            value = value.get(part)
+        return value
+
+    def _matches(self, query):
         if self.document is None:
-            return None
-        if all(self.document.get(key) == value for key, value in query.items()):
-            return self.document
-        return None
+            return False
+        for key, expected in query.items():
+            actual = self._value(key)
+            if isinstance(expected, dict) and "$exists" in expected:
+                if (actual is not None) != expected["$exists"]:
+                    return False
+            elif isinstance(expected, dict) and "$in" in expected:
+                if actual not in expected["$in"]:
+                    return False
+            elif isinstance(expected, dict) and "$gt" in expected:
+                if actual is None or actual <= expected["$gt"]:
+                    return False
+            elif isinstance(expected, dict) and "$lte" in expected:
+                if actual is None or actual > expected["$lte"]:
+                    return False
+            elif actual != expected:
+                return False
+        return True
+
+    async def find_one(self, query):
+        return self.document if self._matches(query) else None
+
+    async def update_one(self, query, update):
+        if not self._matches(query):
+            return SimpleNamespace(modified_count=0)
+        for key, value in update.get("$set", {}).items():
+            self.document[key] = value
+        for key in update.get("$unset", {}):
+            self.document.pop(key, None)
+        return SimpleNamespace(modified_count=1)
 
 
 class Database:
@@ -54,6 +88,7 @@ class Database:
             "task_events": Collection(None),
             "nexus_repository_bindings": Collection(None),
             "execution_runs": Collection(None),
+            "nexus_repository_merge_approvals": Collection(None),
         }
 
     def __getitem__(self, key):
@@ -485,6 +520,7 @@ def test_owner_must_create_and_consume_single_use_merge_approval(execution_state
     assert merge_response.json()["merged"] is True
     assert merge_response.json()["merge_commit_sha"] == "e" * 40
     assert store.document["status"] == "consumed"
+    assert "merge_lock" not in database["nexus_repository_bindings"].document
     assert len(github.merged) == 1
     merged_state = TestClient(app).get(path)
     assert merged_state.status_code == 200, merged_state.text
