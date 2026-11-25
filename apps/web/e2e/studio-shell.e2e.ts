@@ -246,10 +246,13 @@ test("compact workspace navigation switches focused surfaces without stacking pa
 test("NEXUS shortcut toggles the panel and mobile focus view", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto("/?window=ide");
+  await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeVisible();
+  await page.keyboard.press("Control+i");
+  await expect(page.locator(".workbench")).toHaveClass(/mobile-editor/);
+  await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeHidden();
   await page.keyboard.press("Control+i");
   await expect(page.locator(".workbench")).toHaveClass(/mobile-nexus/);
   await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeVisible();
   await page.keyboard.press("Control+i");
   await expect(page.locator(".workbench")).toHaveClass(/mobile-editor/);
-  await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeHidden();
 });
