@@ -92,12 +92,24 @@ class FakeCollection:
         document = self.documents.get(query["_id"])
         if not document:
             return None
-        if document["organization_id"] != query["organization_id"]:
-            return None
-        if document["version"] != query["version"] or document["status"] != query["status"]:
-            return None
-        document.update(deepcopy(update["$set"]))
-        document["version"] += update["$inc"]["version"]
+        for key, expected in query.items():
+            if key == "$or":
+                matched = False
+                for clause in expected:
+                    for field, condition in clause.items():
+                        value = document.get(field)
+                        if "$lt" in condition and value is not None and value < condition["$lt"]:
+                            matched = True
+                        if condition.get("$exists") is False and field not in document:
+                            matched = True
+                if not matched:
+                    return None
+            elif document.get(key) != expected:
+                return None
+        for key, value in update.get("$set", {}).items():
+            document[key] = deepcopy(value)
+        for key, value in update.get("$inc", {}).items():
+            document[key] = document.get(key, 0) + value
         return deepcopy(document)
 
 
