@@ -14,6 +14,8 @@ import time
 import uuid
 from pathlib import Path
 
+import httpx
+
 from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
@@ -27,6 +29,7 @@ from odei_api.services.execution_runs import (
     MongoExecutionRunStore,
 )
 from odei_api.services.execution_sandbox import ContainerSandbox
+from odei_api.services.github_app import GitHubAppInstallationClient
 from odei_api.services.mad_telemetry import MongoWorkerHeartbeatStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 from odei_api.services.workspace_snapshots import WorkspaceSnapshotIngestor
@@ -37,7 +40,7 @@ logger = logging.getLogger("odei.execution.worker")
 class ExecutionWorker:
     """Lease-supervised worker that verifies immutable snapshots before sandbox execution."""
 
-    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root, tasks, task_events, heartbeats=None):
+    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root, tasks, task_events, heartbeats=None, github_app=None, repository_bindings=None):
         self.worker_id = worker_id
         self.runs = runs
         self.snapshots = snapshots
@@ -48,6 +51,8 @@ class ExecutionWorker:
         self.tasks = tasks
         self.task_events = task_events
         self.heartbeats = heartbeats
+        self.github_app = github_app
+        self.repository_bindings = repository_bindings
 
     async def _publish_heartbeat(self, *, status: str, active_run_id: str | None = None) -> None:
         if self.heartbeats is None:
