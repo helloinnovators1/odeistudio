@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
+from odei_api.services.governed_tool_registry import GovernedToolRegistry
 from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
 
@@ -73,6 +74,7 @@ def run_nexus_agent(
     timeout_seconds: int = 90,
     cancel_check: Callable[[], bool] | None = None,
     event_sink: Callable[[dict[str, Any]], None] | None = None,
+    governed_registry: GovernedToolRegistry | None = None,
 ) -> AgentRunResult:
     """Run bounded read-only tools after explicit cloud-model consent.
 
@@ -128,7 +130,7 @@ def run_nexus_agent(
     if not cloud_model_consent:
         raise AgentRuntimeError("Explicit user consent is required before sending workspace context to a cloud model")
 
-    tools = workspace_tools.schemas()
+    tools = governed_registry.schemas() if governed_registry is not None else workspace_tools.schemas()
     history: list[Any] = []
     history_chars = 0
     if prior_messages is not None:
@@ -213,7 +215,11 @@ def run_nexus_agent(
                 arguments = json.loads(raw_arguments)
                 if not isinstance(arguments, dict):
                     raise ToolExecutionError("Tool arguments must be a JSON object")
-                result = workspace_tools.execute(name, arguments)
+                result = (
+                    governed_registry.execute(name, arguments)
+                    if governed_registry is not None
+                    else workspace_tools.execute(name, arguments)
+                )
                 invoked_tools.append(name)
                 emit_event("agent.tool.completed", tool_name=name, call_number=total_calls)
             except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:

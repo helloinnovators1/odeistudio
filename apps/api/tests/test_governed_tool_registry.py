@@ -111,3 +111,36 @@ def test_audit_failure_prevents_handler_execution_and_secrets_are_redacted():
     args = {"profile": "python"}
     result = safe.execute("run_diagnostics", args, approval=_approval(args))
     assert "ghp_" not in result and "[REDACTED]" in result
+
+
+
+def test_tool_schema_is_enforced_before_audit_or_handler():
+    calls = []
+    registry, events = _registry(lambda args: calls.append(args) or "ok")
+    with pytest.raises(GovernedToolError, match="unsupported fields"):
+        registry.execute("run_diagnostics", {"profile": "python", "admin": True},
+                         approval=_approval({"profile": "python", "admin": True}))
+    with pytest.raises(GovernedToolError, match="invalid type"):
+        registry.execute("run_diagnostics", {"profile": 42},
+                         approval=_approval({"profile": 42}))
+    with pytest.raises(GovernedToolError, match="missing required"):
+        registry.execute("run_diagnostics", {},
+                         approval=_approval({}))
+    assert calls == []
+    assert events == []
+
+
+def test_tool_schema_description_is_exposed_to_model():
+    registry = GovernedToolRegistry(
+        mode="agent", organization_id="org", project_id="project",
+        actor_issuer="https://identity.example", actor_subject="user",
+        audit_sink=lambda _: None,
+    )
+    registry.register(ToolDefinition(
+        name="read_project", capability="workspace.read",
+        schema={"type": "object", "properties": {"path": {"type": "string"}},
+                "required": ["path"], "additionalProperties": False},
+        handler=lambda _: "ok", description="Read a bounded project file.",
+        approval_required=False,
+    ))
+    assert registry.schemas()[0]["description"] == "Read a bounded project file."

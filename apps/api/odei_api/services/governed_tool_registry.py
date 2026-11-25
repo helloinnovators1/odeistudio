@@ -42,7 +42,60 @@ class ToolDefinition:
     capability: str
     schema: Mapping[str, Any]
     handler: Callable[[dict[str, Any]], Any]
+    description: str = "Governed ODEI tool."
     approval_required: bool = True
+
+
+def _validate_arguments(schema: Mapping[str, Any], arguments: dict[str, Any]) -> None:
+    """Validate the strict JSON-schema subset used by Responses function tools."""
+    properties = schema.get("properties")
+    required = schema.get("required")
+    if (
+        schema.get("type") != "object"
+        or not isinstance(properties, Mapping)
+        or not isinstance(required, list)
+        or set(required) != set(properties)
+        or schema.get("additionalProperties") is not False
+    ):
+        raise GovernedToolError("tool schema is not a strict object schema")
+    if set(arguments) - set(properties):
+        raise GovernedToolError("tool arguments contain unsupported fields")
+    if set(required) - set(arguments):
+        raise GovernedToolError("tool arguments are missing required fields")
+
+    for key, value in arguments.items():
+        specification = properties.get(key)
+        if not isinstance(specification, Mapping):
+            raise GovernedToolError("tool argument schema is invalid")
+        expected = specification.get("type")
+        valid = (
+            (expected == "string" and isinstance(value, str))
+            or (expected == "integer" and isinstance(value, int) and not isinstance(value, bool))
+            or (expected == "number" and isinstance(value, (int, float)) and not isinstance(value, bool))
+            or (expected == "boolean" and isinstance(value, bool))
+            or (expected == "object" and isinstance(value, dict))
+            or (expected == "array" and isinstance(value, list))
+            or (expected == "null" and value is None)
+        )
+        if not valid:
+            raise GovernedToolError("tool argument has an invalid type")
+        if expected == "string":
+            if len(value) < specification.get("minLength", 0):
+                raise GovernedToolError("tool argument is shorter than allowed")
+            if len(value) > specification.get("maxLength", _MAX_ARGUMENT_BYTES):
+                raise GovernedToolError("tool argument is longer than allowed")
+        if "enum" in specification and value not in specification["enum"]:
+            raise GovernedToolError("tool argument is not an allowed value")
+        if expected in {"integer", "number"}:
+            if "minimum" in specification and value < specification["minimum"]:
+                raise GovernedToolError("tool argument is below the allowed minimum")
+            if "maximum" in specification and value > specification["maximum"]:
+                raise GovernedToolError("tool argument exceeds the allowed maximum")
+        if expected == "array":
+            if len(value) < specification.get("minItems", 0):
+                raise GovernedToolError("tool argument contains too few items")
+            if len(value) > specification.get("maxItems", _MAX_ARGUMENT_BYTES):
+                raise GovernedToolError("tool argument contains too many items")
 
 
 class GovernedToolRegistry:
@@ -91,6 +144,9 @@ class GovernedToolRegistry:
             raise ValueError("tool name is duplicated or handler is invalid")
         if not isinstance(definition.schema, Mapping):
             raise TypeError("tool schema must be an object")
+        _validate_arguments(definition.schema, {}) if not definition.schema.get("properties") else None
+        if not isinstance(definition.description, str) or not definition.description.strip() or len(definition.description) > 1_000:
+            raise ValueError("tool description is invalid")
         try:
             NexusCapabilityPolicy.require(self._mode, definition.capability)
         except NexusCapabilityDenied as exc:
@@ -102,7 +158,7 @@ class GovernedToolRegistry:
             {
                 "type": "function",
                 "name": item.name,
-                "description": "Governed ODEI tool.",
+                "description": item.description,
                 "strict": True,
                 "parameters": dict(item.schema),
             }
@@ -133,6 +189,7 @@ class GovernedToolRegistry:
             raise GovernedToolError("tool is not registered")
         if not isinstance(arguments, dict):
             raise GovernedToolError("tool arguments must be an object")
+        _validate_arguments(definition.schema, arguments)
         digest = self._digest(arguments)
         if definition.approval_required:
             if approval is None or self._approval_consumer is None:
@@ -173,6 +230,9 @@ class GovernedToolRegistry:
                 result, ensure_ascii=False, default=str
             )
             rendered = redact_secrets(rendered[:_MAX_RESULT_CHARS])
+        except (ValueError, OSError):
+            # Preserve bounded argument/workspace validation errors for the agent loop.
+            raise
         except Exception as exc:
             raise GovernedToolError("tool execution failed") from exc
         try:
