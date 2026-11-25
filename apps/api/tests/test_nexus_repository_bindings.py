@@ -50,6 +50,7 @@ class Database:
             }]),
             "project_memberships": Collection(),
             "nexus_repository_bindings": Collection(),
+            "execution_runs": Collection(),
         }
     def __getitem__(self, name):
         return self.collections[name]

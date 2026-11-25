@@ -49,6 +49,8 @@ class Database:
             }),
             "tasks": Collection(None),
             "task_events": Collection(None),
+            "nexus_repository_bindings": Collection(None),
+            "execution_runs": Collection(None),
         }
 
     def __getitem__(self, key):
