@@ -28,6 +28,7 @@ from odei_api.services.conversation_store import MongoConversationStore
 from odei_api.services.execution_artifacts import MongoExecutionArtifactStore
 from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
+from odei_api.services.github_app import GitHubAppInstallationClient
 from odei_api.services.mac_deployments import MongoMacDeploymentStore
 from odei_api.services.mac_environment_api import router as mac_environment_router
 from odei_api.services.mac_revision_environment_store import MongoMacRevisionEnvironmentStore
@@ -43,6 +44,7 @@ from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
 from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
 from odei_api.services.nexus_patch_proposals import router as nexus_patch_proposals_router
+from odei_api.services.nexus_repository_bindings import router as nexus_repository_bindings_router
 from odei_api.services.nexus_tasks import router as nexus_tasks_router
 from odei_api.services.parallel_jobs import MongoParallelJobStore
 from odei_api.services.parallel_jobs_api import router as parallel_jobs_router
@@ -73,6 +75,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database_name = None
     http_client = httpx.AsyncClient(timeout=5.0)
     application.state.http_client = http_client
+    application.state.github_app_client = GitHubAppInstallationClient(
+        app_id=settings.github_app_id,
+        private_key_b64=settings.github_app_private_key_b64,
+        http_client=http_client,
+    )
     application.state.jwks_cache = None
     application.state.jwks_lock = asyncio.Lock()
     application.state.execution_profile_registry = load_execution_profiles(settings)
@@ -153,6 +160,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             repository_index_store = MongoRepositoryIndexStore(application.state.mongo_database)
             await repository_index_store.initialize()
             application.state.repository_index_store = repository_index_store
+            await application.state.mongo_database["nexus_repository_bindings"].create_index(
+                [("organization_id", 1), ("project_id", 1)], unique=True,
+            )
             artifact_store = MongoExecutionArtifactStore(application.state.mongo_database)
             await artifact_store.initialize()
             application.state.execution_artifact_store = artifact_store
@@ -189,6 +199,7 @@ app.include_router(nexus_conversations_router)
 app.include_router(nexus_inspection_router)
 app.include_router(nexus_patch_proposals_router)
 app.include_router(repository_intelligence_router)
+app.include_router(nexus_repository_bindings_router)
 app.include_router(projects_router)
 app.include_router(mac_environment_router)
 
