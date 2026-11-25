@@ -21,9 +21,9 @@ from odei_api.security.auth import Principal, get_current_principal, require_org
 from odei_api.services.execution_diagnostics import build_execution_diagnostics
 from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict, ExecutionRunStatus
 from odei_api.services.github_app import GitHubAppNotConfigured, GitHubRepositoryVerificationError
-from odei_api.services.repository_merge_approvals import RepositoryMergeApprovalConflict
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.project_access import require_project_access
+from odei_api.services.repository_merge_approvals import RepositoryMergeApprovalConflict
 from odei_api.services.tasks import TaskStatus, identity_owner_key
 from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
 
@@ -33,8 +33,6 @@ router = APIRouter()
 principal_dependency = Depends(get_current_principal)
 _MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 _MAX_BASE64_CHARS = ((_MAX_ARCHIVE_BYTES + 2) // 3) * 4
-
-
 
 
 _MERGE_CONFIRMATION = "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE"
