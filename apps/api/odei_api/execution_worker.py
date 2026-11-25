@@ -285,6 +285,12 @@ async def _main() -> None:
     os.chmod(workspace_root, 0o700)
     client, database_name = create_mongo_client(settings)
     database = client[database_name]
+    github_http = httpx.AsyncClient(timeout=20.0)
+    github_app = GitHubAppInstallationClient(
+        app_id=settings.github_app_id,
+        private_key_b64=settings.github_app_private_key_b64,
+        http_client=github_http,
+    )
     audit = MongoAuditEventStore(database["audit_events"])
     await audit.initialize()
     runs = MongoExecutionRunStore(
@@ -307,11 +313,13 @@ async def _main() -> None:
         worker_id=worker_id, runs=runs, snapshots=snapshots, artifacts=artifacts,
         registry=registry, sandbox=sandbox, workspace_root=workspace_root,
         tasks=database["tasks"], task_events=database["task_events"],
-        heartbeats=heartbeats,
+        heartbeats=heartbeats, github_app=github_app,
+        repository_bindings=database["nexus_repository_bindings"],
     )
     try:
         await worker.serve()
     finally:
+        await github_http.aclose()
         await client.close()
 
 
