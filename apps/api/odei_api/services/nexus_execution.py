@@ -581,6 +581,10 @@ async def get_execution(
     )
     response["repository_merge_available"] = bool(
         is_owner and run.status is ExecutionRunStatus.COMPLETED
+        and _task.status in {
+            TaskStatus.EXECUTING, TaskStatus.VALIDATING,
+            TaskStatus.REVIEW_READY, TaskStatus.COMPLETED,
+        }
         and run.worker_pull_request_number is not None
     )
     response["repository_merge_approval"] = None

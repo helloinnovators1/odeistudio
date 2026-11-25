@@ -54,4 +54,6 @@ A worker pull request is never merged automatically. Merge-back requires a separ
 
 A stale binding, changed head/base, changed tree/ancestry, expired approval, wrong actor, branch-protection rejection or provider failure stops the operation. Once consumed, an approval is terminal even on failure; a new execution and review PR are required. If GitHub reports a successful merge but the durable result cannot be finalized, the API returns a reconciliation-required response and explicitly forbids replaying that approval.
 
+During the merge request, the server atomically places a short-lived lock on the binding document. Rebinding and removal use compare-and-set filters that reject while that lock exists; expired locks are safely cleared by the binding routes. The lock is released after the provider result is persisted and expires automatically if the worker/API process is interrupted.
+
 The merge endpoints do not accept client-supplied repository coordinates, branch names, commit SHAs, base SHAs or merge methods. They use only the stored worker provenance and the server-side verified repository binding.
