@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import logging
-import regex as bounded_regex
 import time
 from tempfile import TemporaryDirectory
 from uuid import uuid4
+
+import regex as bounded_regex
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import Path as ApiPath
@@ -658,7 +659,7 @@ async def semantic_repository_search(
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
     try:
-        state = await _require_current_index(
+        await _require_current_index(
             request, store, organization_id=organization_id, project_id=project_id,
         )
         config = get_settings()
