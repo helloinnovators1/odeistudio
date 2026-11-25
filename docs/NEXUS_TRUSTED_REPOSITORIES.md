@@ -40,3 +40,18 @@ The isolated worker builds a Git commit from the post-execution workspace snapsh
 The API stores the repository ID/node ID, binding version, base SHA, commit SHA, tree SHA, branch, pull request number/URL and attestation timestamp under the active worker lease. The run history exposes this metadata for review. If the branch head changes, the repository binding changes, the default branch moves before publication, or the worker lease expires, provenance recording fails closed.
 
 A pull request is a review artifact, not merge authorization. A project owner must separately review and approve merge-back through a durable one-use approval flow; that approval/merge endpoint is a subsequent gate and is not enabled by this worker-provenance change.
+
+
+## Human-approved merge-back
+
+A worker pull request is never merged automatically. Merge-back requires a separate project-owner action against a completed execution whose task is still approved.
+
+1. The project owner reviews the GitHub pull request and submits the explicit confirmation string I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE to create a durable approval.
+2. The approval is scoped to the organization, project, task, run, immutable repository ID/node ID, binding version, default branch, base SHA, worker commit/tree SHA, branch and pull request number/URL.
+3. The approval expires after ten minutes, is bound to the same authenticated project owner who must consume it, and can be used once. A unique database index permits only one approval record per execution run. Expired, consumed or failed approvals cannot be replayed.
+4. Immediately before merge, the API rechecks the binding and GitHub verifies the pull request is still open and not a draft, the head and base repositories are the trusted repository, the head SHA/branch and base SHA/ref still match the approval, and the worker commit still has exactly the approved base as its only parent and the approved tree SHA.
+5. Only then does the GitHub App call the pull-request merge endpoint with the approved head SHA and squash strategy. GitHub branch protection and required reviews remain authoritative. The API records the merge commit SHA in the durable approval record and audit trail.
+
+A stale binding, changed head/base, changed tree/ancestry, expired approval, wrong actor, branch-protection rejection or provider failure stops the operation. Once consumed, an approval is terminal even on failure; a new execution and review PR are required. If GitHub reports a successful merge but the durable result cannot be finalized, the API returns a reconciliation-required response and explicitly forbids replaying that approval.
+
+The merge endpoints do not accept client-supplied repository coordinates, branch names, commit SHAs, base SHAs or merge methods. They use only the stored worker provenance and the server-side verified repository binding.
