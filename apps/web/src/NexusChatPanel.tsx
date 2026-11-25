@@ -197,7 +197,33 @@ export default function NexusChatPanel({
     setMergeApproval(null);
     setMergeResult(null);
     setMergeError("");
-  }, [executionRun?.run_id]);
+    const approvalState = executionRun?.repository_merge_approval;
+    const review = executionRun?.repository_review;
+    if (approvalState?.status === "pending" && approvalState.approval_id && review?.pull_request_url) {
+      setMergeApproval({
+        approval_id: approvalState.approval_id, status: "pending",
+        expires_at: approvalState.expires_at,
+        pull_request_url: review.pull_request_url,
+        pull_request_number: review.pull_request_number,
+        commit_sha: review.commit_sha ?? "",
+        base_sha: review.base_sha ?? "",
+        confirmation_required: "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE",
+      });
+    } else if (approvalState?.status === "expired") {
+      setMergeError("The one-use approval expired. Start a new execution to create a new review and approval.");
+    } else if (approvalState?.status === "failed") {
+      setMergeError("The merge approval failed and is terminal. Start a new execution before trying again.");
+    } else if (approvalState?.status === "consuming") {
+      setMergeError("The merge outcome is being reconciled. Do not retry this approval.");
+    } else if (approvalState?.status === "pending" && !approvalState.approval_id) {
+      setMergeError("Another project owner created this approval. Only that owner can consume it.");
+    }
+  }, [
+    executionRun?.run_id,
+    executionRun?.repository_merge_approval?.status,
+    executionRun?.repository_merge_approval?.approval_id,
+    executionRun?.repository_merge_approval?.merge_commit_sha,
+  ]);
 
   useEffect(() => {
     if (!isDesktopHost) return;
@@ -787,6 +813,12 @@ export default function NexusChatPanel({
         executionRun.run_id, access.accessToken,
       );
       setMergeApproval(approval);
+      setExecutionRun((current) => current?.run_id === executionRun.run_id
+        ? { ...current, repository_merge_approval: {
+            status: "pending", approval_id: approval.approval_id,
+            expires_at: approval.expires_at, merge_commit_sha: null, failure_code: null,
+          } }
+        : current);
     } catch (cause) {
       setMergeError(errorMessage(cause));
     } finally {
@@ -814,6 +846,13 @@ export default function NexusChatPanel({
       );
       setMergeResult(result);
       setMergeApproval(null);
+      setExecutionRun((current) => current?.run_id === executionRun.run_id
+        ? { ...current, repository_merge_approval: {
+            status: "consumed", approval_id: null,
+            expires_at: mergeApproval.expires_at,
+            merge_commit_sha: result.merge_commit_sha, failure_code: null,
+          } }
+        : current);
     } catch (cause) {
       setMergeError(errorMessage(cause));
     } finally {
@@ -1770,12 +1809,14 @@ export default function NexusChatPanel({
                   </a></p>
                 )}
 
-                {executionRun.status === "completed"
+                {executionRun.status === "completed" && executionRun.repository_merge_available
                   && executionRun.repository_review?.pull_request_url
                   && executionRun.repository_review.commit_sha && (
                   <div className="nexus-execution-artifacts" aria-label="Human-approved repository merge-back">
                     <strong>HUMAN-APPROVED MERGE-BACK</strong>
-                    {mergeResult ? (
+                    {executionRun.repository_merge_approval?.status === "consumed" ? (
+                      <p>Merge completed. GitHub merge commit: {executionRun.repository_merge_approval.merge_commit_sha}</p>
+                    ) : mergeResult ? (
                       <p>Merge completed. GitHub merge commit: {mergeResult.merge_commit_sha}</p>
                     ) : mergeApproval ? (
                       <>
@@ -1785,6 +1826,11 @@ export default function NexusChatPanel({
                           {mergeBusy ? "Merging…" : "Merge approved changes"}
                         </button>
                       </>
+                    ) : executionRun.repository_merge_approval?.status === "expired"
+                      || executionRun.repository_merge_approval?.status === "failed"
+                      || executionRun.repository_merge_approval?.status === "consuming"
+                      || executionRun.repository_merge_approval?.status === "pending" ? (
+                      <p>{mergeError || "This execution already has a merge approval record."}</p>
                     ) : (
                       <button type="button" className="nexus-link-button"
                         onClick={() => void createMergeApproval()} disabled={mergeBusy}>

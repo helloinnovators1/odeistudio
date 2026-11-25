@@ -15,6 +15,13 @@ export interface NexusRepositoryReview {
   pull_request_number: number | null; pull_request_url: string | null;
   provenance_at: string | null;
 }
+export interface NexusRepositoryMergeApprovalState {
+  status: "pending" | "expired" | "consuming" | "consumed" | "failed";
+  approval_id: string | null;
+  expires_at: string;
+  merge_commit_sha: string | null;
+  failure_code: string | null;
+}
 export interface NexusExecutionRun {
   run_id: string; organization_id: string; project_id: string; task_id: string;
   profile_id: string; snapshot_sha256: string; status: NexusExecutionStatus;
@@ -28,6 +35,8 @@ export interface NexusExecutionCreateResponse {
   repository_binding_version?: number | null;
   repository_base_sha?: string | null;
   repository_publish_consent?: boolean;
+  repository_merge_available?: boolean;
+  repository_merge_approval?: NexusRepositoryMergeApprovalState | null;
 }
 export interface NexusExecutionEvent {
   event_id: string; type: string; version: number; occurred_at: string;
