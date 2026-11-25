@@ -205,48 +205,84 @@ class WorkspaceHandleRegistry:
 
     def search_text(
         self, workspace_id: str, query: str, *, limit: int = 50
-    ) -> dict:
-        """Search indexed-safe text files and return bounded, hash-attributed matches."""
-        if not isinstance(query, str) or not query.strip() or len(query) > 256:
-            raise ValueError("Search query must contain 1 to 256 characters")
-        if not 1 <= limit <= 100:
-            raise ValueError("Search result limit must be between 1 and 100")
-        needle = query.casefold()
+    ) -> dict[str, Any]:
+        """Search eligible UTF-8 files with strict scan budgets and redacted snippets."""
+        from odei_api.services.secret_redaction import redact_secrets
+
+        max_query_chars = 200
+        max_results = 50
+        max_files = 1_000
+        max_total_bytes = 20_000_000
+        max_file_bytes = 128_000
+        if (
+            not isinstance(query, str) or not query.strip()
+            or len(query) > max_query_chars or "\x00" in query
+        ):
+            raise ValueError("Search query must contain 1–200 non-NUL characters")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= max_results:
+            raise ValueError("Search result limit must be between 1 and 50")
+
+        needle = query.strip().casefold()
         matches: list[dict[str, str | int]] = []
-        scanned_files = 0
+        files_scanned = 0
+        bytes_scanned = 0
         skipped_files = 0
         truncated = False
         with self._borrow(workspace_id) as grant:
             if grant.platform == "nt":
                 files = list_project_files_from_windows_handle(
                     grant.handle, kernel32=grant.kernel32,
-                    max_files=DEFAULT_MAX_FILES, max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
+                    max_files=max_files + 1, max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
                 )
             else:
                 files = list_project_files_from_posix_fd(
-                    int(grant.handle), max_files=DEFAULT_MAX_FILES,
+                    int(grant.handle), max_files=max_files + 1,
                     max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
                 )
-            seen_paths: set[str] = set()
+            if len(files) > max_files:
+                truncated = True
+            files = files[:max_files]
+            seen_paths = {item.path for item in files}
+
             for item in files:
-                seen_paths.add(item.path)
-                try:
-                    if grant.platform == "nt":
-                        content = read_project_text_file_from_windows_handle(
-                            grant.handle, item.path, max_bytes=MAX_TEXT_FILE_BYTES
-                        )
-                    else:
-                        content = read_project_text_file_from_posix_fd(
-                            int(grant.handle), item.path, max_bytes=MAX_TEXT_FILE_BYTES
-                        )
-                except (OSError, ValueError):
+                if len(matches) >= limit:
+                    truncated = True
+                    break
+                if item.size > max_file_bytes:
                     skipped_files += 1
                     stale = grant.search_cache.pop(item.path, None)
                     if stale is not None:
                         grant.search_cache_bytes -= stale[2]
                     continue
-                scanned_files += 1
-                digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                if bytes_scanned + item.size > max_total_bytes:
+                    truncated = True
+                    break
+                try:
+                    if grant.platform == "nt":
+                        content = read_project_text_file_from_windows_handle(
+                            grant.handle, item.path, max_bytes=max_file_bytes
+                        )
+                    else:
+                        content = read_project_text_file_from_posix_fd(
+                            int(grant.handle), item.path, max_bytes=max_file_bytes
+                        )
+                except (ValueError, OSError, UnicodeError):
+                    skipped_files += 1
+                    stale = grant.search_cache.pop(item.path, None)
+                    if stale is not None:
+                        grant.search_cache_bytes -= stale[2]
+                    continue
+
+                encoded = content.encode("utf-8")
+                if len(encoded) > max_file_bytes:
+                    skipped_files += 1
+                    continue
+                if bytes_scanned + len(encoded) > max_total_bytes:
+                    truncated = True
+                    break
+                files_scanned += 1
+                bytes_scanned += len(encoded)
+                digest = hashlib.sha256(encoded).hexdigest()
                 cached = grant.search_cache.pop(item.path, None)
                 if cached is not None and cached[0] == digest:
                     lines = cached[1]
@@ -255,16 +291,14 @@ class WorkspaceHandleRegistry:
                     if cached is not None:
                         grant.search_cache_bytes -= cached[2]
                     lines = tuple(content.splitlines())
-                    cache_size = len(content.encode("utf-8"))
-                    # Keep a small per-workspace parsed-line cache. Files are still
-                    # reopened and hashed on every query, so edits and deletions
-                    # cannot be hidden by a stale cache.
+                    cache_size = len(encoded)
                     if cache_size <= 256 * 1024:
                         grant.search_cache[item.path] = (digest, lines, cache_size)
                         grant.search_cache_bytes += cache_size
                         while grant.search_cache_bytes > 8 * 1024 * 1024:
                             _old_path, old_entry = grant.search_cache.popitem(last=False)
                             grant.search_cache_bytes -= old_entry[2]
+
                 for line_number, line in enumerate(lines, start=1):
                     if needle not in line.casefold():
                         continue
@@ -274,25 +308,25 @@ class WorkspaceHandleRegistry:
                     matches.append({
                         "path": item.path,
                         "line": line_number,
-                        "snippet": line[:500],
+                        "snippet": redact_secrets(line)[:500],
                         "content_sha256": digest,
-                        "index_version": "literal-search-v1",
+                        "index_version": "literal-search-v2",
                     })
                 if truncated:
                     break
-            # Prune deleted or newly excluded paths so cache state never outlives
-            # the inventory returned by the currently selected workspace.
+
             for cached_path in tuple(grant.search_cache):
                 if cached_path not in seen_paths:
                     removed = grant.search_cache.pop(cached_path)
                     grant.search_cache_bytes -= removed[2]
+
         return {
-            "query": query,
             "matches": matches,
-            "scanned_files": scanned_files,
+            "scanned_files": files_scanned,
+            "bytes_scanned": bytes_scanned,
             "skipped_files": skipped_files,
             "truncated": truncated,
-            "index_version": "literal-search-v1",
+            "index_version": "literal-search-v2",
         }
 
     def can_apply_patch(self, workspace_id: str) -> bool:

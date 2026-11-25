@@ -1,3 +1,4 @@
+import { isNexusContextPathAllowed } from "./nexus-context";
 const BASE=import.meta.env.VITE_COMPANION_ORIGIN||"http://127.0.0.1:8765";
 export interface CompanionWorkspace{workspace_id:string;name:string;access:"read-only"|"approval-gated"}
 export interface CompanionFile{path:string;size:number}
@@ -56,6 +57,56 @@ export async function pairWithCompanion(code:string):Promise<Pair>{
 export async function listWorkspaces(token:string):Promise<CompanionWorkspace[]>{return(await call<{workspaces:CompanionWorkspace[]}>("/v1/workspaces",{token})).workspaces}
 export async function listWorkspaceFiles(token:string,id:string):Promise<CompanionFile[]>{return(await call<{files:CompanionFile[]}>("/v1/workspaces/"+encodeURIComponent(id)+"/files",{token})).files}
 export async function readWorkspaceFile(token:string,id:string,path:string,signal?:AbortSignal):Promise<string>{const q=new URLSearchParams({path});return(await call<{content:string}>("/v1/workspaces/"+encodeURIComponent(id)+"/file?"+q.toString(),{token,signal})).content}
+
+export interface WorkspaceSearchMatch {
+  path: string;
+  line: number;
+  snippet: string;
+  content_sha256: string;
+  index_version: string;
+}
+export interface WorkspaceSearchResponse {
+  workspace_id: string;
+  matches: WorkspaceSearchMatch[];
+  scanned_files: number;
+  bytes_scanned: number;
+  skipped_files: number;
+  truncated: boolean;
+  index_version: string;
+}
+export async function searchWorkspaceFiles(
+  token: string,
+  workspaceId: string,
+  query: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceSearchResponse> {
+  if (!query.trim() || query.length > 200 || query.includes("\0")) {
+    throw new Error("Workspace search requires 1–200 non-NUL characters.");
+  }
+  const params = new URLSearchParams({ q: query.trim(), limit: "50" });
+  const response = await call<WorkspaceSearchResponse>(
+    "/v1/workspaces/" + encodeURIComponent(workspaceId) + "/search?" + params.toString(),
+    { token, signal },
+  );
+  const valid = response && response.workspace_id === workspaceId &&
+    Array.isArray(response.matches) && response.matches.length <= 50 &&
+    Number.isInteger(response.scanned_files) && response.scanned_files >= 0 &&
+    Number.isInteger(response.bytes_scanned) && response.bytes_scanned >= 0 &&
+    response.bytes_scanned <= 20_000_000 &&
+    Number.isInteger(response.skipped_files) && response.skipped_files >= 0 &&
+    typeof response.truncated === "boolean" &&
+    typeof response.index_version === "string" &&
+    response.matches.every((item) =>
+      item && typeof item.path === "string" && isNexusContextPathAllowed(item.path) &&
+      Number.isInteger(item.line) && item.line >= 1 &&
+      typeof item.snippet === "string" && item.snippet.length <= 500 &&
+      /^[a-f0-9]{64}$/.test(item.content_sha256) &&
+      typeof item.index_version === "string"
+    );
+  if (!valid) throw new Error("Companion returned an invalid workspace search response.");
+  return response;
+}
+
 export async function disconnectFromCompanion(token:string):Promise<void>{await call<void>("/v1/session/revoke",{method:"POST",token})}
 
 export interface PatchPreviewFile {
