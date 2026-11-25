@@ -485,6 +485,11 @@ class GitHubAppInstallationClient:
             base = pull.get("base") or {}
             if (
                 pull.get("state") != "open" or pull.get("merged") is True
+                or pull.get("number") != number
+                or (head.get("repo") or {}).get("id") != run.repository_id
+                or (head.get("repo") or {}).get("node_id") != run.repository_node_id
+                or (base.get("repo") or {}).get("id") != run.repository_id
+                or (base.get("repo") or {}).get("node_id") != run.repository_node_id
                 or head.get("sha") != run.worker_commit_sha
                 or head.get("ref") != run.worker_branch
                 or base.get("ref") != run.repository_default_branch
