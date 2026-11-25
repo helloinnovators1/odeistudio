@@ -22,6 +22,10 @@ class GovernedToolError(RuntimeError):
     """A tool is unknown, unauthorized, unapproved, or failed safely."""
 
 
+class GovernedToolInputError(GovernedToolError):
+    """Model-supplied tool arguments do not satisfy the registered schema."""
+
+
 @dataclass(frozen=True)
 class ToolApproval:
     """Short-lived approval bound to one actor, resource, tool and argument digest."""
@@ -46,8 +50,8 @@ class ToolDefinition:
     approval_required: bool = True
 
 
-def _validate_arguments(schema: Mapping[str, Any], arguments: dict[str, Any]) -> None:
-    """Validate the strict JSON-schema subset used by Responses function tools."""
+def _validate_schema(schema: Mapping[str, Any]) -> None:
+    """Accept only strict object schemas supported by the governed dispatcher."""
     properties = schema.get("properties")
     required = schema.get("required")
     if (
@@ -57,11 +61,22 @@ def _validate_arguments(schema: Mapping[str, Any], arguments: dict[str, Any]) ->
         or set(required) != set(properties)
         or schema.get("additionalProperties") is not False
     ):
-        raise GovernedToolError("tool schema is not a strict object schema")
+        raise ValueError("tool schema must be a strict object schema")
+    allowed_types = {"string", "integer", "number", "boolean", "object", "array", "null"}
+    for specification in properties.values():
+        if not isinstance(specification, Mapping) or specification.get("type") not in allowed_types:
+            raise ValueError("tool property schema is unsupported")
+
+
+def _validate_arguments(schema: Mapping[str, Any], arguments: dict[str, Any]) -> None:
+    """Validate the strict JSON-schema subset used by Responses function tools."""
+    _validate_schema(schema)
+    properties = schema.get("properties")
+    required = schema.get("required")
     if set(arguments) - set(properties):
-        raise GovernedToolError("tool arguments contain unsupported fields")
+        raise GovernedToolInputError("tool arguments contain unsupported fields")
     if set(required) - set(arguments):
-        raise GovernedToolError("tool arguments are missing required fields")
+        raise GovernedToolInputError("tool arguments are missing required fields")
 
     for key, value in arguments.items():
         specification = properties.get(key)
@@ -78,24 +93,24 @@ def _validate_arguments(schema: Mapping[str, Any], arguments: dict[str, Any]) ->
             or (expected == "null" and value is None)
         )
         if not valid:
-            raise GovernedToolError("tool argument has an invalid type")
+            raise GovernedToolInputError("tool argument has an invalid type")
         if expected == "string":
             if len(value) < specification.get("minLength", 0):
-                raise GovernedToolError("tool argument is shorter than allowed")
+                raise GovernedToolInputError("tool argument is shorter than allowed")
             if len(value) > specification.get("maxLength", _MAX_ARGUMENT_BYTES):
-                raise GovernedToolError("tool argument is longer than allowed")
+                raise GovernedToolInputError("tool argument is longer than allowed")
         if "enum" in specification and value not in specification["enum"]:
-            raise GovernedToolError("tool argument is not an allowed value")
+            raise GovernedToolInputError("tool argument is not an allowed value")
         if expected in {"integer", "number"}:
             if "minimum" in specification and value < specification["minimum"]:
-                raise GovernedToolError("tool argument is below the allowed minimum")
+                raise GovernedToolInputError("tool argument is below the allowed minimum")
             if "maximum" in specification and value > specification["maximum"]:
-                raise GovernedToolError("tool argument exceeds the allowed maximum")
+                raise GovernedToolInputError("tool argument exceeds the allowed maximum")
         if expected == "array":
             if len(value) < specification.get("minItems", 0):
-                raise GovernedToolError("tool argument contains too few items")
+                raise GovernedToolInputError("tool argument contains too few items")
             if len(value) > specification.get("maxItems", _MAX_ARGUMENT_BYTES):
-                raise GovernedToolError("tool argument contains too many items")
+                raise GovernedToolInputError("tool argument contains too many items")
 
 
 class GovernedToolRegistry:
@@ -144,7 +159,7 @@ class GovernedToolRegistry:
             raise ValueError("tool name is duplicated or handler is invalid")
         if not isinstance(definition.schema, Mapping):
             raise TypeError("tool schema must be an object")
-        _validate_arguments(definition.schema, {}) if not definition.schema.get("properties") else None
+        _validate_schema(definition.schema)
         if not isinstance(definition.description, str) or not definition.description.strip() or len(definition.description) > 1_000:
             raise ValueError("tool description is invalid")
         try:
@@ -230,10 +245,18 @@ class GovernedToolRegistry:
                 result, ensure_ascii=False, default=str
             )
             rendered = redact_secrets(rendered[:_MAX_RESULT_CHARS])
-        except (ValueError, OSError):
+        except (ValueError, OSError) as exc:
             # Preserve bounded argument/workspace validation errors for the agent loop.
+            try:
+                self._audit({"event": "nexus.tool.failed", **event, "error_type": type(exc).__name__})
+            except Exception as audit_exc:
+                raise GovernedToolError("audit unavailable; tool failure could not be recorded") from audit_exc
             raise
         except Exception as exc:
+            try:
+                self._audit({"event": "nexus.tool.failed", **event, "error_type": type(exc).__name__})
+            except Exception as audit_exc:
+                raise GovernedToolError("audit unavailable; tool failure could not be recorded") from audit_exc
             raise GovernedToolError("tool execution failed") from exc
         try:
             self._audit({"event": "nexus.tool.completed", **event})

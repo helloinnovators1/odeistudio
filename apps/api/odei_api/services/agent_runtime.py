@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
-from odei_api.services.governed_tool_registry import GovernedToolRegistry
+from odei_api.services.governed_tool_registry import GovernedToolInputError, GovernedToolRegistry
 from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.tool_registry import ReadOnlyWorkspaceTools, ToolExecutionError
 
@@ -222,7 +222,7 @@ def run_nexus_agent(
                 )
                 invoked_tools.append(name)
                 emit_event("agent.tool.completed", tool_name=name, call_number=total_calls)
-            except (json.JSONDecodeError, ToolExecutionError, OSError, ValueError) as exc:
+            except (json.JSONDecodeError, ToolExecutionError, GovernedToolInputError, OSError, ValueError) as exc:
                 emit_event("agent.tool.failed", tool_name=name, call_number=total_calls, error_type=type(exc).__name__)
                 result = json.dumps({"error": redact_secrets(str(exc)[:500])})
             outputs.append({
