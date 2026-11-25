@@ -544,7 +544,7 @@ export default function NexusChatPanel({
             if (active) setExecutionArtifacts(null); setExecutionDiagnostics(null);
           }
           const taskStatus = updated.status === "completed" ? "validating"
-            : updated.status === "cancelled" ? "cancelled" : "failed";
+            : updated.status === "cancelled" ? "cancelled" : "repairing";
           setTaskPlan((current) => current && current.task_id === taskId && current.status !== taskStatus
             ? { ...current, status: taskStatus, version: current.version + 1 }
             : current);
@@ -725,7 +725,7 @@ export default function NexusChatPanel({
 
   async function startExecution() {
     if (
-      !access || !taskPlan || taskPlan.status !== "approved" || !workspaceContext
+      !access || !taskPlan || !["approved", "repairing"].includes(taskPlan.status) || !workspaceContext
       || !executionProfileId || !workspaceUploadConsent || !codeExecutionConsent
       || executionBusy || !config.apiBaseUrl
     ) return;
@@ -1935,6 +1935,15 @@ export default function NexusChatPanel({
                     {executionDiagnostics.evidence.map((line, index) => <pre key={index}>{line}</pre>)}
                     <p className="nexus-muted">{executionDiagnostics.next_step}</p>
                   </section>
+                )}
+                {taskPlan.status === "repairing" && executionRun.status === "failed" && (
+                  <div className="nexus-execution-controls">
+                    <button type="button" className="nexus-secondary-button"
+                      onClick={() => void startExecution()} disabled={executionBusy || !workspaceUploadConsent || !codeExecutionConsent}>
+                      Run approved verification profile again
+                    </button>
+                    <p className="nexus-muted">After reviewing and applying an approved patch, capture a fresh workspace snapshot and explicitly consent to another isolated verification run.</p>
+                  </div>
                 )}
                 {executionRun.status === "failed" && executionDiagnostics
                   && executionDiagnostics.category !== "succeeded" && (
