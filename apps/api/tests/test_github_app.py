@@ -41,7 +41,11 @@ async def test_github_app_uses_ephemeral_installation_token_only_for_provider_re
         Response(200, {
             "id": 123, "node_id": "R_kgDOabc", "full_name": "Acme/Service",
             "name": "Service", "default_branch": "main", "private": True,
-            "owner": {"login": "Acme"}, "permissions": {"contents": "write"},
+            "owner": {"login": "Acme"}, "permissions": {"contents": "write", "pull_requests": "write"},
+        }),
+        Response(200, {
+            "ref": "refs/heads/main",
+            "object": {"type": "commit", "sha": "a" * 40},
         }),
     ])
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -60,6 +64,7 @@ async def test_github_app_uses_ephemeral_installation_token_only_for_provider_re
     assert verified.repository_id == 123
     assert verified.full_name == "Acme/Service"
     assert verified.default_branch == "main"
+    assert verified.default_branch_sha == "a" * 40
     assert verified.contents_permission == "write"
     assert http.calls[-1][2]["headers"]["Authorization"] == "Bearer short-lived-secret"
     assert all("short-lived-secret" not in url for _method, url, _kwargs in http.calls)
@@ -95,7 +100,7 @@ async def test_github_app_rejects_repository_without_contents_write_permission()
         Response(200, {
             "id": 123, "node_id": "R_kgDOabc", "full_name": "acme/service",
             "name": "service", "default_branch": "main",
-            "owner": {"login": "acme"}, "permissions": {"contents": "read"},
+            "owner": {"login": "acme"}, "permissions": {"contents": "read", "pull_requests": "write"},
         }),
     ])
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

@@ -68,7 +68,8 @@ class GitHub:
         return VerifiedGitHubRepository(
             installation_id=77, repository_id=123, repository_node_id="R_kgDOabc",
             owner="Acme", name="Service", full_name="Acme/Service",
-            default_branch="main", contents_permission="write", private=True,
+            default_branch="main", contents_permission="write",
+            pull_requests_permission="write", default_branch_sha="a" * 40, private=True,
         )
 
 
