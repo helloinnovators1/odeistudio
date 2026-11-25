@@ -248,10 +248,14 @@ class RepositoryIndex:
                 if metadata.st_size > self.max_file_bytes:
                     skipped += 1
                     continue
-                total_bytes += metadata.st_size
-                if total_bytes > self.max_total_bytes or len(discovered) >= self.max_files:
+                if len(discovered) >= self.max_files:
                     raise RepositoryIndexError("repository exceeds configured indexing limits")
                 raw = _read_index_file(self.root, path, self.max_file_bytes)
+                # Count bytes actually read from the opened inode, not a path
+                # metadata snapshot that may predate a concurrent replacement.
+                total_bytes += len(raw)
+                if total_bytes > self.max_total_bytes:
+                    raise RepositoryIndexError("repository exceeds configured indexing limits")
                 if b"\x00" in raw:
                     skipped += 1
                     continue
