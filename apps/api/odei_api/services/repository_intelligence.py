@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import logging
-import time
 import regex as bounded_regex
+import time
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
