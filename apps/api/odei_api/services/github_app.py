@@ -7,10 +7,10 @@ import hashlib
 import os
 import re
 import time
-from pathlib import Path
-from urllib.parse import quote
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import jwt
 
@@ -272,7 +272,7 @@ class GitHubAppInstallationClient:
         changed: list[tuple[str, bytes, str]] = []
         changed_bytes = 0
         for path, data in workspace_files.items():
-            blob_header = f"blob {len(data)}\\0".encode("ascii")
+            blob_header = f"blob {len(data)}\0".encode("ascii")
             blob_sha = hashlib.sha1(blob_header + data).hexdigest()
             existing = base_files.get(path)
             if existing is None or existing["sha"] != blob_sha:
@@ -348,8 +348,8 @@ class GitHubAppInstallationClient:
                     "title": f"NEXUS execution {run_id[:12]}",
                     "head": branch, "base": default_branch,
                     "body": (
-                        f"Automated review proposal for NEXUS execution {run_id}.\\n\\n"
-                        f"Trusted base: {base_sha}. Worker commit: {commit_sha}.\\n\\n"
+                        f"Automated review proposal for NEXUS execution {run_id}.\n\n"
+                        f"Trusted base: {base_sha}. Worker commit: {commit_sha}.\n\n"
                         "This pull request is not merged automatically. A project owner must review "
                         "the diff and explicitly approve merge-back through ODEI."
                     ),

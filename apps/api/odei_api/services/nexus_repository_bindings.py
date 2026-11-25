@@ -48,10 +48,12 @@ def _public_binding(document: dict) -> dict:
             "name": document["name"],
             "full_name": document["full_name"],
             "default_branch": document["default_branch"],
+            "default_branch_sha": document["default_branch_sha"],
             "private": document["private"],
         },
         "installation_id": document["installation_id"],
         "contents_permission": document["contents_permission"],
+        "pull_requests_permission": document["pull_requests_permission"],
         "binding_version": document["binding_version"],
         "verified_at": document["verified_at"].isoformat(),
         "updated_at": document["updated_at"].isoformat(),
@@ -174,7 +176,7 @@ async def bind_repository(
                      {"reason": "provider_verification_failed"})
         raise HTTPException(status_code=422, detail={
             "code": "GITHUB_REPOSITORY_VERIFICATION_FAILED",
-            "message": "GitHub did not verify the requested repository and write permission.",
+            "message": "GitHub did not verify the requested repository and required write permissions.",
         }) from exc
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
@@ -186,7 +188,9 @@ async def bind_repository(
         "state": "verified", "installation_id": verified.installation_id,
         "repository_id": verified.repository_id, "repository_node_id": verified.repository_node_id,
         "owner": verified.owner, "name": verified.name, "full_name": verified.full_name,
-        "default_branch": verified.default_branch, "contents_permission": verified.contents_permission,
+        "default_branch": verified.default_branch, "default_branch_sha": verified.default_branch_sha,
+        "contents_permission": verified.contents_permission,
+        "pull_requests_permission": verified.pull_requests_permission,
         "private": verified.private, "binding_version": version,
         "verified_at": now, "updated_at": now,
         "verified_by_issuer": principal.issuer, "verified_by_subject": principal.subject,
