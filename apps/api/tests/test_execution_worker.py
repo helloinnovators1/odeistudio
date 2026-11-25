@@ -25,6 +25,11 @@ class Runs:
         self.run = run
         self.available = run
         self.finished = None
+        self.provenance = None
+
+    async def record_worker_provenance(self, **kwargs):
+        self.provenance = kwargs
+        return self.run
 
     async def claim_next(self, **_kwargs):
         run, self.available = self.available, None
@@ -92,7 +97,17 @@ class Sandbox:
         )
 
 
-def make_run(digest, *, snapshot_id="snapshot-1"):
+def make_run(digest, *, snapshot_id="snapshot-1", bound=False):
+    repository = {
+        "repository_binding_version": 4,
+        "repository_id": 123,
+        "repository_node_id": "R_kgDOabc",
+        "repository_installation_id": 77,
+        "repository_owner": "Acme",
+        "repository_name": "Service",
+        "repository_default_branch": "main",
+        "repository_base_sha": "b" * 40,
+    } if bound else {}
     return ExecutionRun(
         id="run-1", organization_id="org-1", project_id="project-1",
         task_id="task-1", requester_issuer="https://identity.example/",
@@ -101,6 +116,7 @@ def make_run(digest, *, snapshot_id="snapshot-1"):
         status=ExecutionRunStatus.LEASED, version=1, attempts=1,
         worker_id="worker-test", lease_token="a" * 32,
         lease_expires_at=datetime.now(timezone.utc),
+        **repository,
     )
 
 
@@ -134,6 +150,68 @@ async def test_worker_verifies_snapshot_runs_sandbox_and_persists_result(tmp_pat
     assert artifacts.values["stdout"] == "passed"
     assert heartbeats.values[0] == {"worker_id": "worker-test", "status": "busy", "active_run_id": "run-1"}
     assert heartbeats.values[-1] == {"worker_id": "worker-test", "status": "idle", "active_run_id": None}
+    assert list(workspace_root.iterdir()) == []
+
+
+
+class RepositoryBindings:
+    async def find_one(self, query):
+        assert query["binding_version"] == 4
+        return {
+            "_id": "org-1:project-1", "organization_id": "org-1",
+            "project_id": "project-1", "state": "verified",
+            "binding_version": 4, "installation_id": 77,
+            "repository_id": 123, "repository_node_id": "R_kgDOabc",
+            "owner": "Acme", "name": "Service", "default_branch": "main",
+        }
+
+
+class GitHub:
+    async def create_workspace_pull_request(self, *, binding, workspace, run_id, base_sha):
+        assert binding["repository_id"] == 123
+        assert Path(workspace, "README.md").read_bytes() == b"workspace"
+        assert run_id == "run-1"
+        assert base_sha == "b" * 40
+        return {
+            "repository_id": 123, "repository_node_id": "R_kgDOabc",
+            "installation_id": 77, "binding_version": 4,
+            "owner": "Acme", "name": "Service", "default_branch": "main",
+            "base_sha": "b" * 40, "commit_sha": "c" * 40, "tree_sha": "d" * 40,
+            "branch": "odei/nexus/run-1", "pull_request_number": 12,
+            "pull_request_url": "https://github.com/Acme/Service/pull/12",
+        }
+
+
+@pytest.mark.asyncio
+async def test_bound_worker_records_verified_commit_and_review_pr_before_completion(tmp_path):
+    archive = make_archive()
+    digest_root = tmp_path / "digest"
+    digest_root.mkdir()
+    digest = WorkspaceSnapshotIngestor(digest_root).ingest(archive).sha256
+    for child in digest_root.iterdir():
+        if child.is_dir():
+            import shutil
+            shutil.rmtree(child)
+    workspace_root = tmp_path / "worker"
+    workspace_root.mkdir()
+    run = make_run(digest, bound=True)
+    runs, artifacts, heartbeats = Runs(run), Artifacts(), Heartbeats()
+    worker = ExecutionWorker(
+        worker_id="worker-test", runs=runs,
+        snapshots=Snapshots({
+            "organization_id": "org-1", "project_id": "project-1",
+            "task_id": "task-1", "sha256": digest,
+        }, archive),
+        artifacts=artifacts, registry=Registry(), sandbox=Sandbox(),
+        workspace_root=workspace_root, tasks=object(), task_events=object(),
+        heartbeats=heartbeats, github_app=GitHub(),
+        repository_bindings=RepositoryBindings(),
+    )
+    assert await worker.run_once() is True
+    assert runs.provenance["provenance"]["commit_sha"] == "c" * 40
+    assert runs.provenance["provenance"]["pull_request_number"] == 12
+    assert runs.provenance["audit_event"]["action"] == "nexus.execution.repository_provenance"
+    assert runs.finished["outcome"] is ExecutionRunStatus.COMPLETED
     assert list(workspace_root.iterdir()) == []
 
 
