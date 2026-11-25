@@ -561,8 +561,8 @@ def create_companion_app(
     async def search_workspace_text(
         workspace_id: str,
         request: Request,
-        q: str = Query(min_length=1, max_length=256),
-        limit: int = Query(default=50, ge=1, le=100),
+        q: str = Query(min_length=1, max_length=200),
+        limit: int = Query(default=50, ge=1, le=50),
     ):
         """Bounded literal search over the selected workspace's safe text inventory."""
         require_bearer(request)

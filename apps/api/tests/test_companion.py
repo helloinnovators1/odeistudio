@@ -1354,3 +1354,73 @@ def test_windows_patch_read_rejects_hard_linked_target(tmp_path):
         assert alias.read_text(encoding="utf-8") == "sensitive"
     finally:
         windows_file_handles.close_directory_handle(kernel32, root_handle)
+
+
+def test_companion_exact_search_is_bounded_redacted_and_respects_exclusions(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    root = tmp_path / "project"
+    (root / "main.py").write_text(
+        'NEXUS agent entry\napi_key = "supersecretvalue123"\n',
+        encoding="utf-8",
+    )
+    (root / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (root / "ignored.txt").write_text("NEXUS ignored\n", encoding="utf-8")
+    (root / ".env").write_text("NEXUS_SECRET=do-not-return\n", encoding="utf-8")
+    (root / "large.txt").write_text("NEXUS " * 30_000, encoding="utf-8")
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        response = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            params={"q": "  nexus  "},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert [item["path"] for item in payload["matches"]] == ["main.py"]
+        assert payload["matches"][0]["line"] == 1
+        assert len(payload["matches"][0]["content_sha256"]) == 64
+        assert payload["files_scanned"] >= 1
+        assert payload["bytes_scanned"] <= 20_000_000
+        assert payload["skipped_files"] >= 1
+        assert ".env" not in response.text
+        assert "ignored.txt" not in response.text
+        assert "do-not-return" not in response.text
+
+        redacted = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            params={"q": "api_key"},
+        )
+        assert redacted.status_code == 200
+        assert "supersecretvalue123" not in redacted.text
+        assert "[REDACTED]" in redacted.text
+    finally:
+        registry.close()
+
+
+def test_companion_exact_search_requires_pairing_and_enforces_query_limits(tmp_path) -> None:
+    client, registry, _pairing, code = _build_client(tmp_path)
+    try:
+        headers = _paired_headers(client, code)
+        workspace_id = client.get("/v1/workspaces", headers=headers).json()["workspaces"][0]["workspace_id"]
+        unauthorized = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers={"Origin": ORIGIN},
+            params={"q": "NEXUS"},
+        )
+        assert unauthorized.status_code == 401
+        oversized = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            params={"q": "x" * 201},
+        )
+        assert oversized.status_code == 422
+        oversized_limit = client.get(
+            f"/v1/workspaces/{workspace_id}/search",
+            headers=headers,
+            params={"q": "x", "limit": 51},
+        )
+        assert oversized_limit.status_code == 422
+    finally:
+        registry.close()
