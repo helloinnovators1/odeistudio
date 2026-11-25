@@ -88,6 +88,7 @@ async def test_worker_commit_is_based_on_pinned_head_and_creates_review_pr_witho
         Response(201, {"token": "ephemeral-worker-token"}),
         Response(200, {
             "id": 123, "node_id": "R_kgDOabc", "full_name": "Acme/Service",
+            "default_branch": "main",
             "permissions": {"contents": "write", "pull_requests": "write"},
         }),
         Response(200, {

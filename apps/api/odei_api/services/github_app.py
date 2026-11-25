@@ -216,6 +216,7 @@ class GitHubAppInstallationClient:
             repository.get("id") != repository_id
             or repository.get("node_id") != node_id
             or (repository.get("full_name") or "").casefold() != f"{owner}/{name}".casefold()
+            or repository.get("default_branch") != default_branch
             or permissions.get("contents") not in {"write", "admin"}
             or permissions.get("pull_requests") not in {"write", "admin"}
         ):

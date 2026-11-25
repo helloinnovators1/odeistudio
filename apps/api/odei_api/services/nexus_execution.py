@@ -334,6 +334,11 @@ async def create_execution(
             "organization_id": organization_id, "project_id": project_id,
         })
         if binding is not None:
+            if project.get("owner_issuer") != principal.issuer or project.get("owner_subject") != principal.subject:
+                raise HTTPException(status_code=403, detail={
+                    "code": "REPOSITORY_PUBLISH_OWNER_REQUIRED",
+                    "message": "Only the project owner can authorize publishing a repository review branch.",
+                })
             if not payload.repository_publish_consent:
                 raise HTTPException(status_code=400, detail={
                     "code": "REPOSITORY_PUBLISH_CONSENT_REQUIRED",
