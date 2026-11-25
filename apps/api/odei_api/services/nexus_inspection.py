@@ -191,6 +191,11 @@ async def inspect_attached_project_excerpts(
                 "patch.propose" if tool_name == "propose_attached_file_change"
                 else "workspace.read"
             )
+            if tool_name == "propose_attached_file_change" and not NexusCapabilityPolicy.allows(
+                payload.mode, "patch.propose",
+            ):
+                # Keep inspection available while withholding proposal authority.
+                continue
             governed_tools.register(ToolDefinition(
                 name=tool_name,
                 capability=capability,

@@ -631,7 +631,7 @@ def test_nexus_inspection_uses_only_attached_excerpt_tools_and_persists_result(r
     ).json()
     secret = "sk-proj-" + "A" * 28
 
-    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages):
+    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages, **_kwargs):
         assert model == "inspection-model"
         assert task == "Explain this selected file"
         assert cloud_model_consent is True
@@ -686,7 +686,7 @@ def test_nexus_inspection_persists_model_generated_patch_for_owner_review(route_
     original = "def greet(): return 'hello'"
     replacement = "def greet(): return 'hello from ODEI'"
 
-    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages):
+    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages, **_kwargs):
         assert cloud_model_consent is True
         assert workspace_tools.proposal_base_files == {}
         workspace_tools.execute("propose_attached_file_change", {
@@ -745,7 +745,7 @@ def test_nexus_inspection_requires_patch_propose_capability_before_persisting_ch
                      else original_allows(mode, capability)),
     )
 
-    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages):
+    def fake_agent(_client, *, model, task, workspace_tools, cloud_model_consent, prior_messages, **_kwargs):
         workspace_tools.execute("propose_attached_file_change", {
             "path": "src/greet.py", "content": "def greet(): return 'changed'",
         })

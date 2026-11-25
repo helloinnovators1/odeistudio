@@ -90,7 +90,7 @@ def test_unknown_and_mode_unauthorized_tools_fail_closed():
     with pytest.raises(GovernedToolError, match="not granted"):
         ask.register(ToolDefinition(
             name="run_diagnostics", capability="execution.run",
-            schema={"type": "object", "properties": {}, "additionalProperties": False},
+            schema={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
             handler=lambda _: None,
         ))
 
