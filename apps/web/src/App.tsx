@@ -78,6 +78,7 @@ export default function App() {
     }
   });
   const [chatSide, setChatSide] = useState<ChatPanelSide>(() => readChatPanelSide());
+  const [mobileView, setMobileView] = useState<"explorer" | "editor" | "nexus">(() => chatOpen ? "nexus" : "editor");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bottomPanel, setBottomPanel] = useState<"output" | "problems" | "terminal">("output");
   const [activeWorkbenchMenu, setActiveWorkbenchMenu] = useState<string | null>(null);
@@ -248,7 +249,9 @@ export default function App() {
     function onKeyDown(event: KeyboardEvent) {
       if (isToggleNexusChatShortcut(event)) {
         event.preventDefault();
-        setChatOpen((open) => !open);
+        const next = !chatOpen;
+        setChatOpen(next);
+        setMobileView(next ? "nexus" : "editor");
         setHomeOpen(false);
         return;
       }
@@ -259,7 +262,7 @@ export default function App() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [chatOpen]);
 
   async function connect() {
     setBusy(true);
@@ -641,7 +644,10 @@ export default function App() {
 
   const chatPanel = (
     <NexusChatPanel
-      onClose={() => setChatOpen(false)}
+      onClose={() => {
+        setChatOpen(false);
+        setMobileView("editor");
+      }}
       isOpen={chatOpen}
       activeFile={activeTab ? { path: activeTab.path, content: activeTab.content } : null}
       workspaceContext={token && workspace ? { accessToken: token, workspaceId: workspace, files } : null}
@@ -666,7 +672,11 @@ export default function App() {
         <div className="titlebar-project"><span className="status-dot" />{workspaceName}</div>
         <div className="titlebar-actions">
           <button className="toolbar-button" onClick={() => setHomeOpen(true)} aria-label="Open ODEI Studio Window">⌂ Home</button>
-          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => setChatOpen((open) => !open)}>{isIDEWindow ? "Agents Window ↗" : <>NEXUS <kbd>⌘ / Ctrl + I</kbd></>}</button>
+          <button className={chatOpen ? "toolbar-button selected" : "toolbar-button"} onClick={() => {
+            const next = !chatOpen;
+            setChatOpen(next);
+            setMobileView(next ? "nexus" : "editor");
+          }}>{isIDEWindow ? "Agents Window ↗" : <>NEXUS <kbd>⌘ / Ctrl + I</kbd></>}</button>
           <button className="toolbar-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings">⚙ Settings</button>
           {token && <button className="toolbar-button" onClick={() => void disconnect()}>Disconnect</button>}
           {isIDEWindow && <div className="ide-native-controls" role="group" aria-label="IDE window controls">
@@ -676,6 +686,12 @@ export default function App() {
           </div>}
         </div>
       </header>
+
+      <nav className="mobile-workspace-nav" aria-label="Workspace views">
+        <button type="button" aria-pressed={mobileView === "explorer"} className={mobileView === "explorer" ? "active" : ""} onClick={() => setMobileView("explorer")}>Explorer</button>
+        <button type="button" aria-pressed={mobileView === "editor"} className={mobileView === "editor" ? "active" : ""} onClick={() => setMobileView("editor")}>Editor</button>
+        <button type="button" aria-pressed={mobileView === "nexus"} className={mobileView === "nexus" ? "active" : ""} onClick={() => { setMobileView("nexus"); setChatOpen(true); }}>NEXUS</button>
+      </nav>
 
       {ideMinimized && isIDEWindow ? <div className="ide-minimized-overlay"><strong>OIPTECH Core is minimized</strong><button type="button" onClick={() => setIdeMinimized(false)}>Restore window</button></div> : null}
       <div className="ide-menubar">
@@ -700,7 +716,7 @@ export default function App() {
 
       <div className="connection-status" role="status" aria-live="polite">{busy ? "Working…" : message}{error && <span className="inline-error">{error}</span>}</div>
 
-      <div className={`workbench ${chatOpen ? `chat-${chatSide}` : "chat-closed"}`}>
+      <div className={`workbench ${chatOpen ? `chat-${chatSide}` : "chat-closed"} mobile-${mobileView}`}>
         <nav className="activity-rail" aria-label="Activity bar">
           <button className="rail-button active" title="Explorer" aria-label="Explorer" onClick={() => runWorkbenchCommand("explorer")}>▤</button>
           <button className="rail-button" title="Search workspace files" aria-label="Search workspace files" onClick={() => runWorkbenchCommand("search")}>⌕</button>

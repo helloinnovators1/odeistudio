@@ -142,3 +142,53 @@
 .ide-reference .ide-native-terminal input{flex:1;min-width:0;border:1px solid #cbd1d7;padding:6px;background:#fff;color:#333;font:11px Consolas,monospace}
 .ide-reference .ide-native-terminal button{border:1px solid #cbd1d7;padding:5px 9px;background:#f7f8f9;color:#3e4852;font-size:10px}
 .ide-reference .terminal-prompt{font:14px Consolas,monospace}
+
+
+/* Responsive workspace: one focused tool surface on compact screens. */
+.mobile-workspace-nav{display:none}
+.ide-shell{min-width:0;min-height:0}
+.workbench,.editor-column,.explorer-pane,.nexus-pane{min-width:0}
+.editor-tabs,.file-list,.nexus-transcript,.nexus-pane{overscroll-behavior:contain}
+.file-row,.rail-button,.toolbar-button,.bottom-tabs button{touch-action:manipulation}
+button,input,select,textarea{max-width:100%}
+img,svg,video,canvas{max-width:100%}
+pre,code{overflow-wrap:anywhere}
+@media(max-width:900px){
+html,body,#root{width:100%;min-width:320px;height:100%;min-height:100%;overflow:hidden}
+body{min-height:0}
+.ide-shell{width:100%;height:100dvh;min-height:0;max-height:100dvh;overflow:hidden}
+.ide-titlebar{height:54px;min-height:54px;flex:0 0 54px;gap:10px;padding:0 12px}
+.brand-lockup{min-width:0;flex:0 1 auto}.brand-lockup small{display:none}.titlebar-project{display:none}
+.titlebar-actions{gap:4px;min-width:0}.titlebar-actions .toolbar-button{min-height:38px;padding:7px 9px;font-size:11px}.titlebar-actions .toolbar-button kbd{display:none}
+.mobile-workspace-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;flex:0 0 48px;padding:6px 10px;background:#151b24;border-bottom:1px solid #303946}
+.mobile-workspace-nav button{min-width:0;min-height:36px;padding:7px 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:#aab4c1;font-size:12px;font-weight:600}
+.mobile-workspace-nav button.active{border-color:#466553;background:#263b34;color:#ccebd9}
+.ide-menubar{display:none}
+.welcome-strip{max-height:190px;flex:0 0 auto;gap:12px;overflow:auto;padding:12px 14px}.welcome-strip h1{font-size:17px}.welcome-strip p{font-size:12px}
+.connect-actions{width:100%;max-width:none}.connect-actions input,.explorer-pane select{width:100%;min-width:0;min-height:40px}.connect-actions .primary-button{min-height:40px}
+.connection-status{min-height:32px;max-height:56px;overflow:auto;padding:8px 12px;font-size:11px;line-height:1.4}.inline-error{display:block;margin:4px 0 0}
+.workbench,.workbench.chat-right,.workbench.chat-left{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);width:100%;min-height:0;flex:1;overflow:hidden}
+.activity-rail{display:none}
+.workbench .explorer-pane,.workbench .editor-column,.workbench .nexus-pane{grid-column:1;grid-row:1;width:100%;min-width:0;min-height:0;height:100%;max-height:none;overflow:hidden}
+.workbench.mobile-explorer .explorer-pane{display:flex}.workbench.mobile-explorer .editor-column,.workbench.mobile-explorer .nexus-pane{display:none}
+.workbench.mobile-editor .editor-column{display:flex}.workbench.mobile-editor .explorer-pane,.workbench.mobile-editor .nexus-pane{display:none}
+.workbench.mobile-nexus .nexus-pane{display:flex}.workbench.mobile-nexus .explorer-pane,.workbench.mobile-nexus .editor-column{display:none}
+.explorer-pane{border:0;border-top:1px solid #2a323e}.explorer-pane .pane-heading{height:46px;flex-basis:46px}.explorer-pane .field-label{margin-top:12px;font-size:10px}
+.explorer-pane select,.file-filter{min-height:40px;font-size:12px}.file-list{flex:1;min-height:0;overflow:auto;padding:5px 8px}.file-row{min-height:40px;padding:9px 8px;font-size:12px}.file-row small{font-size:10px}
+.editor-column{min-height:0}.editor-actionbar{height:40px;flex-basis:40px}.patch-preview-trigger{min-height:34px;font-size:11px}
+.editor-tabs{height:42px;flex-basis:42px;min-width:0}.editor-tab{min-width:0;max-width:72vw}.editor-tab button{font-size:11px}
+.editor-surface{flex:1;min-height:0;height:auto}.editor-welcome{padding:20px}.editor-welcome h2{font-size:16px}.editor-welcome p{max-width:30ch;line-height:1.5}
+.bottom-panel{height:112px;min-height:88px;flex:0 0 112px;overflow:auto}.bottom-tabs{height:36px;gap:22px}.bottom-tabs button{min-height:36px;font-size:10px}.bottom-content{padding:9px 12px;font-size:11px;overflow-wrap:anywhere}
+.statusbar{height:28px;min-height:28px;flex:0 0 28px;gap:10px;padding:0 9px;font-size:9px}
+.nexus-pane,.chat-left .nexus-pane{border:0;border-top:1px solid #2a323e}.nexus-pane .pane-heading{height:50px;min-height:50px;flex-basis:50px}
+.nexus-transcript{flex:1;min-height:0;overflow:auto;padding:12px}.nexus-composer-wrap{max-height:48%;overflow:auto;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+.nexus-composer-wrap .chat-composer textarea{min-height:76px;max-height:28dvh;font-size:14px}.nexus-composer-wrap .chat-composer>div{flex-wrap:wrap;gap:8px}.nexus-composer-wrap .chat-composer>div span{flex:1 0 100%;font-size:10px}
+.nexus-composer-wrap .chat-composer button,.nexus-secondary-button,.nexus-link-button{min-height:36px;font-size:11px}.nexus-connection{padding:16px}.nexus-connection>p{max-width:38ch;font-size:11px}.nexus-project-context{max-height:32%;overflow:auto}
+.modal-backdrop{padding:12px}.settings-dialog{width:100%;max-width:560px;max-height:calc(100dvh - 24px);overflow:auto;padding:0 16px 16px}.settings-dialog .pane-heading{margin:0 -16px 14px}
+.patch-dialog{max-height:calc(100dvh - 24px)}.patch-draft{min-height:35dvh;font-size:12px}.patch-preview-actions{flex-wrap:wrap}.patch-preview-actions button{min-height:40px}
+}
+@media(max-width:420px){.ide-titlebar{padding-inline:8px}.brand-mark{width:26px;height:26px}.brand-lockup b{font-size:10px}.titlebar-actions .toolbar-button{padding:6px 7px;font-size:10px}.mobile-workspace-nav{padding-inline:7px}.connection-status{font-size:10px}.statusbar{gap:7px;font-size:8px}.statusbar span:nth-child(3){display:none}.bottom-panel{height:100px;flex-basis:100px}}
+@media(min-width:901px) and (max-width:1180px){.workbench.chat-right{grid-template-columns:42px 200px minmax(260px,1fr) 280px}.workbench.chat-left{grid-template-columns:42px 200px 280px minmax(260px,1fr)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* Keep the closed NEXUS panel hidden regardless of stylesheet import order. */
+.nexus-pane.nexus-pane-hidden{display:none}

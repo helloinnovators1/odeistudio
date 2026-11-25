@@ -221,3 +221,35 @@ test("OIPTECH Core Explorer view toolbar switches views and offers working guida
   await page.getByRole("menuitem", { name: "Show Terminal Panel" }).click();
   await expect(page.getByRole("button", { name: "Open NEXUS execution console" })).toBeVisible();
 });
+
+
+test("compact workspace navigation switches focused surfaces without stacking panels", async ({ page }) => {
+  for (const width of [320, 360, 390, 768, 900]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/?window=ide");
+    const nav = page.getByRole("navigation", { name: "Workspace views" });
+    await expect(nav).toBeVisible();
+    await nav.getByRole("button", { name: "Explorer" }).click();
+    await expect(page.locator(".explorer-pane")).toBeVisible();
+    await expect(page.locator(".editor-column")).toBeHidden();
+    await nav.getByRole("button", { name: "Editor" }).click();
+    await expect(page.locator(".editor-column")).toBeVisible();
+    await expect(page.locator(".explorer-pane")).toBeHidden();
+    await nav.getByRole("button", { name: "NEXUS" }).click();
+    await expect(page.getByRole("complementary", { name: "NEXUS AI chat panel" })).toBeVisible();
+    await expect(page.locator(".editor-column")).toBeHidden();
+    const dimensions = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
+    expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
+  }
+});
+
+test("NEXUS shortcut toggles the panel and mobile focus view", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto("/?window=ide");
+  await page.keyboard.press("Control+i");
+  await expect(page.locator(".workbench")).toHaveClass(/mobile-nexus/);
+  await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeVisible();
+  await page.keyboard.press("Control+i");
+  await expect(page.locator(".workbench")).toHaveClass(/mobile-editor/);
+  await expect(page.locator('aside[aria-label="NEXUS AI chat panel"]')).toBeHidden();
+});
