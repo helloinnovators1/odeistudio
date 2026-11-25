@@ -120,6 +120,8 @@ async def _append_decision(request: Request, principal: Principal,
 
 
 def _public_run(run: ExecutionRun) -> dict:
+    binding_version = getattr(run, "repository_binding_version", None)
+    provenance_at = getattr(run, "worker_provenance_at", None)
     return {
         "run_id": run.id, "organization_id": run.organization_id,
         "project_id": run.project_id, "task_id": run.task_id,
@@ -129,23 +131,22 @@ def _public_run(run: ExecutionRun) -> dict:
         "cancel_requested": run.cancel_requested,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "updated_at": run.updated_at.isoformat() if run.updated_at else None,
-        "repository_review": None if run.repository_binding_version is None else {
-            "repository_id": run.repository_id,
-            "repository_node_id": run.repository_node_id,
-            "owner": run.repository_owner,
-            "name": run.repository_name,
-            "default_branch": run.repository_default_branch,
-            "base_sha": run.repository_base_sha,
-            "binding_version": run.repository_binding_version,
-            "commit_sha": run.worker_commit_sha,
-            "tree_sha": run.worker_tree_sha,
-            "branch": run.worker_branch,
-            "pull_request_number": run.worker_pull_request_number,
-            "pull_request_url": run.worker_pull_request_url,
-            "provenance_at": run.worker_provenance_at.isoformat() if run.worker_provenance_at else None,
+        "repository_review": None if binding_version is None else {
+            "repository_id": getattr(run, "repository_id", None),
+            "repository_node_id": getattr(run, "repository_node_id", None),
+            "owner": getattr(run, "repository_owner", None),
+            "name": getattr(run, "repository_name", None),
+            "default_branch": getattr(run, "repository_default_branch", None),
+            "base_sha": getattr(run, "repository_base_sha", None),
+            "binding_version": binding_version,
+            "commit_sha": getattr(run, "worker_commit_sha", None),
+            "tree_sha": getattr(run, "worker_tree_sha", None),
+            "branch": getattr(run, "worker_branch", None),
+            "pull_request_number": getattr(run, "worker_pull_request_number", None),
+            "pull_request_url": getattr(run, "worker_pull_request_url", None),
+            "provenance_at": provenance_at.isoformat() if provenance_at else None,
         },
     }
-
 
 def _validate_archive(archive: bytes) -> tuple[str, int, int]:
     with tempfile.TemporaryDirectory(prefix="odei-snapshot-validate-") as temporary:
