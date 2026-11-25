@@ -1334,9 +1334,16 @@ export default function NexusChatPanel({
             ...items.filter((item) => item.proposal_id !== inspected.patch_proposal!.proposal_id),
           ].slice(0, 30));
           await loadPatchProposal(inspected.patch_proposal.proposal_id);
-          setNotice("NEXUS created a persistent review-only patch proposal. Approval does not apply it to local files.");
+          setNotice(repairContext && inspected.repair_iteration
+            ? "Repair proposal created · iteration " + inspected.repair_iteration + " of "
+              + (inspected.max_repair_iterations ?? 3)
+              + ". Review and approve the patch, then explicitly apply it and rerun the approved verification profile."
+            : "NEXUS created a persistent review-only patch proposal. Approval does not apply it to local files.");
         } else {
-          setNotice("Read-only inspection completed with " + inspected.tools_executed + " tool calls (" + (inspected.tool_names.join(", ") || "no tools requested") + "). Only the attached excerpt was available.");
+          setNotice(repairContext && inspected.repair_iteration
+            ? "Repair iteration " + inspected.repair_iteration + " of " + (inspected.max_repair_iterations ?? 3)
+              + " was used, but NEXUS did not create a patch proposal. Review the response before deciding whether to request another iteration."
+            : "Read-only inspection completed with " + inspected.tools_executed + " tool calls (" + (inspected.tool_names.join(", ") || "no tools requested") + "). Only the attached excerpt was available.");
         }
         return;
       }
