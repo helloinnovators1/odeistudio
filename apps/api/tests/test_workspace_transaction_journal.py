@@ -66,7 +66,7 @@ def test_journal_rejects_oversized_or_mismatched_before_images(tmp_path):
     with pytest.raises(ValueError, match="exactly one"):
         journal.prepare("c" * 64, [patch], [])
     huge = "x" * (5 * 1024 * 1024 + 1)
-    with pytest.raises(ValueError, match="aggregate"):
+    with pytest.raises(ValueError, match="per-file limit"):
         journal.prepare("c" * 64, [patch], [huge])
 
 
@@ -262,12 +262,16 @@ def test_journal_rejects_before_image_hash_mismatch_and_invalid_operation(tmp_pa
 
 def test_journal_enforces_combined_before_and_after_byte_budget(tmp_path):
     journal = DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
-    half = "x" * (2 * 1024 * 1024 + 1)
-    patch = {
-        "path": "main.py", "operation": "update",
-        "base_sha256": hashlib.sha256(half.encode()).hexdigest(),
-        "result_sha256": hashlib.sha256(half.encode()).hexdigest(),
-        "content": half,
-    }
+    before = "b" * (900 * 1024)
+    after = "a" * (900 * 1024)
+    patches = [
+        {
+            "path": f"module_{index}.py", "operation": "update",
+            "base_sha256": hashlib.sha256(before.encode()).hexdigest(),
+            "result_sha256": hashlib.sha256(after.encode()).hexdigest(),
+            "content": after,
+        }
+        for index in range(3)
+    ]
     with pytest.raises(ValueError, match="aggregate"):
-        journal.prepare("5" * 64, [patch], [half])
+        journal.prepare("5" * 64, patches, [before, before, before])
