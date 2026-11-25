@@ -21,6 +21,7 @@ from odei_api.services.governed_tool_registry import (
     GovernedToolRegistry,
     ToolDefinition,
 )
+from odei_api.services.mcp_gateway import McpGatewayError
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.nexus_execution import _authorize_execution_resource
 from odei_api.services.nexus_patch_proposals import _audit_proposal
@@ -359,6 +360,17 @@ async def inspect_attached_project_excerpts(
                 description=definition["description"],
                 approval_required=False,
             ))
+        mcp_gateway = getattr(request.app.state, "nexus_mcp_gateway", None)
+        if mcp_gateway is not None and mcp_gateway.configured:
+            for definition in await run_in_threadpool(mcp_gateway.agent_tools):
+                governed_tools.register(ToolDefinition(
+                    name=definition["name"],
+                    capability="workspace.read",
+                    schema=definition["parameters"],
+                    handler=definition["handler"],
+                    description=definition["description"],
+                    approval_required=False,
+                ))
         result = await run_in_threadpool(
             run_nexus_agent, client, model=model,
             task=agent_task, workspace_tools=tools,
@@ -373,6 +385,16 @@ async def inspect_attached_project_excerpts(
             file_count=len(payload.workspace_files), mode=payload.mode,
         )
         raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_CONFIGURED", "message": "The NEXUS model provider is not configured."}) from exc
+    except McpGatewayError as exc:
+        await _append_nexus_chat_audit(
+            request, principal, organization_id, project_id,
+            outcome="failure", message_count=message_count,
+            file_count=len(payload.workspace_files), mode=payload.mode,
+        )
+        raise HTTPException(status_code=503, detail={
+            "code": "MCP_INTEGRATION_UNAVAILABLE",
+            "message": "A configured MCP integration could not be safely initialized.",
+        }) from exc
     except (AgentAuditError, GovernedToolAuditError) as exc:
         await _append_nexus_chat_audit(
             request, principal, organization_id, project_id,

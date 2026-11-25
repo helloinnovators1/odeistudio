@@ -39,6 +39,7 @@ from odei_api.services.mad_incidents import (
     MongoMadIncidentStore,
 )
 from odei_api.services.mad_telemetry import collect_mad_execution_metrics, evaluate_mad_alerts
+from odei_api.services.mcp_gateway import McpGateway, load_mcp_servers
 from odei_api.services.nexus_conversations import router as nexus_conversations_router
 from odei_api.services.nexus_execution import router as nexus_execution_router
 from odei_api.services.nexus_inspection import router as nexus_inspection_router
@@ -76,6 +77,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database_name = None
     http_client = httpx.AsyncClient(timeout=5.0)
     application.state.http_client = http_client
+    mcp_gateway = McpGateway(load_mcp_servers(settings.nexus_mcp_servers_json))
+    application.state.nexus_mcp_gateway = mcp_gateway
     application.state.github_app_client = GitHubAppInstallationClient(
         app_id=settings.github_app_id,
         private_key_b64=settings.github_app_private_key_b64,
@@ -188,6 +191,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     finally:
         if client is not None:
             await client.close()
+        mcp_gateway.close()
         await http_client.aclose()
 
 
