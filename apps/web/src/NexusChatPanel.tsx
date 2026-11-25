@@ -15,6 +15,7 @@ import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge, readWorkspa
 import { buildWorkspaceArchive } from "./workspace-archive";
 import {
   cancelNexusExecution,
+  createNexusRepositoryMergeApproval,
   createNexusExecution,
   getNexusExecution,
   getNexusExecutionArtifacts,
@@ -22,12 +23,15 @@ import {
   listNexusExecutionEvents,
   listNexusExecutionProfiles,
   listNexusProjectExecutions,
+  mergeNexusRepositoryChanges,
   type NexusExecutionArtifacts,
   type NexusExecutionDiagnostics,
   type NexusExecutionEvent,
   type NexusExecutionHistoryCursor,
   type NexusExecutionProfile,
   type NexusExecutionRun,
+  type NexusRepositoryMergeApproval,
+  type NexusRepositoryMergeResult,
 } from "./nexus-executions";
 import {
   approveNexusPatchProposal,
@@ -159,6 +163,10 @@ export default function NexusChatPanel({
   const [codeExecutionConsent, setCodeExecutionConsent] = useState(false);
   const [repositoryPublishConsent, setRepositoryPublishConsent] = useState(false);
   const [executionRun, setExecutionRun] = useState<NexusExecutionRun | null>(null);
+  const [mergeApproval, setMergeApproval] = useState<NexusRepositoryMergeApproval | null>(null);
+  const [mergeResult, setMergeResult] = useState<NexusRepositoryMergeResult | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState("");
   const [executionEvents, setExecutionEvents] = useState<NexusExecutionEvent[]>([]);
   const executionEventVersionRef = useRef(-1);
   const [executionArtifacts, setExecutionArtifacts] = useState<NexusExecutionArtifacts | null>(null);
@@ -184,6 +192,12 @@ export default function NexusChatPanel({
   const refreshAbortRef = useRef<AbortController | null>(null);
   const refreshPromiseRef = useRef<Promise<ODidAccessToken> | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setMergeApproval(null);
+    setMergeResult(null);
+    setMergeError("");
+  }, [executionRun?.run_id]);
 
   useEffect(() => {
     if (!isDesktopHost) return;
@@ -724,6 +738,9 @@ export default function NexusChatPanel({
       const now = new Date().toISOString();
       executionEventVersionRef.current = -1;
       setExecutionEvents([]);
+      setMergeApproval(null);
+      setMergeResult(null);
+      setMergeError("");
       setExecutionRun({
         run_id: created.run_id, organization_id: organizationId,
         project_id: projectId, task_id: taskPlan.task_id,
@@ -747,6 +764,60 @@ export default function NexusChatPanel({
     } finally {
       if (executionAbortRef.current === controller) executionAbortRef.current = null;
       setExecutionBusy(false);
+    }
+  }
+
+
+
+  async function createMergeApproval() {
+    if (!access || !executionRun || !config.apiBaseUrl || mergeBusy
+      || executionRun.status !== "completed" || !executionRun.repository_review?.pull_request_url
+      || !executionRun.repository_review.commit_sha) return;
+    const review = executionRun.repository_review;
+    if (!window.confirm(
+      "Confirm that you reviewed GitHub pull request #" + review.pull_request_number
+      + " and approve this exact commit " + review.commit_sha + " for merge. "
+      + "This creates a 10-minute, single-use approval; it does not merge yet.",
+    )) return;
+    setMergeBusy(true);
+    setMergeError("");
+    try {
+      const approval = await createNexusRepositoryMergeApproval(
+        config.apiBaseUrl, organizationId, projectId, executionRun.task_id,
+        executionRun.run_id, access.accessToken,
+      );
+      setMergeApproval(approval);
+    } catch (cause) {
+      setMergeError(errorMessage(cause));
+    } finally {
+      setMergeBusy(false);
+    }
+  }
+
+  async function mergeApprovedChanges() {
+    if (!access || !executionRun || !mergeApproval || !config.apiBaseUrl || mergeBusy) return;
+    if (Date.parse(mergeApproval.expires_at) <= Date.now()) {
+      setMergeError("This merge approval expired. Start a new execution to create a fresh review and approval.");
+      return;
+    }
+    if (!window.confirm(
+      "This will merge GitHub pull request #" + mergeApproval.pull_request_number
+      + " into " + executionRun.repository_review?.default_branch
+      + " using squash. GitHub branch protection still applies. Continue?",
+    )) return;
+    setMergeBusy(true);
+    setMergeError("");
+    try {
+      const result = await mergeNexusRepositoryChanges(
+        config.apiBaseUrl, organizationId, projectId, executionRun.task_id,
+        executionRun.run_id, mergeApproval.approval_id, access.accessToken,
+      );
+      setMergeResult(result);
+      setMergeApproval(null);
+    } catch (cause) {
+      setMergeError(errorMessage(cause));
+    } finally {
+      setMergeBusy(false);
     }
   }
 
@@ -1697,6 +1768,32 @@ export default function NexusChatPanel({
                   <p><a href={executionRun.repository_review.pull_request_url} target="_blank" rel="noopener noreferrer">
                     Review worker changes on GitHub · PR #{executionRun.repository_review.pull_request_number}
                   </a></p>
+                )}
+
+                {executionRun.status === "completed"
+                  && executionRun.repository_review?.pull_request_url
+                  && executionRun.repository_review.commit_sha && (
+                  <div className="nexus-execution-artifacts" aria-label="Human-approved repository merge-back">
+                    <strong>HUMAN-APPROVED MERGE-BACK</strong>
+                    {mergeResult ? (
+                      <p>Merge completed. GitHub merge commit: {mergeResult.merge_commit_sha}</p>
+                    ) : mergeApproval ? (
+                      <>
+                        <p>Single-use approval expires {new Date(mergeApproval.expires_at).toLocaleString()}.</p>
+                        <button type="button" className="nexus-link-button"
+                          onClick={() => void mergeApprovedChanges()} disabled={mergeBusy}>
+                          {mergeBusy ? "Merging…" : "Merge approved changes"}
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="nexus-link-button"
+                        onClick={() => void createMergeApproval()} disabled={mergeBusy}>
+                        {mergeBusy ? "Verifying pull request…" : "I reviewed this PR — create 10-minute merge approval"}
+                      </button>
+                    )}
+                    <p className="nexus-muted">Merge-back is a separate, irreversible action. The API re-verifies the repository, exact commit, base and pull request; GitHub branch protection remains in force.</p>
+                    {mergeError && <p className="nexus-error">{mergeError}</p>}
+                  </div>
                 )}
                 <div className="nexus-execution-timeline" aria-label="Execution event history">
                   <strong>RUN HISTORY</strong>
