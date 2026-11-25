@@ -13,6 +13,7 @@ from odei_api.config import Settings
 from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.execution_profiles import load_execution_profiles
+from odei_api.services.execution_runs import ExecutionRunStatus
 from odei_api.services.github_app import VerifiedGitHubRepository
 from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key
 
@@ -20,6 +21,31 @@ from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key
 class Collection:
     def __init__(self, document):
         self.document = document
+
+
+    async def insert_one(self, document):
+        if self.document is not None:
+            raise RuntimeError("duplicate approval")
+        self.document = document
+        return SimpleNamespace(inserted_id=document["_id"])
+
+    async def update_one(self, query, update):
+        if self.document is None:
+            return SimpleNamespace(modified_count=0)
+        for key, value in query.items():
+            if key == "expires_at":
+                if not self.document.get(key) > value.get("$gt"):
+                    return SimpleNamespace(modified_count=0)
+            elif self.document.get(key) != value:
+                return SimpleNamespace(modified_count=0)
+        self.document.update(update.get("$set", {}))
+        return SimpleNamespace(modified_count=1)
+
+    async def delete_one(self, query):
+        if self.document and all(self.document.get(k) == v for k, v in query.items()):
+            self.document = None
+            return SimpleNamespace(deleted_count=1)
+        return SimpleNamespace(deleted_count=0)
 
     async def find_one(self, query):
         if self.document is None:
@@ -52,6 +78,7 @@ class Database:
             "task_events": Collection(None),
             "nexus_repository_bindings": Collection(None),
             "execution_runs": Collection(None),
+            "nexus_merge_approvals": Collection(None),
         }
 
     def __getitem__(self, key):
@@ -159,6 +186,13 @@ async def _verified_repository(**kwargs):
     )
 
 
+
+async def _verified_merge(**kwargs):
+    assert kwargs["binding"]["repository_id"] == 123
+    assert kwargs["run"].worker_commit_sha == "c" * 40
+    return {"merge_commit_sha": "f" * 40}
+
+
 def archive_base64():
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_STORED) as archive:
@@ -193,6 +227,7 @@ def execution_state():
     app.state.execution_artifact_store = Artifacts()
     app.state.github_app_client = type("GitHub", (), {
         "verify_repository": staticmethod(lambda **kwargs: _verified_repository(**kwargs)),
+        "merge_verified_pull_request": staticmethod(lambda **kwargs: _verified_merge(**kwargs)),
     })()
     app.state.execution_profile_registry = load_execution_profiles(Settings(
         execution_profiles_json='[{"name":"python-tests","image":"registry.example/odei/python@sha256:' + "a" * 64 + '","command":["python","-m","pytest"]}]'
@@ -217,6 +252,72 @@ def payload(**overrides):
     }
     value.update(overrides)
     return value
+
+
+
+def _completed_repository_run(runs):
+    runs.run = SimpleNamespace(
+        id="run-1", organization_id="org-1", project_id="project-1", task_id="task-1",
+        status=ExecutionRunStatus.COMPLETED, repository_binding_version=4,
+        repository_id=123, repository_node_id="R_kgDOabc",
+        repository_installation_id=77, repository_owner="acme", repository_name="service",
+        repository_default_branch="main", repository_base_sha="b" * 40,
+        worker_commit_sha="c" * 40, worker_tree_sha="d" * 40,
+        worker_branch="odei/nexus/run-1", worker_pull_request_number=9,
+        worker_pull_request_url="https://github.com/acme/service/pull/9",
+        worker_provenance_at=datetime.now(timezone.utc),
+    )
+
+
+def _verified_binding(database):
+    database["projects"].document["owner_subject"] = "task-owner"
+    database["nexus_repository_bindings"].document = {
+        "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
+        "state": "verified", "installation_id": 77, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "owner": "acme", "name": "service",
+        "full_name": "acme/service", "default_branch": "main", "binding_version": 4,
+    }
+
+
+def test_merge_approval_is_owner_bound_expiring_and_one_use(execution_state):
+    database, audit, _tasks, _snapshots, runs = execution_state
+    _verified_binding(database)
+    _completed_repository_run(runs)
+    path = "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions/run-1"
+    approval = TestClient(app).post(
+        path + "/merge-approvals",
+        json={"approve": True, "expected_commit_sha": "c" * 40},
+    )
+    assert approval.status_code == 200, approval.text
+    approval_id = approval.json()["approval_id"]
+    merged = TestClient(app).post(path + "/merge", json={"approval_id": approval_id})
+    assert merged.status_code == 200, merged.text
+    assert merged.json()["merged"] is True
+    assert merged.json()["merge_commit_sha"] == "f" * 40
+    replay = TestClient(app).post(path + "/merge", json={"approval_id": approval_id})
+    assert replay.status_code == 409
+    assert database["nexus_merge_approvals"].document["state"] == "consumed"
+    assert any(event["action"] == "nexus.repository.merge" for event in audit.events)
+
+
+def test_merge_approval_rejects_non_owner_and_wrong_commit(execution_state):
+    database, _audit, _tasks, _snapshots, runs = execution_state
+    _verified_binding(database)
+    _completed_repository_run(runs)
+    path = "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions/run-1"
+    database["projects"].document["owner_subject"] = "different-owner"
+    denied = TestClient(app).post(
+        path + "/merge-approvals",
+        json={"approve": True, "expected_commit_sha": "c" * 40},
+    )
+    assert denied.status_code == 403
+    database["projects"].document["owner_subject"] = "task-owner"
+    mismatch = TestClient(app).post(
+        path + "/merge-approvals",
+        json={"approve": True, "expected_commit_sha": "e" * 40},
+    )
+    assert mismatch.status_code == 409
+
 
 
 def test_profile_loader_requires_digest_pinned_server_owned_profiles():
