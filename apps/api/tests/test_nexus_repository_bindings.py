@@ -15,7 +15,11 @@ class Collection:
         self.rows = [dict(row) for row in rows]
     async def find_one(self, query):
         for row in self.rows:
-            if all(row.get(key) == value for key, value in query.items()):
+            if all(
+                row.get(key) in value["$in"] if isinstance(value, dict) and "$in" in value
+                else row.get(key) == value
+                for key, value in query.items()
+            ):
                 return dict(row)
         return None
     async def insert_one(self, document):
