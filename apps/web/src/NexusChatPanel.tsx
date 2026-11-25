@@ -18,10 +18,12 @@ import {
   createNexusExecution,
   getNexusExecution,
   getNexusExecutionArtifacts,
+  getNexusExecutionDiagnostics,
   listNexusExecutionEvents,
   listNexusExecutionProfiles,
   listNexusProjectExecutions,
   type NexusExecutionArtifacts,
+  type NexusExecutionDiagnostics,
   type NexusExecutionEvent,
   type NexusExecutionHistoryCursor,
   type NexusExecutionProfile,
@@ -159,6 +161,7 @@ export default function NexusChatPanel({
   const [executionEvents, setExecutionEvents] = useState<NexusExecutionEvent[]>([]);
   const executionEventVersionRef = useRef(-1);
   const [executionArtifacts, setExecutionArtifacts] = useState<NexusExecutionArtifacts | null>(null);
+  const [executionDiagnostics, setExecutionDiagnostics] = useState<NexusExecutionDiagnostics | null>(null);
   const [executionHistory, setExecutionHistory] = useState<NexusExecutionRun[]>([]);
   const [executionHistoryCursor, setExecutionHistoryCursor] = useState<NexusExecutionHistoryCursor | null>(null);
   const [executionHistoryHasMore, setExecutionHistoryHasMore] = useState(false);
@@ -309,7 +312,7 @@ export default function NexusChatPanel({
       setMessages([]); setConversations([]); setConversationId("");
       setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false); setChatError("");
       setTaskPlan(null); setTaskError(""); setPatchProposals([]); setSelectedPatch(null); setPatchError("");
-      setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
+      setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null); setExecutionDiagnostics(null);
       setExecutionHistory([]); setExecutionHistoryCursor(null); setExecutionHistoryHasMore(false); setExecutionHistoryError("");
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
@@ -474,8 +477,17 @@ export default function NexusChatPanel({
               accessToken, fetch, controller.signal,
             );
             if (active) setExecutionArtifacts(artifacts);
+            try {
+              const diagnostics = await getNexusExecutionDiagnostics(
+                apiBaseUrl, selectedOrganizationId, selectedProjectId, taskId, runId,
+                accessToken, fetch, controller.signal,
+              );
+              if (active) setExecutionDiagnostics(diagnostics);
+            } catch {
+              if (active) setExecutionDiagnostics(null);
+            }
           } catch {
-            if (active) setExecutionArtifacts(null);
+            if (active) setExecutionArtifacts(null); setExecutionDiagnostics(null);
           }
           const taskStatus = updated.status === "completed" ? "validating"
             : updated.status === "cancelled" ? "cancelled" : "failed";
@@ -547,7 +559,7 @@ export default function NexusChatPanel({
     setTaskPlan(null);
     setTaskError("");
     setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
-    setExecutionArtifacts(null);
+    setExecutionArtifacts(null); setExecutionDiagnostics(null);
     setExecutionError("");
     setExecutionBusy(false);
     setSnapshotSummary("");
@@ -592,7 +604,7 @@ export default function NexusChatPanel({
       );
       setTaskPlan(task);
       setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
-      setExecutionArtifacts(null);
+      setExecutionArtifacts(null); setExecutionDiagnostics(null);
       setSnapshotSummary("");
       setDraft("");
       setConsent(false);
@@ -666,7 +678,7 @@ export default function NexusChatPanel({
     executionAbortRef.current = controller;
     setExecutionBusy(true);
     setExecutionError("");
-    setExecutionArtifacts(null);
+    setExecutionArtifacts(null); setExecutionDiagnostics(null);
     try {
       const snapshot = await buildWorkspaceArchive(
         workspaceContext.files,
@@ -961,7 +973,7 @@ export default function NexusChatPanel({
     setOrganizations([]); setOrganizationId(""); setProjects([]); setProjectId("");
     setMessages([]); setConversations([]); setConversationId("");
     setTaskPlan(null); setTaskError("");
-    setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null);
+    setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null); setExecutionDiagnostics(null);
     setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
     setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
     setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
@@ -1319,7 +1331,7 @@ export default function NexusChatPanel({
               setTaskPlan(null);
               setTaskError("");
               setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
-              setExecutionArtifacts(null);
+              setExecutionArtifacts(null); setExecutionDiagnostics(null);
               setExecutionError("");
               setSnapshotSummary("");
               setMessages([]);
@@ -1359,7 +1371,7 @@ export default function NexusChatPanel({
                 setTaskPlan(null);
                 setTaskError("");
                 setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1;
-                setExecutionArtifacts(null);
+                setExecutionArtifacts(null); setExecutionDiagnostics(null);
                 setExecutionError("");
                 setSnapshotSummary("");
                 setMessages([]);
@@ -1699,6 +1711,16 @@ export default function NexusChatPanel({
                     {(executionArtifacts.stdout_truncated || executionArtifacts.stderr_truncated)
                       && <p className="nexus-muted">Output was truncated by the server safety limit.</p>}
                   </div>
+                )}
+                {executionDiagnostics && (
+                  <section className="nexus-execution-diagnostics" aria-label="Execution diagnostics">
+                    <strong>DIAGNOSTICS · {executionDiagnostics.category.replace("_", " ").toUpperCase()}</strong>
+                    <p>{executionDiagnostics.summary}</p>
+                    {executionDiagnostics.signals.length > 0 && <p>Signals: {executionDiagnostics.signals.join(" · ")}</p>}
+                    {executionDiagnostics.evidence.map((line, index) => <pre key={index}>{line}</pre>)}
+                    <p className="nexus-muted">{executionDiagnostics.next_step}</p>
+                  </section>
+                )}
                 )}
               </div>
             )}
