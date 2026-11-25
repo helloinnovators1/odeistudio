@@ -333,16 +333,11 @@ async def create_execution(
             "_id": f"{organization_id}:{project_id}",
             "organization_id": organization_id, "project_id": project_id,
         })
-        if binding is not None:
+        if binding is not None and payload.repository_publish_consent:
             if project.get("owner_issuer") != principal.issuer or project.get("owner_subject") != principal.subject:
                 raise HTTPException(status_code=403, detail={
                     "code": "REPOSITORY_PUBLISH_OWNER_REQUIRED",
                     "message": "Only the project owner can authorize publishing a repository review branch.",
-                })
-            if not payload.repository_publish_consent:
-                raise HTTPException(status_code=400, detail={
-                    "code": "REPOSITORY_PUBLISH_CONSENT_REQUIRED",
-                    "message": "Explicit consent is required before NEXUS can publish a review branch and pull request.",
                 })
             if binding.get("state") != "verified":
                 raise HTTPException(status_code=409, detail={

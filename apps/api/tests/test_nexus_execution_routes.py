@@ -328,9 +328,8 @@ def test_execution_run_pins_verified_repository_identity_and_base(execution_stat
 
 
 
-def test_bound_execution_requires_explicit_repository_publish_consent(execution_state):
-    database, _audit, _tasks, _snapshots, _runs = execution_state
-    database["projects"].document["owner_subject"] = "task-owner"
+def test_bound_execution_without_publish_consent_does_not_create_repository_review(execution_state):
+    database, _audit, _tasks, _snapshots, runs = execution_state
     database["nexus_repository_bindings"].document = {
         "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
         "state": "verified", "installation_id": 77, "repository_id": 123,
@@ -341,9 +340,9 @@ def test_bound_execution_requires_explicit_repository_publish_consent(execution_
         "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
         json=payload(),
     )
-    assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "REPOSITORY_PUBLISH_CONSENT_REQUIRED"
-
+    assert response.status_code == 200, response.text
+    assert runs.run.repository_binding_version is None
+    assert response.json()["repository_publish_consent"] is False
 
 
 def test_bound_execution_publish_requires_project_owner(execution_state):
