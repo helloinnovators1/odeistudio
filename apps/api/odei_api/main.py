@@ -51,6 +51,7 @@ from odei_api.services.parallel_jobs_api import router as parallel_jobs_router
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
 from odei_api.services.repository_index_store import MongoRepositoryIndexStore
+from odei_api.services.repository_merge_approvals import MongoRepositoryMergeApprovalStore
 from odei_api.services.repository_intelligence import router as repository_intelligence_router
 from odei_api.services.task_store import MongoTaskStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
@@ -147,6 +148,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             )
             await execution_run_store.initialize()
             application.state.execution_run_store = execution_run_store
+            merge_approval_store = MongoRepositoryMergeApprovalStore(
+                application.state.mongo_database["nexus_repository_merge_approvals"],
+            )
+            await merge_approval_store.initialize()
+            application.state.repository_merge_approval_store = merge_approval_store
             parallel_job_store = MongoParallelJobStore(
                 application.state.mongo_database["nexus_parallel_jobs"],
                 application.state.mongo_database["nexus_parallel_job_groups"],
@@ -173,6 +179,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             application.state.conversation_store = None
             application.state.patch_proposal_store = None
             application.state.execution_run_store = None
+            application.state.repository_merge_approval_store = None
             application.state.parallel_job_store = None
             application.state.workspace_snapshot_store = None
             application.state.repository_index_store = None
