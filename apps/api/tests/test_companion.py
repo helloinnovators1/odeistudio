@@ -1210,7 +1210,7 @@ def test_companion_search_returns_bounded_literal_matches_with_provenance(tmp_pa
         assert payload["matches"][0]["content_sha256"] == hashlib.sha256(
             current_content.encode("utf-8")
         ).hexdigest()
-        assert payload["matches"][0]["index_version"] == "literal-search-v1"
+        assert payload["matches"][0]["index_version"] == "literal-search-v2"
         assert payload["scanned_files"] >= 1
         assert payload["truncated"] is False
     finally:
