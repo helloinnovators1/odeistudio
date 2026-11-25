@@ -437,3 +437,138 @@ class GitHubAppInstallationClient:
             raise GitHubRepositoryVerificationError(
                 "Worker repository publication failed",
             ) from exc
+
+
+    async def _verify_pull_request(
+        self, *, binding: dict[str, Any], expected: dict[str, Any],
+    ) -> dict[str, Any]:
+        installation_id = binding.get("installation_id")
+        owner, name = binding.get("owner"), binding.get("name")
+        repository_id = binding.get("repository_id")
+        repository_node_id = binding.get("repository_node_id")
+        default_branch = binding.get("default_branch")
+        if (
+            isinstance(installation_id, bool) or not isinstance(installation_id, int) or installation_id < 1
+            or not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,39}", owner)
+            or not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", name)
+            or isinstance(repository_id, bool) or not isinstance(repository_id, int) or repository_id < 1
+            or not isinstance(repository_node_id, str) or not repository_node_id
+            or not isinstance(default_branch, str) or not default_branch
+        ):
+            raise GitHubRepositoryVerificationError("Trusted repository binding metadata is invalid")
+        pull_number = expected.get("pull_request_number")
+        commit_sha = expected.get("commit_sha")
+        tree_sha = expected.get("tree_sha")
+        base_sha = expected.get("base_sha")
+        branch = expected.get("branch")
+        if (
+            isinstance(pull_number, bool) or not isinstance(pull_number, int) or pull_number < 1
+            or not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", commit_sha)
+            or not isinstance(tree_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", tree_sha)
+            or not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha)
+            or not isinstance(branch, str) or branch != f"odei/nexus/{expected.get('run_id')}"
+        ):
+            raise GitHubRepositoryVerificationError("Approved worker provenance is incomplete")
+        token = await self._installation_token(
+            installation_id=installation_id, repository_name=name,
+        )
+        headers = self._installation_headers(token)
+        prefix = f"https://api.github.com/repos/{owner}/{name}"
+        repository_response = await self.http.get(prefix, headers=headers)
+        if repository_response.status_code != 200:
+            raise GitHubRepositoryVerificationError("Bound repository is no longer accessible")
+        repository = repository_response.json()
+        permissions = repository.get("permissions") or {}
+        if (
+            repository.get("id") != repository_id
+            or repository.get("node_id") != repository_node_id
+            or (repository.get("full_name") or "").casefold() != f"{owner}/{name}".casefold()
+            or repository.get("default_branch") != default_branch
+            or permissions.get("pull_requests") not in {"write", "admin"}
+        ):
+            raise GitHubRepositoryVerificationError("Repository identity or merge permission changed")
+        pull_response = await self.http.get(
+            f"{prefix}/pulls/{pull_number}", headers=headers,
+        )
+        if pull_response.status_code != 200:
+            raise GitHubRepositoryVerificationError("Worker review pull request could not be read")
+        pull = pull_response.json()
+        head, base = pull.get("head") or {}, pull.get("base") or {}
+        head_repo, base_repo = head.get("repo") or {}, base.get("repo") or {}
+        pull_url = pull.get("html_url")
+        expected_url = f"https://github.com/{owner}/{name}/pull/{pull_number}"
+        if (
+            pull.get("number") != pull_number or pull.get("state") != "open"
+            or pull.get("merged") is not False or pull.get("draft") is not False
+            or head.get("sha") != commit_sha or head.get("ref") != branch
+            or head_repo.get("id") != repository_id
+            or base.get("sha") != base_sha or base.get("ref") != default_branch
+            or base_repo.get("id") != repository_id
+            or not isinstance(pull_url, str) or pull_url.casefold() != expected_url.casefold()
+        ):
+            raise GitHubRepositoryVerificationError(
+                "Pull request head, base, repository, or review state changed after approval",
+            )
+        commit_response = await self.http.get(
+            f"{prefix}/git/commits/{commit_sha}", headers=headers,
+        )
+        if commit_response.status_code != 200:
+            raise GitHubRepositoryVerificationError("Approved worker commit could not be verified")
+        commit = commit_response.json()
+        parents = commit.get("parents") or []
+        if (
+            commit.get("sha") != commit_sha
+            or (commit.get("tree") or {}).get("sha") != tree_sha
+            or len(parents) != 1 or parents[0].get("sha") != base_sha
+        ):
+            raise GitHubRepositoryVerificationError("Worker commit ancestry or tree changed after approval")
+        return {
+            "repository_id": repository_id, "repository_node_id": repository_node_id,
+            "pull_request_number": pull_number, "pull_request_url": pull_url,
+            "branch": branch, "base_sha": base_sha,
+            "commit_sha": commit_sha, "tree_sha": tree_sha,
+        }
+
+    async def verify_pull_request(
+        self, *, binding: dict[str, Any], expected: dict[str, Any],
+    ) -> dict[str, Any]:
+        try:
+            return await self._verify_pull_request(binding=binding, expected=expected)
+        except GitHubRepositoryVerificationError:
+            raise
+        except Exception as exc:
+            raise GitHubRepositoryVerificationError(
+                "GitHub pull request verification failed",
+            ) from exc
+
+    async def merge_pull_request(
+        self, *, binding: dict[str, Any], expected: dict[str, Any],
+    ) -> dict[str, Any]:
+        try:
+            verified = await self._verify_pull_request(binding=binding, expected=expected)
+            token = await self._installation_token(
+                installation_id=binding["installation_id"],
+                repository_name=binding["name"],
+            )
+            response = await self.http.put(
+                f"https://api.github.com/repos/{binding['owner']}/{binding['name']}/pulls/{verified['pull_request_number']}/merge",
+                headers=self._installation_headers(token),
+                json={"sha": verified["commit_sha"], "merge_method": "squash"},
+            )
+            if response.status_code != 200:
+                raise GitHubRepositoryVerificationError(
+                    "GitHub did not permit the approved pull request to merge",
+                )
+            result = response.json()
+            merge_sha = result.get("sha")
+            if result.get("merged") is not True or not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
+                raise GitHubRepositoryVerificationError("GitHub returned an invalid merge result")
+            return {
+                **verified, "merged": True, "merge_commit_sha": merge_sha,
+            }
+        except GitHubRepositoryVerificationError:
+            raise
+        except Exception as exc:
+            raise GitHubRepositoryVerificationError(
+                "GitHub pull request merge failed",
+            ) from exc

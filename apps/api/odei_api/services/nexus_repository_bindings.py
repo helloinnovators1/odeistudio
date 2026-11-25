@@ -164,6 +164,13 @@ async def bind_repository(
         })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
+    try:
+        await collection.update_one(
+            {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
+            {"$unset": {"merge_lock": ""}},
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.repository_binding.bind", "started",
                  {"installation_id": payload.installation_id})
@@ -211,6 +218,7 @@ async def bind_repository(
         else:
             result = await collection.replace_one({
                 "_id": key, "binding_version": payload.expected_version,
+                "merge_lock": {"$exists": False},
             }, document, upsert=False)
             if result.modified_count != 1:
                 raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})
@@ -245,14 +253,24 @@ async def remove_repository_binding(
             "code": "REPOSITORY_BINDING_LOCKED",
             "message": "The trusted repository cannot change while a project execution is active.",
         })
+    collection = database["nexus_repository_bindings"]
+    key = f"{organization_id}:{project_id}"
+    try:
+        await collection.update_one(
+            {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
+            {"$unset": {"merge_lock": ""}},
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.repository_binding.remove", "started",
                  {"binding_version": payload.expected_version})
     try:
-        result = await database["nexus_repository_bindings"].delete_one({
-            "_id": f"{organization_id}:{project_id}",
+        result = await collection.delete_one({
+            "_id": key,
             "organization_id": organization_id, "project_id": project_id,
             "binding_version": payload.expected_version,
+            "merge_lock": {"$exists": False},
         })
         if result.deleted_count != 1:
             raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})

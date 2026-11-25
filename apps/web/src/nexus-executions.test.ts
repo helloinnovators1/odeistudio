@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   cancelNexusExecution,
   createNexusExecution,
+  createNexusRepositoryMergeApproval,
   getNexusExecution,
   getNexusExecutionArtifacts,
   getNexusExecutionDiagnostics,
   listNexusExecutionEvents,
   listNexusProjectExecutions,
   listNexusExecutionProfiles,
+  mergeNexusRepositoryChanges,
 } from "./nexus-executions";
 
 function response(value: unknown, status = 200): Response {
@@ -108,6 +110,58 @@ describe("NEXUS execution API client", () => {
       "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/artifacts",
       "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/diagnostics",
     ]);
+  });
+
+
+  it("creates a short-lived, explicit human merge approval on the scoped run route", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({
+      approval_id: "a".repeat(32), status: "pending",
+      expires_at: "2026-11-25T12:10:00Z",
+      pull_request_url: "https://github.com/Acme/Service/pull/12",
+      pull_request_number: 12, commit_sha: "c".repeat(40), base_sha: "b".repeat(40),
+      confirmation_required: "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE",
+    }));
+    const approval = await createNexusRepositoryMergeApproval(
+      "https://api.example.test", "org", "project", "task", "run", "token", fetcher,
+    );
+    expect(approval.status).toBe("pending");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/merge-approvals",
+    );
+    const init = fetcher.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({
+      confirmation: "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE",
+    });
+  });
+
+  it("consumes a one-use merge approval without accepting client repository or SHA overrides", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({
+      merged: true, approval_id: "a".repeat(32), approval_status: "consumed",
+      pull_request_url: "https://github.com/Acme/Service/pull/12",
+      pull_request_number: 12, commit_sha: "c".repeat(40), merge_commit_sha: "e".repeat(40),
+    }));
+    const result = await mergeNexusRepositoryChanges(
+      "https://api.example.test", "org", "project", "task", "run",
+      "a".repeat(32), "token", fetcher,
+    );
+    expect(result.merge_commit_sha).toBe("e".repeat(40));
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.example.test/api/v1/organizations/org/projects/project/tasks/task/executions/run/merge",
+    );
+    const init = fetcher.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({
+      approval_id: "a".repeat(32),
+      confirmation: "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE",
+    });
+  });
+
+  it("rejects malformed approval IDs before sending a merge request", async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({}));
+    await expect(mergeNexusRepositoryChanges(
+      "https://api.example.test", "org", "project", "task", "run",
+      "not-an-approval", "token", fetcher,
+    )).rejects.toThrow("one-use merge approval ID");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("does not leak server response internals when a request fails", async () => {

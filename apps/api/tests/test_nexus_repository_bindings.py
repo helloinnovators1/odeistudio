@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -13,26 +13,62 @@ from odei_api.services.github_app import VerifiedGitHubRepository
 class Collection:
     def __init__(self, rows=()):
         self.rows = [dict(row) for row in rows]
+
+    @staticmethod
+    def _value(row, key):
+        value = row
+        for part in key.split("."):
+            if not isinstance(value, dict):
+                return None
+            value = value.get(part)
+        return value
+
+    @classmethod
+    def _matches(cls, row, query):
+        for key, expected in query.items():
+            actual = cls._value(row, key)
+            if isinstance(expected, dict) and "$exists" in expected:
+                if (actual is not None) != expected["$exists"]:
+                    return False
+            elif isinstance(expected, dict) and "$in" in expected:
+                if actual not in expected["$in"]:
+                    return False
+            elif isinstance(expected, dict) and "$lte" in expected:
+                if actual is None or actual > expected["$lte"]:
+                    return False
+            elif actual != expected:
+                return False
+        return True
+
     async def find_one(self, query):
         for row in self.rows:
-            if all(
-                row.get(key) in value["$in"] if isinstance(value, dict) and "$in" in value
-                else row.get(key) == value
-                for key, value in query.items()
-            ):
+            if self._matches(row, query):
                 return dict(row)
         return None
+
     async def insert_one(self, document):
         self.rows.append(dict(document))
+
+    async def update_one(self, query, update):
+        for row in self.rows:
+            if self._matches(row, query):
+                for key in update.get("$unset", {}):
+                    row.pop(key, None)
+                for key, value in update.get("$set", {}).items():
+                    row[key] = value
+                return SimpleNamespace(modified_count=1)
+        return SimpleNamespace(modified_count=0)
+
     async def replace_one(self, query, document, upsert=False):
         for index, row in enumerate(self.rows):
-            if all(row.get(key) == value for key, value in query.items()):
+            if self._matches(row, query):
                 self.rows[index] = dict(document)
                 return SimpleNamespace(modified_count=1)
         return SimpleNamespace(modified_count=0)
+
     async def delete_one(self, query):
         for index, row in enumerate(self.rows):
-            if all(row.get(key) == value for key, value in query.items()):
+            if self._matches(row, query):
                 self.rows.pop(index)
                 return SimpleNamespace(deleted_count=1)
         return SimpleNamespace(deleted_count=0)
@@ -55,6 +91,7 @@ class Database:
             "project_memberships": Collection(),
             "nexus_repository_bindings": Collection(),
             "execution_runs": Collection(),
+            "nexus_repository_merge_approvals": Collection(),
         }
     def __getitem__(self, name):
         return self.collections[name]
@@ -176,6 +213,67 @@ def test_repository_binding_remove_requires_exact_version():
     finally:
         restore(previous)
 
+
+
+
+
+def test_expired_repository_merge_lock_is_recovered_before_rebinding():
+    previous, database, _audit = install(Principal(
+        subject="owner", issuer="https://id.example/",
+    ))
+    database["nexus_repository_bindings"].rows.append({
+        "_id": "org:project", "organization_id": "org", "project_id": "project",
+        "state": "verified", "installation_id": 77, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "owner": "Acme", "name": "Service",
+        "full_name": "Acme/Service", "default_branch": "main",
+        "binding_version": 3,
+        "merge_lock": {
+            "approval_id": "a" * 32, "run_id": "run-1",
+            "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
+        },
+    })
+    try:
+        response = TestClient(app).put(
+            "/api/v1/organizations/org/projects/project/repository-binding",
+            json={
+                "installation_id": 77, "owner": "acme", "repository": "service",
+                "expected_version": 3,
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["binding"]["binding_version"] == 4
+        assert "merge_lock" not in database["nexus_repository_bindings"].rows[0]
+    finally:
+        restore(previous)
+
+
+def test_repository_binding_cannot_change_while_human_merge_is_locked():
+    previous, database, _audit = install(Principal(
+        subject="owner", issuer="https://id.example/",
+    ))
+    database["nexus_repository_bindings"].rows.append({
+        "_id": "org:project", "organization_id": "org", "project_id": "project",
+        "state": "verified", "installation_id": 77, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "owner": "Acme", "name": "Service",
+        "full_name": "Acme/Service", "default_branch": "main",
+        "binding_version": 3,
+        "merge_lock": {
+            "approval_id": "a" * 32, "run_id": "run-1",
+            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=2),
+        },
+    })
+    try:
+        url = "/api/v1/organizations/org/projects/project/repository-binding"
+        bind = TestClient(app).put(url, json={
+            "installation_id": 77, "owner": "acme", "repository": "service",
+            "expected_version": 3,
+        })
+        assert bind.status_code == 409
+        remove = TestClient(app).request("DELETE", url, json={"expected_version": 3})
+        assert remove.status_code == 409
+        assert len(database["nexus_repository_bindings"].rows) == 1
+    finally:
+        restore(previous)
 
 
 def test_repository_binding_cannot_change_while_execution_is_active():

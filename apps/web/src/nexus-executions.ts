@@ -15,12 +15,21 @@ export interface NexusRepositoryReview {
   pull_request_number: number | null; pull_request_url: string | null;
   provenance_at: string | null;
 }
+export interface NexusRepositoryMergeApprovalState {
+  status: "pending" | "expired" | "consuming" | "consumed" | "failed";
+  approval_id: string | null;
+  expires_at: string;
+  merge_commit_sha: string | null;
+  failure_code: string | null;
+}
 export interface NexusExecutionRun {
   run_id: string; organization_id: string; project_id: string; task_id: string;
   profile_id: string; snapshot_sha256: string; status: NexusExecutionStatus;
   version: number; attempts: number; max_attempts: number; cancel_requested: boolean;
   created_at: string | null; updated_at: string | null;
   repository_review?: NexusRepositoryReview | null;
+  repository_merge_available?: boolean;
+  repository_merge_approval?: NexusRepositoryMergeApprovalState | null;
 }
 export interface NexusExecutionCreateResponse {
   run_id: string; status: "queued"; task_id: string; profile_id: string;
@@ -28,6 +37,8 @@ export interface NexusExecutionCreateResponse {
   repository_binding_version?: number | null;
   repository_base_sha?: string | null;
   repository_publish_consent?: boolean;
+  repository_merge_available?: boolean;
+  repository_merge_approval?: NexusRepositoryMergeApprovalState | null;
 }
 export interface NexusExecutionEvent {
   event_id: string; type: string; version: number; occurred_at: string;
@@ -252,6 +263,79 @@ export async function getNexusExecutionDiagnostics(
     result.evidence.some((item) => typeof item !== "string" || item.length > 240) ||
     typeof result.next_step !== "string") {
     throw new Error("Execution API returned an invalid diagnostics response.");
+  }
+  return result;
+}
+
+
+export interface NexusRepositoryMergeApproval {
+  approval_id: string;
+  status: "pending";
+  expires_at: string;
+  pull_request_url: string;
+  pull_request_number: number;
+  commit_sha: string;
+  base_sha: string;
+  confirmation_required: string;
+}
+export interface NexusRepositoryMergeResult {
+  merged: true;
+  approval_id: string;
+  approval_status: "consumed";
+  pull_request_url: string;
+  pull_request_number: number;
+  commit_sha: string;
+  merge_commit_sha: string;
+}
+
+const MERGE_CONFIRMATION = "I_REVIEWED_THE_PULL_REQUEST_AND_APPROVE_MERGE";
+
+export async function createNexusRepositoryMergeApproval(
+  baseUrl: string, organizationId: string, projectId: string, taskId: string,
+  runId: string, accessToken: string, fetcher: Fetcher = fetch, signal?: AbortSignal,
+): Promise<NexusRepositoryMergeApproval> {
+  const result = await request<NexusRepositoryMergeApproval>(
+    route(baseUrl, organizationId, projectId, taskId) + "/" + encodeURIComponent(runId)
+      + "/merge-approvals",
+    accessToken, {
+      method: "POST", fetcher, signal,
+      body: { confirmation: MERGE_CONFIRMATION },
+    },
+  );
+  if (!/^[0-9a-f]{32}$/.test(result.approval_id)
+    || result.status !== "pending" || typeof result.expires_at !== "string"
+    || typeof result.pull_request_url !== "string"
+    || !Number.isInteger(result.pull_request_number)
+    || typeof result.commit_sha !== "string" || !/^[0-9a-f]{40}$/.test(result.commit_sha)
+    || typeof result.base_sha !== "string" || !/^[0-9a-f]{40}$/.test(result.base_sha)
+    || result.confirmation_required !== MERGE_CONFIRMATION) {
+    throw new Error("Execution API returned an invalid repository merge approval.");
+  }
+  return result;
+}
+
+export async function mergeNexusRepositoryChanges(
+  baseUrl: string, organizationId: string, projectId: string, taskId: string,
+  runId: string, approvalId: string, accessToken: string,
+  fetcher: Fetcher = fetch, signal?: AbortSignal,
+): Promise<NexusRepositoryMergeResult> {
+  if (!/^[0-9a-f]{32}$/.test(approvalId)) {
+    throw new TypeError("A valid one-use merge approval ID is required.");
+  }
+  const result = await request<NexusRepositoryMergeResult>(
+    route(baseUrl, organizationId, projectId, taskId) + "/" + encodeURIComponent(runId) + "/merge",
+    accessToken, {
+      method: "POST", fetcher, signal,
+      body: { approval_id: approvalId, confirmation: MERGE_CONFIRMATION },
+    },
+  );
+  if (result.merged !== true || result.approval_id !== approvalId
+    || result.approval_status !== "consumed"
+    || typeof result.pull_request_url !== "string"
+    || !Number.isInteger(result.pull_request_number)
+    || typeof result.commit_sha !== "string" || !/^[0-9a-f]{40}$/.test(result.commit_sha)
+    || typeof result.merge_commit_sha !== "string" || !/^[0-9a-f]{40}$/.test(result.merge_commit_sha)) {
+    throw new Error("Execution API returned an invalid repository merge result.");
   }
   return result;
 }
