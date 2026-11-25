@@ -51,8 +51,8 @@ from odei_api.services.parallel_jobs_api import router as parallel_jobs_router
 from odei_api.services.planning import PlanningError, create_task_plan
 from odei_api.services.projects import router as projects_router
 from odei_api.services.repository_index_store import MongoRepositoryIndexStore
-from odei_api.services.repository_merge_approvals import MongoRepositoryMergeApprovalStore
 from odei_api.services.repository_intelligence import router as repository_intelligence_router
+from odei_api.services.repository_merge_approvals import MongoRepositoryMergeApprovalStore
 from odei_api.services.task_store import MongoTaskStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
