@@ -121,7 +121,9 @@ def run_nexus_agent(
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise AgentRuntimeError("NEXUS exceeded its wall-clock execution budget")
-        return remaining
+        # Floating-point monotonic-clock resolution can make the first
+        # subtraction a few ULPs larger than the configured timeout.
+        return min(remaining, float(timeout_seconds))
     try:
         NexusCapabilityPolicy.require(mode, "workspace.inspect")
     except NexusCapabilityDenied as exc:
