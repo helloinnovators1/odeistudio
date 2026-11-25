@@ -50,6 +50,42 @@ class MongoTaskStore:
             [("organization_id", 1), ("project_id", 1), ("occurred_at", -1)]
         )
 
+
+
+    async def consume_repair_iteration(
+        self, *, organization_id: str, project_id: str, task_id: str,
+        max_iterations: int, audit_event: Mapping[str, Any],
+    ) -> int | None:
+        """Atomically consume one task-scoped repair iteration and its audit event."""
+        if (
+            isinstance(max_iterations, bool) or not isinstance(max_iterations, int)
+            or not 1 <= max_iterations <= 3
+        ):
+            raise ValueError("repair iteration ceiling must be between one and three")
+        if not isinstance(audit_event, Mapping):
+            raise ValueError("repair iteration audit event is required")
+        now = datetime.now(timezone.utc)
+        query = {
+            "_id": task_id, "organization_id": organization_id,
+            "project_id": project_id,
+            "$or": [
+                {"repair_iterations": {"$lt": max_iterations}},
+                {"repair_iterations": {"$exists": False}},
+            ],
+        }
+        update = {
+            "$inc": {"repair_iterations": 1},
+            "$set": {"repair_iteration_updated_at": now},
+        }
+        async with self._client.start_session() as session, await session.start_transaction():
+            updated = await self._collection.find_one_and_update(
+                query, update, return_document=ReturnDocument.AFTER, session=session,
+            )
+            if updated is None:
+                return None
+            await self._append_audit_in_transaction(audit_event, session)
+        return int(updated["repair_iterations"])
+
     async def create(
         self, task: TaskRecord, *, audit_event: Mapping[str, Any] | None = None
     ) -> TaskRecord:
