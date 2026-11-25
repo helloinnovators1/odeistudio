@@ -91,7 +91,10 @@ jobs:
         run: |
           tests=(
             tests/test_task_store_mongodb_integration.py
+            tests/test_conversation_store_mongodb_integration.py
             tests/test_execution_stores_mongodb_integration.py
+            tests/test_nexus_patch_proposals_mongodb_integration.py
+            tests/test_parallel_jobs_mongodb_integration.py
           )
           for optional_test in \
             tests/test_mac_store_mongodb_integration.py \

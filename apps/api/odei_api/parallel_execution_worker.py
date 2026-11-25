@@ -21,7 +21,6 @@ from odei_api.services.nexus_parallel_execution import NexusParallelExecutionHan
 from odei_api.services.parallel_job_worker import ParallelJobWorker
 from odei_api.services.parallel_jobs import MongoParallelJobStore
 
-
 logger = logging.getLogger("odei.parallel.worker")
 
 
