@@ -153,6 +153,15 @@ async def bind_repository(
             "code": "GITHUB_APP_NOT_CONFIGURED",
             "message": "Trusted repository binding is unavailable until a GitHub App is configured.",
         })
+    active_run = await database["execution_runs"].find_one({
+        "organization_id": organization_id, "project_id": project_id,
+        "status": {"$in": ["queued", "leased", "running", "collecting"]},
+    })
+    if active_run is not None:
+        raise HTTPException(status_code=409, detail={
+            "code": "REPOSITORY_BINDING_LOCKED",
+            "message": "The trusted repository cannot change while a project execution is active.",
+        })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
     await _audit(audit, principal, organization_id, project_id,
@@ -227,6 +236,15 @@ async def remove_repository_binding(
     principal: Principal = principal_dependency,
 ):
     database, audit = await _owner_only(request, organization_id, project_id, principal)
+    active_run = await database["execution_runs"].find_one({
+        "organization_id": organization_id, "project_id": project_id,
+        "status": {"$in": ["queued", "leased", "running", "collecting"]},
+    })
+    if active_run is not None:
+        raise HTTPException(status_code=409, detail={
+            "code": "REPOSITORY_BINDING_LOCKED",
+            "message": "The trusted repository cannot change while a project execution is active.",
+        })
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.repository_binding.remove", "started",
                  {"binding_version": payload.expected_version})
