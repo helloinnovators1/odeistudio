@@ -30,6 +30,7 @@ from odei_api.services.execution_profiles import load_execution_profiles
 from odei_api.services.execution_runs import MongoExecutionRunStore
 from odei_api.services.github_app import GitHubAppInstallationClient
 from odei_api.services.mac_deployments import MongoMacDeploymentStore
+from odei_api.services.mcp_gateway import McpGateway, load_mcp_servers
 from odei_api.services.mac_environment_api import router as mac_environment_router
 from odei_api.services.mac_revision_environment_store import MongoMacRevisionEnvironmentStore
 from odei_api.services.mad_incidents import (
@@ -76,6 +77,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     database_name = None
     http_client = httpx.AsyncClient(timeout=5.0)
     application.state.http_client = http_client
+    mcp_gateway = McpGateway(load_mcp_servers(settings.nexus_mcp_servers_json))
+    application.state.nexus_mcp_gateway = mcp_gateway
     application.state.github_app_client = GitHubAppInstallationClient(
         app_id=settings.github_app_id,
         private_key_b64=settings.github_app_private_key_b64,
@@ -188,6 +191,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     finally:
         if client is not None:
             await client.close()
+        mcp_gateway.close()
         await http_client.aclose()
 
 

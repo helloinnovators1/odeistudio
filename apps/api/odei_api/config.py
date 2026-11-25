@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     patch_approval_ttl_seconds: int = Field(default=60, ge=30, le=300)
     github_app_id: int | None = Field(default=None, ge=1)
     github_app_private_key_b64: SecretStr | None = None
+    nexus_mcp_servers_json: str = Field(default="", max_length=65_536)
 
     @model_validator(mode="after")
     def validate_configuration(self):
@@ -99,6 +100,11 @@ class Settings(BaseSettings):
             or len(self.mad_metrics_token.get_secret_value()) < 32
         ):
             raise ValueError("MAD_METRICS_TOKEN must contain at least 32 ASCII characters")
+        from odei_api.services.mcp_gateway import load_mcp_servers
+        try:
+            load_mcp_servers(self.nexus_mcp_servers_json)
+        except ValueError as exc:
+            raise ValueError("NEXUS_MCP_SERVERS_JSON is invalid") from exc
         if self.patch_approval_key_id is not None and (
             not self.patch_approval_key_id.isascii()
             or not self.patch_approval_key_id
