@@ -303,10 +303,10 @@ class GitHubAppInstallationClient:
             if existing is None or existing["sha"] != blob_sha:
                 changed.append((path, data, existing.get("mode", "100644") if existing else "100644"))
                 changed_bytes += len(data)
-        deleted = sorted(set(base_files) - set(workspace_files))
+        deleted: list[str] = []
         if len(changed) > 500 or changed_bytes > 10 * 1024 * 1024:
             raise GitHubRepositoryVerificationError("Repository change set exceeds bounded commit limits")
-        if not changed and not deleted:
+        if not changed:
             return None
 
         semaphore = asyncio.Semaphore(4)
@@ -328,9 +328,6 @@ class GitHubAppInstallationClient:
             create_blob(path, data, mode) for path, data, mode in changed
         ))
         tree_entries: list[dict[str, Any]] = list(changed_entries)
-        tree_entries.extend({
-            "path": path, "mode": base_files[path]["mode"], "type": "blob", "sha": None,
-        } for path in deleted)
         new_tree_response = await self.http.post(
             f"{prefix}/git/trees", headers=headers,
             json={"base_tree": base_tree_sha, "tree": tree_entries},

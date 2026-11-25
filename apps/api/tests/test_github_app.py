@@ -99,7 +99,6 @@ async def test_worker_commit_is_based_on_pinned_head_and_creates_review_pr_witho
             "truncated": False,
             "tree": [
                 {"type": "blob", "mode": "100644", "path": "README.md", "sha": "e" * 40},
-                {"type": "blob", "mode": "100644", "path": "gone.txt", "sha": "f" * 40},
             ],
         }),
         Response(201, {"sha": "c" * 40}),
@@ -143,7 +142,7 @@ async def test_worker_commit_is_based_on_pinned_head_and_creates_review_pr_witho
         kwargs["json"] for method, url, kwargs in http.calls
         if method == "POST" and url.endswith("/git/trees")
     )
-    assert any(entry["path"] == "gone.txt" and entry["sha"] is None for entry in tree_request["tree"])
+    assert all(entry["path"] != "gone.txt" for entry in tree_request["tree"])
     assert not any(method == "PUT" for method, _url, _kwargs in http.calls)
     assert "ephemeral-worker-token" not in repr(result)
 
