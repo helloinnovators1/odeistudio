@@ -95,6 +95,76 @@ def _contains_secret(content: str) -> bool:
     return any(pattern.search(content) for pattern in _SECRET_PATTERNS)
 
 
+def _read_index_file(root: Path, path: Path, max_bytes: int) -> bytes:
+    """Read one file without following a swapped symlink or traversing a replaced directory.
+
+    POSIX uses a root directory descriptor and no-follow openat calls for every
+    component. Other platforms retain the lstat/fstat identity checks and reject
+    hard-linked files; callers still treat an unstable read as skipped.
+    """
+    relative = path.relative_to(root)
+    parts = relative.parts
+    if not parts:
+        raise OSError("repository index path is empty")
+
+    descriptor = None
+    parent_descriptor = None
+    try:
+        if os.name == "posix" and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"):
+            parent_descriptor = os.open(
+                root, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+            )
+            for component in parts[:-1]:
+                child = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                    | getattr(os, "O_CLOEXEC", 0),
+                    dir_fd=parent_descriptor,
+                )
+                os.close(parent_descriptor)
+                parent_descriptor = child
+            descriptor = os.open(
+                parts[-1],
+                os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0),
+                dir_fd=parent_descriptor,
+            )
+        else:
+            before_path = path.lstat()
+            if stat.S_ISLNK(before_path.st_mode) or not stat.S_ISREG(before_path.st_mode):
+                raise OSError("repository index target is not a regular file")
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or getattr(before, "st_nlink", 1) != 1
+            or before.st_size < 0
+            or before.st_size > max_bytes
+        ):
+            raise OSError("repository index target is linked, non-regular or oversized")
+
+        chunks = bytearray()
+        while len(chunks) <= max_bytes:
+            chunk = os.read(descriptor, min(65_536, max_bytes + 1 - len(chunks)))
+            if not chunk:
+                break
+            chunks.extend(chunk)
+        after = os.fstat(descriptor)
+        stable = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if (
+            len(chunks) > max_bytes
+            or len(chunks) != before.st_size
+            or any(getattr(before, field, None) != getattr(after, field, None) for field in stable)
+        ):
+            raise OSError("repository index target changed while being read")
+        return bytes(chunks)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
+
+
 class RepositoryIndex:
     """Incremental exact-search index rooted at one already-authorized workspace.
 
@@ -166,29 +236,22 @@ class RepositoryIndex:
         for path in self._walk():
             relative = path.relative_to(self.root).as_posix()
             try:
+                # Resolve once for an early containment check, then read through
+                # descriptor-relative no-follow opens so a concurrent symlink or
+                # directory replacement cannot redirect the indexer outside root.
                 resolved = path.resolve(strict=True)
                 resolved.relative_to(self.root)
-                before = path.lstat()
-                if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
+                metadata = path.lstat()
+                if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
                     skipped += 1
                     continue
-                if before.st_size > self.max_file_bytes:
+                if metadata.st_size > self.max_file_bytes:
                     skipped += 1
                     continue
-                total_bytes += before.st_size
+                total_bytes += metadata.st_size
                 if total_bytes > self.max_total_bytes or len(discovered) >= self.max_files:
                     raise RepositoryIndexError("repository exceeds configured indexing limits")
-                raw = path.read_bytes()
-                after = path.lstat()
-                if (
-                    before.st_ino != after.st_ino
-                    or before.st_dev != after.st_dev
-                    or before.st_size != after.st_size
-                    or before.st_mtime_ns != after.st_mtime_ns
-                    or len(raw) != before.st_size
-                ):
-                    skipped += 1
-                    continue
+                raw = _read_index_file(self.root, path, self.max_file_bytes)
                 if b"\x00" in raw:
                     skipped += 1
                     continue
