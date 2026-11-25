@@ -76,7 +76,7 @@ describe("NEXUS execution API client", () => {
     }));
     await createNexusExecution(
       "https://api.example.test", "org-1", "project-1", "task-1", "access-token",
-      { profileId: "python-tests", expectedTaskVersion: 7, snapshotZipBase64: "UEsDBA==" },
+      { profileId: "python-tests", expectedTaskVersion: 7, snapshotZipBase64: "UEsDBA==", repositoryPublishConsent: true },
       fetcher,
     );
     const init = fetcher.mock.calls[0]?.[1] as RequestInit;
@@ -84,7 +84,7 @@ describe("NEXUS execution API client", () => {
     expect(body).toMatchObject({
       profile_id: "python-tests", mode: "agent", expected_task_version: 7,
       workspace_upload_consent: true, execution_consent: true,
-      snapshot_zip_base64: "UEsDBA==",
+      repository_publish_consent: true, snapshot_zip_base64: "UEsDBA==",
     });
   });
 

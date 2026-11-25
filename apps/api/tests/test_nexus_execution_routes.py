@@ -13,6 +13,7 @@ from odei_api.config import Settings
 from odei_api.main import app
 from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.execution_profiles import load_execution_profiles
+from odei_api.services.github_app import VerifiedGitHubRepository
 from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key
 
 
@@ -49,6 +50,8 @@ class Database:
             }),
             "tasks": Collection(None),
             "task_events": Collection(None),
+            "nexus_repository_bindings": Collection(None),
+            "execution_runs": Collection(None),
         }
 
     def __getitem__(self, key):
@@ -146,6 +149,16 @@ class Runs:
         )
 
 
+async def _verified_repository(**kwargs):
+    assert kwargs == {"installation_id": 77, "owner": "acme", "name": "service"}
+    return VerifiedGitHubRepository(
+        installation_id=77, repository_id=123, repository_node_id="R_kgDOabc",
+        owner="Acme", name="Service", full_name="Acme/Service",
+        default_branch="main", contents_permission="write",
+        pull_requests_permission="write", default_branch_sha="b" * 40, private=True,
+    )
+
+
 def archive_base64():
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_STORED) as archive:
@@ -159,7 +172,8 @@ def execution_state():
         key: getattr(app.state, key, None)
         for key in ("mongo_database", "audit_event_store", "task_store",
                     "execution_run_store", "workspace_snapshot_store",
-                    "execution_profile_registry", "execution_artifact_store")
+                    "execution_profile_registry", "execution_artifact_store",
+                    "github_app_client")
     }
     previous_overrides = dict(app.dependency_overrides)
     database = Database()
@@ -177,6 +191,9 @@ def execution_state():
     app.state.workspace_snapshot_store = snapshots
     app.state.execution_run_store = runs
     app.state.execution_artifact_store = Artifacts()
+    app.state.github_app_client = type("GitHub", (), {
+        "verify_repository": staticmethod(lambda **kwargs: _verified_repository(**kwargs)),
+    })()
     app.state.execution_profile_registry = load_execution_profiles(Settings(
         execution_profiles_json='[{"name":"python-tests","image":"registry.example/odei/python@sha256:' + "a" * 64 + '","command":["python","-m","pytest"]}]'
     ))
@@ -285,6 +302,65 @@ def test_execution_upload_is_validated_and_atomically_enqueued(execution_state):
     assert runs.run.arguments == ()
     assert snapshots.documents
     assert audit.events == []
+
+
+def test_execution_run_pins_verified_repository_identity_and_base(execution_state):
+    database, _audit, _tasks, _snapshots, runs = execution_state
+    database["projects"].document["owner_subject"] = "task-owner"
+    database["nexus_repository_bindings"].document = {
+        "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
+        "state": "verified", "installation_id": 77, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "owner": "acme", "name": "service",
+        "full_name": "Acme/Service", "default_branch": "main", "binding_version": 4,
+    }
+    body = payload()
+    body["repository_publish_consent"] = True
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=body,
+    )
+    assert response.status_code == 200, response.text
+    assert runs.run.repository_binding_version == 4
+    assert runs.run.repository_id == 123
+    assert runs.run.repository_node_id == "R_kgDOabc"
+    assert runs.run.repository_base_sha == "b" * 40
+    assert response.json()["repository_base_sha"] == "b" * 40
+
+
+
+def test_bound_execution_without_publish_consent_does_not_create_repository_review(execution_state):
+    database, _audit, _tasks, _snapshots, runs = execution_state
+    database["nexus_repository_bindings"].document = {
+        "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
+        "state": "verified", "installation_id": 77, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "owner": "acme", "name": "service",
+        "full_name": "Acme/Service", "default_branch": "main", "binding_version": 4,
+    }
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=payload(),
+    )
+    assert response.status_code == 200, response.text
+    assert runs.run.repository_binding_version is None
+    assert response.json()["repository_publish_consent"] is False
+
+
+def test_bound_execution_publish_requires_project_owner(execution_state):
+    database, _audit, _tasks, _snapshots, _runs = execution_state
+    database["nexus_repository_bindings"].document = {
+        "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
+        "state": "verified", "installation_id": 77, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "owner": "acme", "name": "service",
+        "full_name": "Acme/Service", "default_branch": "main", "binding_version": 4,
+    }
+    body = payload()
+    body["repository_publish_consent"] = True
+    response = TestClient(app).post(
+        "/api/v1/organizations/org-1/projects/project-1/tasks/task-1/executions",
+        json=body,
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "REPOSITORY_PUBLISH_OWNER_REQUIRED"
 
 
 def test_invalid_archive_never_creates_snapshot_or_run(execution_state):

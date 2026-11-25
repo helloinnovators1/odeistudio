@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from odei_api.services.execution_runs import (
@@ -46,3 +48,37 @@ def test_persisted_non_initial_state_can_be_hydrated():
     assert run.version == 1
     assert run.attempts == 1
     assert "f" * 32 not in repr(run)
+
+
+
+def test_bound_run_pins_repository_identity_and_exact_base():
+    run = make_run(
+        repository_binding_version=4, repository_id=123,
+        repository_node_id="R_kgDOabc", repository_installation_id=77,
+        repository_owner="Acme", repository_name="Service",
+        repository_default_branch="main", repository_base_sha="b" * 40,
+    )
+    assert run.repository_binding_version == 4
+    assert run.repository_base_sha == "b" * 40
+
+
+def test_worker_provenance_requires_complete_exact_review_metadata():
+    values = {
+        "repository_binding_version": 4, "repository_id": 123,
+        "repository_node_id": "R_kgDOabc", "repository_installation_id": 77,
+        "repository_owner": "Acme", "repository_name": "Service",
+        "repository_default_branch": "main", "repository_base_sha": "b" * 40,
+        "worker_commit_sha": "c" * 40, "worker_tree_sha": "d" * 40,
+        "worker_branch": "odei/nexus/run-1", "worker_pull_request_number": 12,
+        "worker_pull_request_url": "https://github.com/Acme/Service/pull/12",
+        "worker_provenance_at": datetime.now(timezone.utc),
+    }
+    run = make_run(**values)
+    assert run.worker_commit_sha == "c" * 40
+    assert run.worker_pull_request_number == 12
+    with pytest.raises(ValueError):
+        make_run(repository_binding_version=4)
+    with pytest.raises(ValueError):
+        make_run(**{**values, "worker_pull_request_url": "https://evil.example/pull/12"})
+
+

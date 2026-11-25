@@ -19,6 +19,7 @@ from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
 from odei_api.services.execution_diagnostics import build_execution_diagnostics
 from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict
+from odei_api.services.github_app import GitHubAppNotConfigured, GitHubRepositoryVerificationError
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.project_access import require_project_access
 from odei_api.services.tasks import TaskStatus, identity_owner_key
@@ -39,6 +40,7 @@ class CreateExecutionRequest(BaseModel):
     expected_task_version: int = Field(ge=0)
     workspace_upload_consent: StrictBool
     execution_consent: StrictBool
+    repository_publish_consent: StrictBool = False
     snapshot_zip_base64: StrictStr = Field(min_length=1, max_length=_MAX_BASE64_CHARS)
 
 
@@ -119,6 +121,8 @@ async def _append_decision(request: Request, principal: Principal,
 
 
 def _public_run(run: ExecutionRun) -> dict:
+    binding_version = getattr(run, "repository_binding_version", None)
+    provenance_at = getattr(run, "worker_provenance_at", None)
     return {
         "run_id": run.id, "organization_id": run.organization_id,
         "project_id": run.project_id, "task_id": run.task_id,
@@ -128,8 +132,22 @@ def _public_run(run: ExecutionRun) -> dict:
         "cancel_requested": run.cancel_requested,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+        "repository_review": None if binding_version is None else {
+            "repository_id": getattr(run, "repository_id", None),
+            "repository_node_id": getattr(run, "repository_node_id", None),
+            "owner": getattr(run, "repository_owner", None),
+            "name": getattr(run, "repository_name", None),
+            "default_branch": getattr(run, "repository_default_branch", None),
+            "base_sha": getattr(run, "repository_base_sha", None),
+            "binding_version": binding_version,
+            "commit_sha": getattr(run, "worker_commit_sha", None),
+            "tree_sha": getattr(run, "worker_tree_sha", None),
+            "branch": getattr(run, "worker_branch", None),
+            "pull_request_number": getattr(run, "worker_pull_request_number", None),
+            "pull_request_url": getattr(run, "worker_pull_request_url", None),
+            "provenance_at": provenance_at.isoformat() if provenance_at else None,
+        },
     }
-
 
 def _validate_archive(archive: bytes) -> tuple[str, int, int]:
     with tempfile.TemporaryDirectory(prefix="odei-snapshot-validate-") as temporary:
@@ -310,6 +328,63 @@ async def create_execution(
     run_id = uuid4().hex
     snapshot = None
     try:
+        repository_fields = {}
+        binding = await database["nexus_repository_bindings"].find_one({
+            "_id": f"{organization_id}:{project_id}",
+            "organization_id": organization_id, "project_id": project_id,
+        })
+        if binding is not None and payload.repository_publish_consent:
+            if _project.get("owner_issuer") != principal.issuer or _project.get("owner_subject") != principal.subject:
+                raise HTTPException(status_code=403, detail={
+                    "code": "REPOSITORY_PUBLISH_OWNER_REQUIRED",
+                    "message": "Only the project owner can authorize publishing a repository review branch.",
+                })
+            if binding.get("state") != "verified":
+                raise HTTPException(status_code=409, detail={
+                    "code": "TRUSTED_REPOSITORY_BINDING_UNVERIFIED",
+                    "message": "Re-verify the project's GitHub repository before execution.",
+                })
+            github = getattr(request.app.state, "github_app_client", None)
+            if github is None:
+                raise HTTPException(status_code=503, detail={
+                    "code": "GITHUB_APP_NOT_CONFIGURED",
+                    "message": "Trusted repository execution is unavailable.",
+                })
+            try:
+                verified = await github.verify_repository(
+                    installation_id=binding["installation_id"],
+                    owner=binding["owner"], name=binding["name"],
+                )
+            except GitHubAppNotConfigured as exc:
+                raise HTTPException(status_code=503, detail={
+                    "code": "GITHUB_APP_NOT_CONFIGURED",
+                    "message": "Trusted repository execution is unavailable.",
+                }) from exc
+            except GitHubRepositoryVerificationError as exc:
+                raise HTTPException(status_code=409, detail={
+                    "code": "TRUSTED_REPOSITORY_REVERIFICATION_FAILED",
+                    "message": "The bound repository or its permissions changed; rebind it before execution.",
+                }) from exc
+            if (
+                verified.repository_id != binding.get("repository_id")
+                or verified.repository_node_id != binding.get("repository_node_id")
+                or verified.full_name.casefold() != binding.get("full_name", "").casefold()
+                or verified.default_branch != binding.get("default_branch")
+            ):
+                raise HTTPException(status_code=409, detail={
+                    "code": "TRUSTED_REPOSITORY_IDENTITY_CHANGED",
+                    "message": "The bound repository identity changed; rebind it before execution.",
+                })
+            repository_fields = {
+                "repository_binding_version": binding["binding_version"],
+                "repository_id": verified.repository_id,
+                "repository_node_id": verified.repository_node_id,
+                "repository_installation_id": verified.installation_id,
+                "repository_owner": verified.owner,
+                "repository_name": verified.name,
+                "repository_default_branch": verified.default_branch,
+                "repository_base_sha": verified.default_branch_sha,
+            }
         snapshot = await snapshots.put(
             organization_id=organization_id, project_id=project_id, task_id=task_id,
             owner_issuer=principal.issuer, owner_subject=principal.subject,
@@ -320,6 +395,7 @@ async def create_execution(
             task_id=task_id, requester_issuer=principal.issuer,
             requester_subject=principal.subject, profile_id=payload.profile_id,
             snapshot_sha256=digest, arguments=(), snapshot_id=snapshot["snapshot_id"],
+            **repository_fields,
         )
         await runs.create_approved_task_run(
             run, tasks=database["tasks"], task_events=database["task_events"],
@@ -328,7 +404,9 @@ async def create_execution(
                 "nexus.execution.create", {"project_id": project_id, "task_id": task_id,
                 "profile_id": payload.profile_id, "mode": payload.mode,
                 "snapshot_id": snapshot["snapshot_id"],
-                "snapshot_file_count": file_count, "snapshot_bytes": total_bytes}),
+                "snapshot_file_count": file_count, "snapshot_bytes": total_bytes,
+                "repository_binding_version": run.repository_binding_version,
+                "repository_publish_consent": payload.repository_publish_consent}),
         )
     except ExecutionRunConflict as exc:
         if snapshot is not None:
@@ -350,6 +428,9 @@ async def create_execution(
     return {
         "run_id": run_id, "status": "queued", "task_id": task_id,
         "snapshot": snapshot, "profile_id": payload.profile_id,
+        "repository_binding_version": run.repository_binding_version,
+        "repository_base_sha": run.repository_base_sha,
+        "repository_publish_consent": payload.repository_publish_consent,
     }
 
 

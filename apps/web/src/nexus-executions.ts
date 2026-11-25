@@ -8,15 +8,26 @@ export interface NexusExecutionSnapshot {
   sha256: string; file_count: number; total_bytes: number; archive_bytes: number;
   created_at: string; expires_at: string;
 }
+export interface NexusRepositoryReview {
+  repository_id: number; repository_node_id: string; owner: string; name: string;
+  default_branch: string; base_sha: string; binding_version: number;
+  commit_sha: string | null; tree_sha: string | null; branch: string | null;
+  pull_request_number: number | null; pull_request_url: string | null;
+  provenance_at: string | null;
+}
 export interface NexusExecutionRun {
   run_id: string; organization_id: string; project_id: string; task_id: string;
   profile_id: string; snapshot_sha256: string; status: NexusExecutionStatus;
   version: number; attempts: number; max_attempts: number; cancel_requested: boolean;
   created_at: string | null; updated_at: string | null;
+  repository_review?: NexusRepositoryReview | null;
 }
 export interface NexusExecutionCreateResponse {
   run_id: string; status: "queued"; task_id: string; profile_id: string;
   snapshot: NexusExecutionSnapshot;
+  repository_binding_version?: number | null;
+  repository_base_sha?: string | null;
+  repository_publish_consent?: boolean;
 }
 export interface NexusExecutionEvent {
   event_id: string; type: string; version: number; occurred_at: string;
@@ -157,7 +168,7 @@ export async function listNexusExecutionProfiles(
 export async function createNexusExecution(
   baseUrl: string, organizationId: string, projectId: string, taskId: string,
   accessToken: string,
-  values: { profileId: string; expectedTaskVersion: number; snapshotZipBase64: string },
+  values: { profileId: string; expectedTaskVersion: number; snapshotZipBase64: string; repositoryPublishConsent?: boolean },
   fetcher: Fetcher = fetch, signal?: AbortSignal,
 ): Promise<NexusExecutionCreateResponse> {
   const response = await request<NexusExecutionCreateResponse>(
@@ -168,6 +179,7 @@ export async function createNexusExecution(
       expected_task_version: values.expectedTaskVersion,
       workspace_upload_consent: true,
       execution_consent: true,
+      repository_publish_consent: values.repositoryPublishConsent === true,
       snapshot_zip_base64: values.snapshotZipBase64,
     } },
   );

@@ -157,6 +157,7 @@ export default function NexusChatPanel({
   const [executionError, setExecutionError] = useState("");
   const [workspaceUploadConsent, setWorkspaceUploadConsent] = useState(false);
   const [codeExecutionConsent, setCodeExecutionConsent] = useState(false);
+  const [repositoryPublishConsent, setRepositoryPublishConsent] = useState(false);
   const [executionRun, setExecutionRun] = useState<NexusExecutionRun | null>(null);
   const [executionEvents, setExecutionEvents] = useState<NexusExecutionEvent[]>([]);
   const executionEventVersionRef = useRef(-1);
@@ -317,6 +318,7 @@ export default function NexusChatPanel({
       setExecutionHistoryBusy(false);
       setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
       setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
       macRequestGenerationRef.current.invalidate();
       setMacOpen(false); setMacRecord(null); setMacError(""); setMacBusy(false);
       setNotice(message);
@@ -520,6 +522,7 @@ export default function NexusChatPanel({
     executionGenerationRef.current += 1;
     setWorkspaceUploadConsent(false);
     setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
     setExecutionError("");
   }, [workspaceContext?.workspaceId]);
 
@@ -565,6 +568,7 @@ export default function NexusChatPanel({
     setSnapshotSummary("");
     setWorkspaceUploadConsent(false);
     setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
     setConsent(false);
     try {
       const result = await listNexusProjects(
@@ -701,6 +705,7 @@ export default function NexusChatPanel({
           profileId: executionProfileId,
           expectedTaskVersion: taskPlan.version,
           snapshotZipBase64: snapshot.base64,
+          repositoryPublishConsent,
         },
         fetch, controller.signal,
       );
@@ -729,6 +734,7 @@ export default function NexusChatPanel({
       setTaskPlan({ ...taskPlan, status: "executing", version: taskPlan.version + 1 });
       setWorkspaceUploadConsent(false);
       setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
       setSnapshotSummary(
         snapshot.fileCount + " files · " + Math.ceil(snapshot.totalBytes / 1024) + " KiB"
         + (snapshot.skippedCount ? " · " + snapshot.skippedCount + " skipped" : ""),
@@ -976,6 +982,7 @@ export default function NexusChatPanel({
     setExecutionProfiles([]); setExecutionProfileId(""); setExecutionRun(null); setExecutionEvents([]); executionEventVersionRef.current = -1; setExecutionArtifacts(null); setExecutionDiagnostics(null);
     setExecutionError(""); setExecutionBusy(false); setSnapshotSummary("");
     setWorkspaceUploadConsent(false); setCodeExecutionConsent(false);
+      setRepositoryPublishConsent(false);
     setMacOpen(false); setMacRecord(null); setMacError(""); setMacConfigText('{"replicas": 2}'); setMacChangeSummary("");
     setDraft(""); setConsent(false); setAttachActiveFile(false); setUseAttachedTools(false);
     setChatError(""); setProjectError(""); setOrganizationError("");
@@ -1659,6 +1666,12 @@ export default function NexusChatPanel({
                         disabled={executionBusy} />
                       I explicitly authorize running the selected server-approved command profile against that snapshot in an isolated sandbox.
                     </label>
+                    <label className="nexus-consent nexus-execution-consent">
+                      <input type="checkbox" checked={repositoryPublishConsent}
+                        onChange={(event) => setRepositoryPublishConsent(event.target.checked)}
+                        disabled={executionBusy} />
+                      If this project is bound to GitHub, I explicitly authorize NEXUS to publish the successful worker output as a review branch and pull request. This does not authorize merging.
+                    </label>
                     <p className="nexus-task-safety">The snapshot excludes known credential paths, dependency/build folders and files larger than 2 MiB. Unreadable files are skipped. No local files are modified.</p>
                     <button type="button" className="nexus-secondary-button"
                       onClick={() => void startExecution()}
@@ -1680,6 +1693,11 @@ export default function NexusChatPanel({
                 <small>Run: {executionRun.run_id}</small>
                 <small>Profile: {executionRun.profile_id} · Attempt {executionRun.attempts}/{executionRun.max_attempts}</small>
                 <small>Snapshot SHA-256: {executionRun.snapshot_sha256}</small>
+                {executionRun.repository_review?.pull_request_url && (
+                  <p><a href={executionRun.repository_review.pull_request_url} target="_blank" rel="noopener noreferrer">
+                    Review worker changes on GitHub · PR #{executionRun.repository_review.pull_request_number}
+                  </a></p>
+                )}
                 <div className="nexus-execution-timeline" aria-label="Execution event history">
                   <strong>RUN HISTORY</strong>
                   {executionEvents.length === 0

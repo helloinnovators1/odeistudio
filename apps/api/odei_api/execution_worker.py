@@ -14,6 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
+import httpx
 from pymongo.errors import PyMongoError
 
 from odei_api.config import get_settings
@@ -27,6 +28,7 @@ from odei_api.services.execution_runs import (
     MongoExecutionRunStore,
 )
 from odei_api.services.execution_sandbox import ContainerSandbox
+from odei_api.services.github_app import GitHubAppInstallationClient
 from odei_api.services.mad_telemetry import MongoWorkerHeartbeatStore
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 from odei_api.services.workspace_snapshots import WorkspaceSnapshotIngestor
@@ -37,7 +39,7 @@ logger = logging.getLogger("odei.execution.worker")
 class ExecutionWorker:
     """Lease-supervised worker that verifies immutable snapshots before sandbox execution."""
 
-    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root, tasks, task_events, heartbeats=None):
+    def __init__(self, *, worker_id, runs, snapshots, artifacts, registry, sandbox, workspace_root, tasks, task_events, heartbeats=None, github_app=None, repository_bindings=None):
         self.worker_id = worker_id
         self.runs = runs
         self.snapshots = snapshots
@@ -48,6 +50,8 @@ class ExecutionWorker:
         self.tasks = tasks
         self.task_events = task_events
         self.heartbeats = heartbeats
+        self.github_app = github_app
+        self.repository_bindings = repository_bindings
 
     async def _publish_heartbeat(self, *, status: str, active_run_id: str | None = None) -> None:
         if self.heartbeats is None:
@@ -155,6 +159,46 @@ class ExecutionWorker:
                 if result.exit_code == 0 and not result.timed_out
                 else ExecutionRunStatus.FAILED
             )
+            if outcome is ExecutionRunStatus.COMPLETED and run.repository_binding_version is not None:
+                if self.github_app is None or self.repository_bindings is None:
+                    raise RuntimeError("Trusted repository worker integration is not configured")
+                binding = await self.repository_bindings.find_one({
+                    "_id": f"{run.organization_id}:{run.project_id}",
+                    "organization_id": run.organization_id,
+                    "project_id": run.project_id,
+                    "state": "verified",
+                    "binding_version": run.repository_binding_version,
+                })
+                if binding is None:
+                    raise RuntimeError("Trusted repository binding changed during execution")
+                await self.runs.heartbeat(
+                    organization_id=run.organization_id, run_id=run.id,
+                    worker_id=self.worker_id, lease_token=lease_token, lease_seconds=300,
+                )
+                provenance = await self.github_app.create_workspace_pull_request(
+                    binding=binding, workspace=workspace, run_id=run.id,
+                    base_sha=run.repository_base_sha,
+                )
+                if provenance is not None:
+                    await self.runs.heartbeat(
+                        organization_id=run.organization_id, run_id=run.id,
+                        worker_id=self.worker_id, lease_token=lease_token, lease_seconds=300,
+                    )
+                    await self.runs.record_worker_provenance(
+                        organization_id=run.organization_id, run_id=run.id,
+                        worker_id=self.worker_id, lease_token=lease_token,
+                        provenance=provenance,
+                        audit_event=self._audit(
+                            run, action="nexus.execution.repository_provenance",
+                            outcome="success",
+                            metadata={
+                                "repository_id": provenance["repository_id"],
+                                "commit_sha": provenance["commit_sha"],
+                                "tree_sha": provenance["tree_sha"],
+                                "pull_request_number": provenance["pull_request_number"],
+                            },
+                        ),
+                    )
             await self.runs.finish(
                 organization_id=run.organization_id, run_id=run.id,
                 worker_id=self.worker_id, lease_token=lease_token, outcome=outcome,
@@ -240,6 +284,12 @@ async def _main() -> None:
     os.chmod(workspace_root, 0o700)
     client, database_name = create_mongo_client(settings)
     database = client[database_name]
+    github_http = httpx.AsyncClient(timeout=10.0)
+    github_app = GitHubAppInstallationClient(
+        app_id=settings.github_app_id,
+        private_key_b64=settings.github_app_private_key_b64,
+        http_client=github_http,
+    )
     audit = MongoAuditEventStore(database["audit_events"])
     await audit.initialize()
     runs = MongoExecutionRunStore(
@@ -262,11 +312,13 @@ async def _main() -> None:
         worker_id=worker_id, runs=runs, snapshots=snapshots, artifacts=artifacts,
         registry=registry, sandbox=sandbox, workspace_root=workspace_root,
         tasks=database["tasks"], task_events=database["task_events"],
-        heartbeats=heartbeats,
+        heartbeats=heartbeats, github_app=github_app,
+        repository_bindings=database["nexus_repository_bindings"],
     )
     try:
         await worker.serve()
     finally:
+        await github_http.aclose()
         await client.close()
 
 
