@@ -164,10 +164,13 @@ async def bind_repository(
         })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
-    await collection.update_one(
-        {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
-        {"$unset": {"merge_lock": ""}},
-    )
+    try:
+        await collection.update_one(
+            {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
+            {"$unset": {"merge_lock": ""}},
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.repository_binding.bind", "started",
                  {"installation_id": payload.installation_id})
@@ -252,10 +255,13 @@ async def remove_repository_binding(
         })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
-    await collection.update_one(
-        {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
-        {"$unset": {"merge_lock": ""}},
-    )
+    try:
+        await collection.update_one(
+            {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
+            {"$unset": {"merge_lock": ""}},
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.repository_binding.remove", "started",
                  {"binding_version": payload.expected_version})

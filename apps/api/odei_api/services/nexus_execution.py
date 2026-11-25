@@ -586,9 +586,15 @@ async def get_execution(
     response["repository_merge_approval"] = None
     approval_store = getattr(request.app.state, "repository_merge_approval_store", None)
     if is_owner and approval_store is not None and run.worker_pull_request_number is not None:
-        approval = await approval_store.get_for_run(
-            organization_id=organization_id, project_id=project_id, run_id=run_id,
-        )
+        try:
+            approval = await approval_store.get_for_run(
+                organization_id=organization_id, project_id=project_id, run_id=run_id,
+            )
+        except PyMongoError as exc:
+            raise HTTPException(status_code=503, detail={
+                "code": "MERGE_APPROVAL_STORAGE_UNAVAILABLE",
+                "message": "Merge approval status is temporarily unavailable.",
+            }) from exc
         if approval is not None:
             status = approval["status"]
             if status == "pending" and approval["expires_at"] <= datetime.now(timezone.utc):
