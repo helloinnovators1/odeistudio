@@ -34,6 +34,9 @@ class Http:
     async def delete(self, url, **kwargs):
         self.calls.append(("DELETE", url, kwargs))
         return self.responses.pop(0)
+    async def put(self, url, **kwargs):
+        self.calls.append(("PUT", url, kwargs))
+        return self.responses.pop(0)
 
 
 @pytest.mark.asyncio
@@ -191,3 +194,106 @@ async def test_github_app_rejects_repository_without_contents_write_permission()
     )
     with pytest.raises(GitHubRepositoryVerificationError):
         await client.verify_repository(installation_id=77, owner="acme", name="service")
+
+
+
+def merge_binding():
+    return {
+        "installation_id": 77, "owner": "Acme", "name": "Service",
+        "repository_id": 123, "repository_node_id": "R_kgDOabc",
+        "default_branch": "main", "binding_version": 4,
+    }
+
+
+def merge_expected():
+    return {
+        "run_id": "run-1", "pull_request_number": 12,
+        "pull_request_url": "https://github.com/Acme/Service/pull/12",
+        "branch": "odei/nexus/run-1", "base_sha": "b" * 40,
+        "commit_sha": "c" * 40, "tree_sha": "d" * 40,
+    }
+
+
+def merge_verification_responses():
+    return [
+        Response(200, {"id": 77, "app_id": 42}),
+        Response(201, {"token": "ephemeral-merge-token"}),
+        Response(200, {
+            "id": 123, "node_id": "R_kgDOabc", "full_name": "Acme/Service",
+            "default_branch": "main",
+            "permissions": {"pull_requests": "write"},
+        }),
+        Response(200, {
+            "number": 12, "html_url": "https://github.com/Acme/Service/pull/12",
+            "state": "open", "merged": False, "draft": False,
+            "head": {
+                "sha": "c" * 40, "ref": "odei/nexus/run-1",
+                "repo": {"id": 123},
+            },
+            "base": {"sha": "b" * 40, "ref": "main", "repo": {"id": 123}},
+        }),
+        Response(200, {
+            "sha": "c" * 40, "tree": {"sha": "d" * 40},
+            "parents": [{"sha": "b" * 40}],
+        }),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_merge_approval_verification_binds_pr_head_base_repository_and_tree():
+    http = Http(merge_verification_responses())
+    client = GitHubAppInstallationClient(
+        app_id=42, private_key_b64=private_key(), http_client=http,
+    )
+    result = await client.verify_pull_request(
+        binding=merge_binding(), expected=merge_expected(),
+    )
+    assert result["commit_sha"] == "c" * 40
+    assert result["base_sha"] == "b" * 40
+    assert result["tree_sha"] == "d" * 40
+    assert result["pull_request_number"] == 12
+    assert not any(method == "PUT" for method, _url, _kwargs in http.calls)
+
+
+@pytest.mark.asyncio
+async def test_merge_pull_request_uses_exact_head_sha_and_squash_method():
+    http = Http(merge_verification_responses() + [
+        Response(200, {"id": 77, "app_id": 42}),
+        Response(201, {"token": "ephemeral-merge-token"}),
+        Response(200, {"merged": True, "sha": "e" * 40}),
+    ])
+    client = GitHubAppInstallationClient(
+        app_id=42, private_key_b64=private_key(), http_client=http,
+    )
+    result = await client.merge_pull_request(
+        binding=merge_binding(), expected=merge_expected(),
+    )
+    method, url, kwargs = next(call for call in http.calls if call[0] == "PUT")
+    assert method == "PUT"
+    assert url.endswith("/pulls/12/merge")
+    assert kwargs["json"] == {"sha": "c" * 40, "merge_method": "squash"}
+    assert result["merged"] is True
+    assert result["merge_commit_sha"] == "e" * 40
+
+
+@pytest.mark.asyncio
+async def test_merge_verification_rejects_changed_base_sha():
+    responses = merge_verification_responses()
+    responses[3] = Response(200, {
+        "number": 12, "html_url": "https://github.com/Acme/Service/pull/12",
+        "state": "open", "merged": False, "draft": False,
+        "head": {
+            "sha": "c" * 40, "ref": "odei/nexus/run-1",
+            "repo": {"id": 123},
+        },
+        "base": {"sha": "f" * 40, "ref": "main", "repo": {"id": 123}},
+    })
+    client = GitHubAppInstallationClient(
+        app_id=42, private_key_b64=private_key(), http_client=Http(responses),
+    )
+    with pytest.raises(GitHubRepositoryVerificationError):
+        await client.verify_pull_request(
+            binding=merge_binding(), expected=merge_expected(),
+        )
+
+
