@@ -725,7 +725,7 @@ async def create_repository_merge_approval(
     )
     try:
         await github.verify_pull_request(binding=binding, expected=expected)
-        binding = await _trusted_binding_for_run(database, run)
+        await _trusted_binding_for_run(database, run)
     except GitHubAppNotConfigured as exc:
         raise HTTPException(status_code=503, detail={
             "code": "GITHUB_APP_NOT_CONFIGURED",
@@ -925,7 +925,7 @@ async def merge_approved_repository_changes(
             )
         except (RepositoryMergeApprovalConflict, PyMongoError):
             logger.exception("Could not finalize rejected NEXUS merge approval")
-        raise exc
+        raise
     except PyMongoError as exc:
         logger.exception("Merge-back outcome could not be persisted after GitHub response")
         raise HTTPException(status_code=503, detail={
