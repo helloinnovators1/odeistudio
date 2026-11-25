@@ -225,6 +225,11 @@ export default function NexusChatPanel({
     executionRun?.repository_merge_approval?.status,
     executionRun?.repository_merge_approval?.approval_id,
     executionRun?.repository_merge_approval?.merge_commit_sha,
+    executionRun?.repository_merge_approval?.expires_at,
+    executionRun?.repository_review?.pull_request_url,
+    executionRun?.repository_review?.pull_request_number,
+    executionRun?.repository_review?.commit_sha,
+    executionRun?.repository_review?.base_sha,
   ]);
 
   useEffect(() => {
@@ -836,7 +841,7 @@ export default function NexusChatPanel({
     }
     if (!window.confirm(
       "This will merge GitHub pull request #" + mergeApproval.pull_request_number
-      + " into " + executionRun.repository_review?.default_branch
+      + " into " + (executionRun.repository_review?.default_branch ?? "the trusted default branch")
       + " using squash. GitHub branch protection still applies. Continue?",
     )) return;
     setMergeBusy(true);
