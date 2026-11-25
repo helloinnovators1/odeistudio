@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -41,6 +40,9 @@ class Database:
             "organization_memberships": Collection([{
                 "organization_id": "org", "identity_issuer": "https://id.example/",
                 "identity_subject": "owner", "status": "active",
+            }, {
+                "organization_id": "org", "identity_issuer": "https://id.example/",
+                "identity_subject": "intruder", "status": "active",
             }]),
             "projects": Collection([{
                 "organization_id": "org", "project_id": "project", "status": "active",
@@ -118,9 +120,14 @@ def test_project_owner_binds_verified_repository_and_versioned_replacement():
 
 
 def test_repository_binding_rejects_non_owner_and_stale_version():
-    previous, _database, _audit = install(Principal(
+    previous, database, _audit = install(Principal(
         subject="intruder", issuer="https://id.example/",
     ))
+    database["project_memberships"].rows.append({
+        "organization_id": "org", "project_id": "project",
+        "identity_issuer": "https://id.example/", "identity_subject": "intruder",
+        "status": "active",
+    })
     try:
         response = TestClient(app).put(
             "/api/v1/organizations/org/projects/project/repository-binding",
