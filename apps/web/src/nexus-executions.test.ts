@@ -88,6 +88,36 @@ describe("NEXUS execution API client", () => {
     });
   });
 
+
+  it("issues and consumes a one-use merge approval on task-scoped routes", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({
+        approval_id: "a".repeat(32), state: "pending",
+        expires_at: "2026-11-25T13:00:00Z", commit_sha: "c".repeat(40),
+        pull_request_number: 9,
+      }))
+      .mockResolvedValueOnce(response({
+        merged: true, run_id: "run-1", commit_sha: "c".repeat(40),
+        pull_request_number: 9, merge_commit_sha: "f".repeat(40),
+      }));
+    const approval = await createNexusMergeApproval(
+      "https://api.example.test", "org", "project", "task", "run-1",
+      "token", "c".repeat(40), fetcher,
+    );
+    expect(approval.state).toBe("pending");
+    const merge = await consumeNexusMergeApproval(
+      "https://api.example.test", "org", "project", "task", "run-1",
+      "token", approval.approval_id, fetcher,
+    );
+    expect(merge.merge_commit_sha).toBe("f".repeat(40));
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain("/tasks/task/executions/run-1/merge-approvals");
+    expect(String(fetcher.mock.calls[1]?.[0])).toContain("/tasks/task/executions/run-1/merge");
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({
+      approve: true, expected_commit_sha: "c".repeat(40),
+    });
+  });
+
+
   it("uses tenant/task/run-scoped routes for status, events, cancellation and artifacts", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({}))
       .mockResolvedValueOnce(response({ run_id: "run-1", status: "running" }))

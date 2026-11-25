@@ -15,6 +15,8 @@ import { applyApprovedWorkspacePatch, createWorkspaceApplyChallenge, readWorkspa
 import { buildWorkspaceArchive } from "./workspace-archive";
 import {
   cancelNexusExecution,
+  consumeNexusMergeApproval,
+  createNexusMergeApproval,
   createNexusExecution,
   getNexusExecution,
   getNexusExecutionArtifacts,
@@ -154,6 +156,9 @@ export default function NexusChatPanel({
   const [executionProfiles, setExecutionProfiles] = useState<NexusExecutionProfile[]>([]);
   const [executionProfileId, setExecutionProfileId] = useState("");
   const [executionBusy, setExecutionBusy] = useState(false);
+  const [repositoryMergeBusy, setRepositoryMergeBusy] = useState(false);
+  const [repositoryMergeError, setRepositoryMergeError] = useState("");
+  const [repositoryMergeCompletedRunId, setRepositoryMergeCompletedRunId] = useState("");
   const [executionError, setExecutionError] = useState("");
   const [workspaceUploadConsent, setWorkspaceUploadConsent] = useState(false);
   const [codeExecutionConsent, setCodeExecutionConsent] = useState(false);
@@ -782,6 +787,37 @@ export default function NexusChatPanel({
       setExecutionBusy(false);
     }
   }
+
+
+  async function approveAndMergeRepositoryReview() {
+    const review = executionRun?.repository_review;
+    if (!access || !executionRun || !review?.commit_sha || !review.pull_request_number
+      || !config.apiBaseUrl || repositoryMergeBusy || executionRun.status !== "completed") return;
+    const confirmed = window.confirm(
+      "You are approving merge-back of GitHub PR #" + review.pull_request_number
+      + " for worker commit " + review.commit_sha + ". This is a separate, irreversible repository change. Continue?",
+    );
+    if (!confirmed) return;
+    setRepositoryMergeBusy(true);
+    setRepositoryMergeError("");
+    try {
+      const approval = await createNexusMergeApproval(
+        config.apiBaseUrl, organizationId, projectId, executionRun.task_id,
+        executionRun.run_id, access.accessToken, review.commit_sha,
+      );
+      const result = await consumeNexusMergeApproval(
+        config.apiBaseUrl, organizationId, projectId, executionRun.task_id,
+        executionRun.run_id, access.accessToken, approval.approval_id,
+      );
+      setRepositoryMergeCompletedRunId(executionRun.run_id);
+      setNotice("GitHub PR #" + result.pull_request_number + " was merged as " + result.merge_commit_sha + ".");
+    } catch (cause) {
+      setRepositoryMergeError(errorMessage(cause));
+    } finally {
+      setRepositoryMergeBusy(false);
+    }
+  }
+
 
   async function cancelTaskPlan() {
     if (!access || !taskPlan || !config.apiBaseUrl || taskBusy) return;
@@ -1698,6 +1734,19 @@ export default function NexusChatPanel({
                     Review worker changes on GitHub · PR #{executionRun.repository_review.pull_request_number}
                   </a></p>
                 )}
+                {executionRun.status === "completed" && executionRun.repository_review?.commit_sha
+                  && executionRun.repository_review.pull_request_number
+                  && repositoryMergeCompletedRunId !== executionRun.run_id && (
+                    <div className="nexus-execution-controls">
+                      <p className="nexus-task-safety">Review the exact worker diff on GitHub before approving. The server revalidates repository identity, base SHA and PR head before merging.</p>
+                      <button type="button" className="nexus-secondary-button"
+                        onClick={() => void approveAndMergeRepositoryReview()}
+                        disabled={repositoryMergeBusy}>
+                        {repositoryMergeBusy ? "Approving and merging…" : "Approve and merge worker PR"}
+                      </button>
+                    </div>
+                  )}
+                {repositoryMergeError && <p className="nexus-error" role="alert">{repositoryMergeError}</p>}
                 <div className="nexus-execution-timeline" aria-label="Execution event history">
                   <strong>RUN HISTORY</strong>
                   {executionEvents.length === 0

@@ -63,6 +63,17 @@ export interface NexusExecutionArtifacts {
   stdout: string; stderr: string;
 }
 
+
+
+export interface NexusMergeApproval {
+  approval_id: string; state: "pending"; expires_at: string;
+  commit_sha: string; pull_request_number: number;
+}
+export interface NexusMergeResult {
+  merged: true; run_id: string; commit_sha: string;
+  pull_request_number: number; merge_commit_sha: string;
+}
+
 type Fetcher = typeof fetch;
 
 function normalizeBase(value: string): string {
@@ -254,4 +265,44 @@ export async function getNexusExecutionDiagnostics(
     throw new Error("Execution API returned an invalid diagnostics response.");
   }
   return result;
+}
+
+
+export async function createNexusMergeApproval(
+  baseUrl: string, organizationId: string, projectId: string, taskId: string,
+  runId: string, accessToken: string, expectedCommitSha: string,
+  fetcher: Fetcher = fetch, signal?: AbortSignal,
+): Promise<NexusMergeApproval> {
+  if (!/^[0-9a-f]{40}$/.test(expectedCommitSha)) {
+    throw new TypeError("A verified worker commit SHA is required.");
+  }
+  const response = await request<NexusMergeApproval>(
+    route(baseUrl, organizationId, projectId, taskId) + "/" + encodeURIComponent(runId) + "/merge-approvals",
+    accessToken, { method: "POST", fetcher, signal, body: { approve: true, expected_commit_sha: expectedCommitSha } },
+  );
+  if (!/^[0-9a-f]{32}$/.test(response.approval_id) || response.state !== "pending"
+    || response.commit_sha !== expectedCommitSha || !Number.isInteger(response.pull_request_number)
+    || !Number.isFinite(Date.parse(response.expires_at))) {
+    throw new Error("Execution API returned an invalid merge approval.");
+  }
+  return response;
+}
+
+export async function consumeNexusMergeApproval(
+  baseUrl: string, organizationId: string, projectId: string, taskId: string,
+  runId: string, accessToken: string, approvalId: string,
+  fetcher: Fetcher = fetch, signal?: AbortSignal,
+): Promise<NexusMergeResult> {
+  if (!/^[0-9a-f]{32}$/.test(approvalId)) throw new TypeError("A valid one-use merge approval is required.");
+  const response = await request<NexusMergeResult>(
+    route(baseUrl, organizationId, projectId, taskId) + "/" + encodeURIComponent(runId) + "/merge",
+    accessToken, { method: "POST", fetcher, signal, body: { approval_id: approvalId } },
+  );
+  if (response.merged !== true || response.run_id !== runId
+    || !/^[0-9a-f]{40}$/.test(response.commit_sha)
+    || !Number.isInteger(response.pull_request_number)
+    || !/^[0-9a-f]{40}$/.test(response.merge_commit_sha)) {
+    throw new Error("Execution API returned an invalid repository merge result.");
+  }
+  return response;
 }
