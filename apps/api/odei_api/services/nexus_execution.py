@@ -5,7 +5,7 @@ import base64
 import binascii
 import logging
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -521,7 +521,9 @@ async def get_execution(
     run_id: str = PathParam(min_length=1, max_length=128),
     principal: Principal = principal_dependency,
 ) -> dict:
-    await _authorize_execution_resource(request, organization_id, project_id, task_id, principal)
+    database, project, _task = await _authorize_execution_resource(
+        request, organization_id, project_id, task_id, principal,
+    )
     store = getattr(request.app.state, "execution_run_store", None)
     if store is None:
         raise HTTPException(status_code=503, detail={"code": "EXECUTION_STORAGE_UNAVAILABLE", "message": "Execution storage is not configured."})
@@ -529,7 +531,39 @@ async def get_execution(
     if run is None or run.project_id != project_id or run.task_id != task_id:
         raise HTTPException(status_code=404, detail={"code": "EXECUTION_NOT_FOUND", "message": "Execution run was not found."})
     await _append_decision(request, principal, organization_id, run_id, "nexus.execution.read", "success", {"status": run.status.value})
-    return _public_run(run)
+    response = _public_run(run)
+    is_owner = (
+        project.get("owner_issuer") == principal.issuer
+        and project.get("owner_subject") == principal.subject
+    )
+    response["repository_merge_available"] = bool(
+        is_owner and run.status is ExecutionRunStatus.COMPLETED
+        and run.worker_pull_request_number is not None
+    )
+    response["repository_merge_approval"] = None
+    approval_store = getattr(request.app.state, "repository_merge_approval_store", None)
+    if is_owner and approval_store is not None and run.worker_pull_request_number is not None:
+        approval = await approval_store.get_for_run(
+            organization_id=organization_id, project_id=project_id, run_id=run_id,
+        )
+        if approval is not None:
+            status = approval["status"]
+            if status == "pending" and approval["expires_at"] <= datetime.now(timezone.utc):
+                status = "expired"
+            response["repository_merge_approval"] = {
+                "status": status,
+                "approval_id": (
+                    approval["approval_id"]
+                    if status == "pending"
+                    and approval.get("created_by_issuer") == principal.issuer
+                    and approval.get("created_by_subject") == principal.subject
+                    else None
+                ),
+                "expires_at": approval["expires_at"].isoformat(),
+                "merge_commit_sha": approval.get("merge_commit_sha"),
+                "failure_code": approval.get("failure_code"),
+            }
+    return response
 
 
 @router.get(

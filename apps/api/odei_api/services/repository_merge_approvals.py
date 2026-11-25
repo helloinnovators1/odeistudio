@@ -70,6 +70,13 @@ class MongoRepositoryMergeApprovalStore:
             ) from exc
         return document
 
+    async def get_for_run(
+        self, *, organization_id: str, project_id: str, run_id: str,
+    ) -> dict[str, Any] | None:
+        return await self._approvals.find_one({
+            "organization_id": organization_id, "project_id": project_id, "run_id": run_id,
+        })
+
     async def consume(
         self, *, approval_id: str, organization_id: str, project_id: str,
         task_id: str, run_id: str, actor_issuer: str, actor_subject: str,
