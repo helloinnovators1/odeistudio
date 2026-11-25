@@ -7,7 +7,6 @@ from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 import regex as bounded_regex
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import Path as ApiPath
 from openai import OpenAI
