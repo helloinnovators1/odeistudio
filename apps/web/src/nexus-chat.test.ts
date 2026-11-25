@@ -188,6 +188,30 @@ describe("NEXUS chat transport", () => {
     }, unsafe)).rejects.toThrow("invalid inspection response contract");
   });
 
+
+
+  it("sends explicit failed-run repair consent and validates the bounded iteration response", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      answer: "A minimal repair proposal is ready.", model: "test-model", read_only: true,
+      tools_executed: 2, tool_names: ["read_attached_excerpt", "propose_attached_file_change"],
+      conversation_persisted: true, conversation_id: "conversation-1",
+      repair_iteration: 2, max_repair_iterations: 3,
+    }), { status: 200 }));
+    const result = await sendNexusChatInspection({
+      ...base, conversationId: "conversation-1",
+      workspaceFiles: [{ path: "src/main.py", content: "print('old')" }],
+      executionRepairTaskId: "task-1", executionRepairRunId: "run-1",
+      executionRepairConsent: true,
+    }, fetcher);
+    expect(result.repair_iteration).toBe(2);
+    const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({
+      execution_repair_task_id: "task-1",
+      execution_repair_run_id: "run-1",
+      execution_repair_consent: true,
+    });
+  });
+
   it("accepts only a persisted review-only proposal from attached-file tool inspection", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       answer: "I prepared a patch proposal.", model: "test-model", read_only: true,
