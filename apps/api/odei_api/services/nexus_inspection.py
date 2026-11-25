@@ -15,13 +15,13 @@ from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.agent_runtime import AgentAuditError, AgentRuntimeError, run_nexus_agent
 from odei_api.services.conversation_store import ConversationStoreError
 from odei_api.services.execution_diagnostics import build_execution_diagnostics
-from odei_api.services.nexus_execution import _authorize_execution_resource
 from odei_api.services.governed_tool_registry import (
     GovernedToolAuditError,
     GovernedToolRegistry,
     ToolDefinition,
 )
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
+from odei_api.services.nexus_execution import _authorize_execution_resource
 from odei_api.services.nexus_patch_proposals import _audit_proposal
 from odei_api.services.nexus_tasks import (
     NexusChatRequest,
@@ -99,7 +99,7 @@ async def inspect_attached_project_excerpts(
                 "code": "NEXUS_MODE_FORBIDDEN",
                 "message": "Execution-guided repair proposals are available only in Agent mode.",
             })
-        database, _authorized_project, _authorized_task = await _authorize_execution_resource(
+        _database, _authorized_project, _authorized_task = await _authorize_execution_resource(
             request, organization_id, project_id,
             payload.execution_repair_task_id, principal,
         )
