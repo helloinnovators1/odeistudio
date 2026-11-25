@@ -330,6 +330,7 @@ def test_execution_run_pins_verified_repository_identity_and_base(execution_stat
 
 def test_bound_execution_requires_explicit_repository_publish_consent(execution_state):
     database, _audit, _tasks, _snapshots, _runs = execution_state
+    database["projects"].document["owner_subject"] = "task-owner"
     database["nexus_repository_bindings"].document = {
         "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",
         "state": "verified", "installation_id": 77, "repository_id": 123,
