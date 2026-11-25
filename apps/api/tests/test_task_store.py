@@ -92,12 +92,24 @@ class FakeCollection:
         document = self.documents.get(query["_id"])
         if not document:
             return None
-        if document["organization_id"] != query["organization_id"]:
-            return None
-        if document["version"] != query["version"] or document["status"] != query["status"]:
-            return None
-        document.update(deepcopy(update["$set"]))
-        document["version"] += update["$inc"]["version"]
+        for key, expected in query.items():
+            if key == "$or":
+                matched = False
+                for clause in expected:
+                    for field, condition in clause.items():
+                        value = document.get(field)
+                        if "$lt" in condition and value is not None and value < condition["$lt"]:
+                            matched = True
+                        if condition.get("$exists") is False and field not in document:
+                            matched = True
+                if not matched:
+                    return None
+            elif document.get(key) != expected:
+                return None
+        for key, value in update.get("$set", {}).items():
+            document[key] = deepcopy(value)
+        for key, value in update.get("$inc", {}).items():
+            document[key] = document.get(key, 0) + value
         return deepcopy(document)
 
 
@@ -357,3 +369,52 @@ async def test_task_approval_and_cancellation_emit_semantic_event_types(
     )
     ordered = sorted(events.documents.values(), key=lambda row: row["version"])
     assert ordered[-1]["type"] == expected_event_type
+
+
+
+@pytest.mark.asyncio
+async def test_repair_iterations_are_atomic_audited_and_bounded_per_task():
+    store, tasks, _events = make_store()
+    await store.initialize()
+    await store.create(make_task())
+    audit_event = {
+        "organization_id": "org-1", "actor_issuer": "https://identity.example/",
+        "actor_subject": "user-1", "action": "nexus.execution.repair_context.read",
+        "target_type": "nexus_execution_run", "target_id": "run-1",
+        "outcome": "success", "request_id": "repair-1",
+        "metadata": {"project_id": "project-1", "task_id": "task-1", "repair_iteration": 1},
+    }
+    for expected in (1, 2, 3):
+        iteration = await store.consume_repair_iteration(
+            organization_id="org-1", project_id="project-1", task_id="task-1",
+            max_iterations=3, audit_event={**audit_event, "request_id": "repair-" + str(expected)},
+        )
+        assert iteration == expected
+    assert await store.consume_repair_iteration(
+        organization_id="org-1", project_id="project-1", task_id="task-1",
+        max_iterations=3, audit_event={**audit_event, "request_id": "repair-4"},
+    ) is None
+    raw = await tasks.find_one({"_id": "task-1", "organization_id": "org-1"})
+    assert raw["repair_iterations"] == 3
+    assert len(store._audit_store._collection.documents) == 3
+
+
+@pytest.mark.asyncio
+async def test_repair_iteration_rolls_back_when_audit_fails():
+    store, tasks, _events = make_store(audit_collection=FailingEventCollection())
+    await store.create(make_task())
+    audit_event = {
+        "organization_id": "org-1", "actor_issuer": "https://identity.example/",
+        "actor_subject": "user-1", "action": "nexus.execution.repair_context.read",
+        "target_type": "nexus_execution_run", "target_id": "run-1",
+        "outcome": "success", "request_id": "repair-1", "metadata": {},
+    }
+    with pytest.raises(RuntimeError, match="event store unavailable"):
+        await store.consume_repair_iteration(
+            organization_id="org-1", project_id="project-1", task_id="task-1",
+            max_iterations=3, audit_event=audit_event,
+        )
+    raw = await tasks.find_one({"_id": "task-1", "organization_id": "org-1"})
+    assert raw.get("repair_iterations", 0) == 0
+
+

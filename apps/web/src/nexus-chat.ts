@@ -566,6 +566,8 @@ export interface NexusChatInspectionResponse {
   tool_names: string[];
   conversation_persisted: true;
   conversation_id: string;
+  repair_iteration?: number | null;
+  max_repair_iterations?: number | null;
   patch_proposal?: NexusChatInspectionProposal | null;
 }
 

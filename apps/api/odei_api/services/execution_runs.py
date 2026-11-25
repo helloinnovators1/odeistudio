@@ -236,7 +236,7 @@ class MongoExecutionRunStore:
         self, run: ExecutionRun, *, tasks: Any, task_events: Any,
         expected_task_version: int, audit_event: Mapping[str, Any],
     ) -> ExecutionRun:
-        """Atomically consume a project-owner-approved task and enqueue exactly one run."""
+        """Atomically consume an approved or repairable task and enqueue exactly one run."""
         if run.status is not ExecutionRunStatus.QUEUED or run.version != 0 or run.attempts != 0:
             raise ValueError("new execution runs must begin queued at version and attempt zero")
         if not run.snapshot_id:
@@ -246,24 +246,26 @@ class MongoExecutionRunStore:
         async with self._client.start_session() as session, await session.start_transaction():
             task = await tasks.find_one({
                 "_id": run.task_id, "organization_id": run.organization_id,
-                "project_id": run.project_id, "status": "approved",
+                "project_id": run.project_id, "status": {"$in": ["approved", "repairing"]},
                 "version": expected_task_version,
             }, session=session)
             if task is None:
-                raise ExecutionRunConflict("task is not approved or its version has changed")
+                raise ExecutionRunConflict("task is not approved or repairable, or its version has changed")
+            prior_status = task["status"]
             changed = await tasks.update_one({
                 "_id": run.task_id, "organization_id": run.organization_id,
-                "project_id": run.project_id, "status": "approved",
+                "project_id": run.project_id, "status": prior_status,
                 "version": expected_task_version,
             }, {"$set": {"status": "executing", "updated_at": now},
                 "$inc": {"version": 1}}, session=session)
             if changed.modified_count != 1:
-                raise ExecutionRunConflict("approved task changed concurrently")
+                raise ExecutionRunConflict("task changed concurrently before execution")
             await task_events.insert_one({
                 "event_id": str(uuid4()), "organization_id": run.organization_id,
                 "project_id": run.project_id, "task_id": run.task_id,
-                "actor_id": run.requester_subject, "type": "task.execution.started",
-                "from_status": "approved", "to_status": "executing",
+                "actor_id": run.requester_subject,
+                "type": "task.execution.started" if prior_status == "approved" else "task.repair.execution.started",
+                "from_status": prior_status, "to_status": "executing",
                 "version": expected_task_version + 1, "occurred_at": now,
             }, session=session)
             await self._runs.insert_one(document, session=session)
@@ -393,7 +395,7 @@ class MongoExecutionRunStore:
                         task_updated = await tasks.find_one_and_update(
                             {"_id": task["_id"], "organization_id": run.organization_id,
                              "version": task["version"], "status": "executing"},
-                            {"$set": {"status": "failed", "updated_at": now},
+                            {"$set": {"status": "repairing", "updated_at": now},
                              "$inc": {"version": 1}},
                             return_document=ReturnDocument.AFTER, session=session,
                         )
@@ -403,7 +405,7 @@ class MongoExecutionRunStore:
                             "event_id": str(uuid4()), "organization_id": run.organization_id,
                             "project_id": run.project_id, "task_id": run.task_id,
                             "actor_id": actor_id, "type": "task.status_changed",
-                            "from_status": "executing", "to_status": "failed",
+                            "from_status": "executing", "to_status": "repairing",
                             "version": task_updated["version"], "occurred_at": now,
                         }, session=session)
                 await self._audit_in_transaction({
@@ -561,7 +563,7 @@ class MongoExecutionRunStore:
             if next_status in _TERMINAL and task_collection is not None and task_events is not None:
                 target_task_status = {
                     ExecutionRunStatus.COMPLETED: "validating",
-                    ExecutionRunStatus.FAILED: "failed",
+                    ExecutionRunStatus.FAILED: "repairing",
                     ExecutionRunStatus.CANCELLED: "cancelled",
                 }[next_status]
                 task = await task_collection.find_one({

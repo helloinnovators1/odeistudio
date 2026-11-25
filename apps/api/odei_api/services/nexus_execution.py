@@ -419,8 +419,11 @@ async def create_execution(
     if payload.workspace_upload_consent is not True or payload.execution_consent is not True:
         raise HTTPException(status_code=400, detail={"code": "EXECUTION_CONSENT_REQUIRED", "message": "Separate explicit workspace-upload and code-execution consent are required."})
     database, _project, task = await _authorize_execution_resource(request, organization_id, project_id, task_id, principal)
-    if task.status is not TaskStatus.APPROVED:
-        raise HTTPException(status_code=409, detail={"code": "TASK_APPROVAL_REQUIRED", "message": "The project owner must approve this task before execution."})
+    if task.status not in {TaskStatus.APPROVED, TaskStatus.REPAIRING}:
+        raise HTTPException(status_code=409, detail={
+            "code": "TASK_APPROVAL_REQUIRED",
+            "message": "The project owner must approve the initial task, or a failed task must be in its repair state, before execution.",
+        })
     if task.version != payload.expected_task_version:
         raise HTTPException(status_code=409, detail={"code": "TASK_VERSION_CONFLICT", "message": "The approved task changed. Reload it before execution."})
     registry = getattr(request.app.state, "execution_profile_registry", None)

@@ -195,6 +195,61 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         assert cancelled_task["status"] == "cancelled"
         assert cancelled_task["version"] == 6
 
+
+        repair_task_id, repair_run_id = uuid4().hex, uuid4().hex
+        await database["tasks"].insert_one({
+            "_id": repair_task_id, "organization_id": "org-integration",
+            "project_id": "project-integration", "owner_id": "owner",
+            "goal": "repair a failed execution", "status": "repairing",
+            "plan": "apply an approved repair and rerun tests", "version": 9,
+            "created_at": now, "updated_at": now,
+        })
+        repair_snapshot = await snapshots.put(
+            organization_id="org-integration", project_id="project-integration",
+            task_id=repair_task_id, owner_issuer="https://identity.example.test/",
+            owner_subject="owner", archive=archive, sha256=digest,
+            file_count=1, total_bytes=len(b"approved workspace"),
+        )
+        repair_run = ExecutionRun(
+            id=repair_run_id, organization_id="org-integration",
+            project_id="project-integration", task_id=repair_task_id,
+            requester_issuer="https://identity.example.test/",
+            requester_subject="owner", profile_id="python-tests",
+            snapshot_sha256=digest, snapshot_id=repair_snapshot["snapshot_id"],
+            arguments=(),
+        )
+        await runs.create_approved_task_run(
+            repair_run, tasks=database["tasks"], task_events=database["task_events"],
+            expected_task_version=9,
+            audit_event=audit_event | {
+                "action": "nexus.execution.repair.create", "target_id": repair_run_id,
+                "request_id": f"req-{uuid4().hex}",
+            },
+        )
+        repair_task = await database["tasks"].find_one({"_id": repair_task_id})
+        assert repair_task["status"] == "executing"
+        assert repair_task["version"] == 10
+        repair_claim = await runs.claim_next(worker_id="worker-repair", lease_seconds=30)
+        assert repair_claim is not None and repair_claim.id == repair_run_id
+        await runs.mark_running(
+            organization_id=repair_run.organization_id, run_id=repair_run_id,
+            worker_id="worker-repair", lease_token=repair_claim.lease_token,
+        )
+        await runs.mark_collecting(
+            organization_id=repair_run.organization_id, run_id=repair_run_id,
+            worker_id="worker-repair", lease_token=repair_claim.lease_token,
+        )
+        failed_repair_run = await runs.finish(
+            organization_id=repair_run.organization_id, run_id=repair_run_id,
+            worker_id="worker-repair", lease_token=repair_claim.lease_token,
+            outcome=ExecutionRunStatus.FAILED,
+            tasks=database["tasks"], task_events=database["task_events"],
+        )
+        repaired_task = await database["tasks"].find_one({"_id": repair_task_id})
+        assert failed_repair_run.status is ExecutionRunStatus.FAILED
+        assert repaired_task["status"] == "repairing"
+        assert repaired_task["version"] == 11
+
         task3_id, run3_id = uuid4().hex, uuid4().hex
         await database["tasks"].insert_one({
             "_id": task3_id, "organization_id": "org-integration",
@@ -222,7 +277,7 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
         exhausted_run = await runs.get(organization_id="org-integration", run_id=run3_id)
         exhausted_task = await database["tasks"].find_one({"_id": task3_id})
         assert exhausted_run.status is ExecutionRunStatus.FAILED
-        assert exhausted_task["status"] == "failed"
+        assert exhausted_task["status"] == "repairing"
         assert exhausted_task["version"] == 9
 
         await database["workspace_snapshots"].update_one(

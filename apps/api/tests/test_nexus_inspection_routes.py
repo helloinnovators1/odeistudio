@@ -67,6 +67,7 @@ def inspection_state(monkeypatch):
         "patch_proposal_store": getattr(app.state, "patch_proposal_store", None),
         "execution_run_store": getattr(app.state, "execution_run_store", None),
         "execution_artifact_store": getattr(app.state, "execution_artifact_store", None),
+        "task_store": getattr(app.state, "task_store", None),
     }
     audit = FakeAuditStore()
     app.state.audit_event_store = audit
@@ -162,6 +163,25 @@ class FakeExecutionRunStore:
         return self.run
 
 
+
+
+class FakeRepairBudgetStore:
+    def __init__(self, audit):
+        self.audit = audit
+        self.iterations = 0
+
+    async def consume_repair_iteration(
+        self, *, organization_id, project_id, task_id, max_iterations, audit_event,
+    ):
+        if self.iterations >= max_iterations:
+            return None
+        self.iterations += 1
+        event = dict(audit_event)
+        event["metadata"] = {**event.get("metadata", {}), "repair_iteration": self.iterations}
+        await self.audit.append(**event)
+        return self.iterations
+
+
 class FakeExecutionArtifactStore:
     async def get_for_tenant(self, **_kwargs):
         return {
@@ -178,10 +198,12 @@ def test_failed_execution_context_is_authorized_audited_and_proposal_only(
     audit = inspection_state
     previous_run_store = getattr(app.state, "execution_run_store", None)
     previous_artifact_store = getattr(app.state, "execution_artifact_store", None)
+    previous_task_store = getattr(app.state, "task_store", None)
     app.state.execution_run_store = FakeExecutionRunStore(SimpleNamespace(
         project_id="project-1", task_id="task-1", status="failed",
     ))
     app.state.execution_artifact_store = FakeExecutionArtifactStore()
+    app.state.task_store = FakeRepairBudgetStore(audit)
 
     async def authorize_execution(*_args, **_kwargs):
         return (None, {"owner_issuer": "https://identity.example.test/"}, SimpleNamespace(id="task-1"))
@@ -211,13 +233,17 @@ def test_failed_execution_context_is_authorized_audited_and_proposal_only(
         assert "UNTRUSTED EXECUTION DIAGNOSTICS" in first_input
         assert "ModuleNotFoundError" in first_input
         assert response.json()["read_only"] is True
+        assert response.json()["repair_iteration"] == 1
+        assert response.json()["max_repair_iterations"] == 3
         repair_audit = next(event for event in audit.events if event["action"] == "nexus.execution.repair_context.read")
         assert repair_audit["target_id"] == "run-1"
         assert repair_audit["metadata"]["category"] == "failed"
+        assert repair_audit["metadata"]["repair_iteration"] == 1
         assert "ModuleNotFoundError" not in str(repair_audit)
     finally:
         app.state.execution_run_store = previous_run_store
         app.state.execution_artifact_store = previous_artifact_store
+        app.state.task_store = previous_task_store
 
 
 def test_execution_repair_context_requires_explicit_consent(inspection_state):
@@ -232,3 +258,62 @@ def test_execution_repair_context_requires_explicit_consent(inspection_state):
     )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "EXECUTION_REPAIR_CONSENT_REQUIRED"
+
+
+
+def test_execution_repair_context_stops_after_three_audited_iterations(
+    inspection_state, monkeypatch,
+):
+    audit = inspection_state
+    previous_run_store = getattr(app.state, "execution_run_store", None)
+    previous_artifact_store = getattr(app.state, "execution_artifact_store", None)
+    previous_task_store = getattr(app.state, "task_store", None)
+    app.state.execution_run_store = FakeExecutionRunStore(SimpleNamespace(
+        project_id="project-1", task_id="task-1", status="failed",
+    ))
+    app.state.execution_artifact_store = FakeExecutionArtifactStore()
+    app.state.task_store = FakeRepairBudgetStore(audit)
+
+    async def authorize_execution(*_args, **_kwargs):
+        return (None, {"owner_issuer": "https://identity.example.test/"}, SimpleNamespace(id="task-1"))
+
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection._authorize_execution_resource",
+        authorize_execution,
+    )
+    fake_client = FakeClient()
+    monkeypatch.setattr(
+        "odei_api.services.nexus_inspection.get_openai_client",
+        lambda: (fake_client, "test-model"),
+    )
+    payload = _payload()
+    payload.update({
+        "execution_repair_task_id": "task-1",
+        "execution_repair_run_id": "run-1",
+        "execution_repair_consent": True,
+    })
+    try:
+        client = TestClient(app)
+        for expected in (1, 2, 3):
+            response = client.post(
+                "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+                json=payload,
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["repair_iteration"] == expected
+        provider_calls = fake_client.responses.calls
+        blocked = client.post(
+            "/api/v1/organizations/org-1/projects/project-1/nexus/chat/inspect",
+            json=payload,
+        )
+        assert blocked.status_code == 409
+        assert blocked.json()["detail"]["code"] == "EXECUTION_REPAIR_LIMIT_REACHED"
+        assert fake_client.responses.calls == provider_calls
+        repair_events = [event for event in audit.events if event["action"] == "nexus.execution.repair_context.read"]
+        assert [event["metadata"]["repair_iteration"] for event in repair_events] == [1, 2, 3]
+    finally:
+        app.state.execution_run_store = previous_run_store
+        app.state.execution_artifact_store = previous_artifact_store
+        app.state.task_store = previous_task_store
+
+
