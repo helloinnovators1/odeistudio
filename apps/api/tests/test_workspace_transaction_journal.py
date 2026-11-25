@@ -277,6 +277,7 @@ def test_journal_enforces_combined_before_and_after_byte_budget(tmp_path):
         journal.prepare("5" * 64, patches, [before, before, before])
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory-fsync crash boundary")
 @pytest.mark.parametrize(
     ("operation", "crash_on_fsync"),
     [("update", 2), ("delete", 1), ("create", 2)],
@@ -338,7 +339,7 @@ def test_restart_recovers_crash_after_namespace_mutation_before_directory_flush(
         elif operation == "delete":
             assert restarted.read_text(recovered_id, "deleted.py") == "preserve"
         else:
-            assert restarted.read_text(recovered_id, "created.py") is None
+            assert not (project / "created.py").exists()
         pending = journal.pending(
             workspace_root_key(
                 project,
