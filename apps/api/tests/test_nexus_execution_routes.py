@@ -149,7 +149,7 @@ class Runs:
         )
 
 
-async async def _verified_repository(**kwargs):
+async async async def _verified_repository(**kwargs):
     assert kwargs == {"installation_id": 77, "owner": "acme", "name": "service"}
     return VerifiedGitHubRepository(
         installation_id=77, repository_id=123, repository_node_id="R_kgDOabc",
