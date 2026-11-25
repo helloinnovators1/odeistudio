@@ -3,10 +3,13 @@ from __future__ import annotations
 import base64
 from types import SimpleNamespace
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 import pytest
 
 from odei_api.services.github_app import (
-    GitHubAppInstallationClient, GitHubRepositoryVerificationError,
+    GitHubAppInstallationClient,
+    GitHubRepositoryVerificationError,
 )
 
 
@@ -49,8 +52,6 @@ async def test_github_app_verifies_installation_and_write_repository_without_per
         http_client=http,
     )
     # Signing validates the PEM, so use a generated test key.
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.hazmat.primitives import serialization
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem = key.private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
