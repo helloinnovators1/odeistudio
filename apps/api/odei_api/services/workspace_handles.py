@@ -30,7 +30,6 @@ from odei_api.services.project_files import (
     read_project_text_file_from_posix_fd,
     read_project_text_file_from_windows_handle,
 )
-from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.workspace_transaction_journal import workspace_root_key
 
 
@@ -215,6 +214,8 @@ class WorkspaceHandleRegistry:
         self, workspace_id: str, query: str, *, limit: int = MAX_SEARCH_RESULTS
     ) -> dict[str, Any]:
         """Search eligible UTF-8 files with strict scan budgets and redacted snippets."""
+        from odei_api.services.secret_redaction import redact_secrets
+
         if (
             not isinstance(query, str) or not query.strip()
             or len(query) > MAX_SEARCH_QUERY_CHARS or "\x00" in query
