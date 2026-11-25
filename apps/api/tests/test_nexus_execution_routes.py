@@ -430,7 +430,7 @@ def test_bound_execution_publish_requires_project_owner(execution_state):
 
 
 def test_owner_must_create_and_consume_single_use_merge_approval(execution_state):
-    database, audit, _tasks, _snapshots, runs = execution_state
+    database, audit, tasks, _snapshots, runs = execution_state
     database["projects"].document["owner_subject"] = "task-owner"
     database["nexus_repository_bindings"].document = {
         "_id": "org-1:project-1", "organization_id": "org-1", "project_id": "project-1",

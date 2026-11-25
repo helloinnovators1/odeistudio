@@ -39,7 +39,7 @@ The isolated worker builds a Git commit from the post-execution workspace snapsh
 
 The API stores the repository ID/node ID, binding version, base SHA, commit SHA, tree SHA, branch, pull request number/URL and attestation timestamp under the active worker lease. The run history exposes this metadata for review. If the branch head changes, the repository binding changes, the default branch moves before publication, or the worker lease expires, provenance recording fails closed.
 
-A pull request is a review artifact, not merge authorization. A project owner must separately review and approve merge-back through a durable one-use approval flow; that approval/merge endpoint is a subsequent gate and is not enabled by this worker-provenance change.
+A pull request is a review artifact, not merge authorization. Merge-back is enabled only through the separate durable, one-use project-owner approval flow described below.
 
 
 ## Human-approved merge-back
