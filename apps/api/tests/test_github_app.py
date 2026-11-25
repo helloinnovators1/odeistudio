@@ -13,6 +13,15 @@ from odei_api.services.github_app import (
 )
 
 
+def private_key():
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    return SimpleNamespace(get_secret_value=lambda: base64.b64encode(pem).decode())
+
+
 class Response:
     def __init__(self, status_code, body):
         self.status_code = status_code
