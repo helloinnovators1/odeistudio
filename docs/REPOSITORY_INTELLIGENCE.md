@@ -16,13 +16,13 @@ All routes are under `/api/v1/organizations/{organization_id}/projects/{project_
 | --- | --- | --- |
 | GET | `/` | Read active index state and coverage metadata |
 | POST | `/` | Build/publish an index from the latest workspace snapshot |
-| GET | `/search?q=...` | Case-insensitive exact substring search (optional `case_sensitive=true`) |
+| GET | `/search?q=...` | Case-insensitive exact substring search (optional `case_sensitive=true`) or bounded regular-expression search (`regex=true`) |
 | GET | `/symbols?name=...` | Find symbol definitions |
 | GET | `/references?name=...` | Find cross-file identifier references |
 | GET | `/dependency-graph` | Read import edges |
 | POST | `/semantic-search` | Retrieve semantically similar code chunks |
 
-Index refresh requires JSON `{"cloud_embedding_consent": true}`. Semantic search requires `{"query": "...", "cloud_model_consent": true}`. These explicit confirmations are required before repository excerpts or the query are sent to the configured OpenAI embedding provider.
+Every retrieval verifies that the active index still references the newest unexpired project snapshot. If a newer snapshot arrives after indexing, search/symbol/reference/graph/semantic retrieval fails closed with `REPOSITORY_INDEX_STALE`; the index-state endpoint reports `stale: true`. Refresh rechecks the latest snapshot immediately before publishing to avoid publishing a superseded snapshot.\n\nIndex refresh requires JSON `{"cloud_embedding_consent": true}`. Semantic search requires `{"query": "...", "cloud_model_consent": true}`. These explicit confirmations are required before repository excerpts or the query are sent to the configured OpenAI embedding provider.
 
 ## Persistence and bounds
 
@@ -36,3 +36,6 @@ Index refresh requires JSON `{"cloud_embedding_consent": true}`. Semantic search
 ## Analysis coverage
 
 Python symbols and references use the Python AST. JavaScript and TypeScript definitions/imports use bounded lexical analysis; identifier references are heuristic and can include false positives. Import graph targets preserve module names and do not claim complete package resolution. Semantic ranking uses cosine similarity over the bounded stored embedding set, not a separately provisioned Atlas Vector Search index.
+
+ 
+Regular-expression searches use a dedicated regex engine with a 20 ms per-line timeout, a 2 second request-wide budget, a 256-character expression limit, and explicit timeout/invalid-expression errors. Exact literal search remains the default. Search results retain file hash, index revision, and snapshot provenance.

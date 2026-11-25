@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import sqlite3
 import stat
@@ -105,29 +106,83 @@ class DurableWorkspaceJournal:
 
     @staticmethod
     def _validate_payload(files: list[dict[str, Any]], before_images: list[str | None]) -> str:
+        """Validate the complete write-ahead manifest before persisting any source text."""
         if not isinstance(files, list) or not 1 <= len(files) <= MAX_FILES:
             raise ValueError("A journal transaction must contain between 1 and 20 files")
         if not isinstance(before_images, list) or len(files) != len(before_images):
             raise ValueError("Every journaled file must have exactly one before-image")
-        before_total = 0
-        content_total = 0
+        from odei_api.services.patch_proposals import validate_patch_path
+
+        aggregate_bytes = 0
         normalized = []
+        seen_paths: set[str] = set()
         for item, before in zip(files, before_images, strict=True):
             if not isinstance(item, dict) or set(item) != {
                 "path", "operation", "base_sha256", "result_sha256", "content",
             }:
                 raise ValueError("Journal patch fields are invalid")
-            if not isinstance(item["path"], str) or not item["path"] or len(item["path"]) > 1024:
+            if not isinstance(item["path"], str) or len(item["path"]) > 1024:
                 raise ValueError("Journal patch path is invalid")
+            try:
+                validate_patch_path(item["path"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Journal patch path is invalid") from exc
+            path_key = item["path"].casefold()
+            if path_key in seen_paths:
+                raise ValueError("Journal transaction contains duplicate paths")
+            seen_paths.add(path_key)
+
+            operation = item["operation"]
+            base_hash = item["base_sha256"]
+            result_hash = item["result_sha256"]
+            content = item["content"]
             if before is not None and not isinstance(before, str):
                 raise ValueError("Journal before-image must be UTF-8 text or null")
-            if item["content"] is not None and not isinstance(item["content"], str):
+            if content is not None and not isinstance(content, str):
                 raise ValueError("Journal patch content must be UTF-8 text or null")
-            before_total += len((before or "").encode("utf-8"))
-            content_total += len((item["content"] or "").encode("utf-8"))
+            for value in (before, content):
+                if value is not None:
+                    try:
+                        encoded = value.encode("utf-8", errors="strict")
+                    except UnicodeEncodeError as exc:
+                        raise ValueError("Journal content must be valid UTF-8") from exc
+                    if "\x00" in value or len(encoded) > 1_048_576:
+                        raise ValueError("Journal content is binary or exceeds the per-file limit")
+                    aggregate_bytes += len(encoded)
+
+            def valid_hash(value: Any) -> bool:
+                return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+            before_hash = (
+                hashlib.sha256(before.encode("utf-8")).hexdigest()
+                if before is not None else None
+            )
+            content_hash = (
+                hashlib.sha256(content.encode("utf-8")).hexdigest()
+                if content is not None else None
+            )
+            if operation == "create":
+                valid = (
+                    before is None and base_hash is None and content is not None
+                    and valid_hash(result_hash) and result_hash == content_hash
+                )
+            elif operation == "update":
+                valid = (
+                    before is not None and valid_hash(base_hash) and base_hash == before_hash
+                    and content is not None and valid_hash(result_hash) and result_hash == content_hash
+                )
+            elif operation == "delete":
+                valid = (
+                    before is not None and valid_hash(base_hash) and base_hash == before_hash
+                    and content is None and result_hash is None
+                )
+            else:
+                valid = False
+            if not valid:
+                raise ValueError("Journal patch operation or content hashes are inconsistent")
             normalized.append({"patch": item, "before": before})
-        if before_total > MAX_TOTAL_BYTES or content_total > MAX_TOTAL_BYTES:
-            raise ValueError("Journal transaction exceeds the aggregate before-image or patch limit")
+
+        if aggregate_bytes > MAX_TOTAL_BYTES:
+            raise ValueError("Journal transaction exceeds the aggregate before-image and patch limit")
         return json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
 
     def prepare(
