@@ -236,7 +236,7 @@ class WorkspaceHandleRegistry:
                 )
             else:
                 files = list_project_files_from_posix_fd(
-                    int(grant.handle), max_files=MAX_SEARCH_FILES + 1,
+                    int(grant.handle), max_files=max_files + 1,
                     max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
                 )
             if len(files) > max_files:
@@ -264,7 +264,7 @@ class WorkspaceHandleRegistry:
                         )
                     else:
                         content = read_project_text_file_from_posix_fd(
-                            int(grant.handle), item.path, max_bytes=MAX_SEARCH_FILE_BYTES
+                            int(grant.handle), item.path, max_bytes=max_file_bytes
                         )
                 except (ValueError, OSError, UnicodeError):
                     skipped_files += 1
