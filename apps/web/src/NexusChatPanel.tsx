@@ -1721,7 +1721,6 @@ export default function NexusChatPanel({
                     <p className="nexus-muted">{executionDiagnostics.next_step}</p>
                   </section>
                 )}
-                )}
               </div>
             )}
             <p className="nexus-task-safety">Execution is limited to the server-approved profile and immutable snapshot. Results require validation and review; successful sandbox exit does not automatically complete the task.</p>
