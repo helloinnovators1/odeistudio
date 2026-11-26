@@ -24,11 +24,11 @@ from odei_api.security.auth import (
 from odei_api.services.project_access import require_project_access
 from odei_api.services.repository_analysis import analyze_repository
 from odei_api.services.repository_index import RepositoryIndex, RepositoryIndexError
-from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.repository_index_store import (
     MongoRepositoryIndexStore,
     RepositoryIndexConflict,
 )
+from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
 
 logger = logging.getLogger(__name__)
