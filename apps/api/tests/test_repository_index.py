@@ -137,3 +137,23 @@ def test_descriptor_reader_rejects_final_symlink_even_when_target_is_inside_root
 
     with pytest.raises(OSError):
         _read_index_file(tmp_path, link, 1024)
+
+
+
+@pytest.mark.skipif(__import__("os").name != "posix", reason="descriptor-relative root identity is POSIX-specific")
+def test_rejects_workspace_root_replacement_after_index_authorization(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "original.txt").write_text("authorized content", encoding="utf-8")
+    index = RepositoryIndex(root)
+
+    moved = tmp_path / "authorized-workspace"
+    root.rename(moved)
+    root.mkdir()
+    (root / "replacement.txt").write_text("untrusted replacement content", encoding="utf-8")
+
+    result = index.rebuild_or_update()
+
+    assert result.indexed == 0
+    assert result.skipped == 1
+    assert index.search("untrusted replacement") == []
