@@ -223,3 +223,31 @@ def test_project_search_fails_closed_when_index_snapshot_is_stale():
         assert response.json()["detail"]["code"] == "REPOSITORY_INDEX_STALE"
     finally:
         _restore_state(previous)
+
+
+
+def test_repository_search_redacts_credentials_from_returned_source_lines():
+    previous, _audit_store = _install_state(Principal(
+        subject="owner", issuer="https://identity.example/",
+    ))
+
+    class CredentialStore(RepositoryStore):
+        async def get_active_files(self, *, organization_id, project_id):
+            return [{
+                "path": "src/config.py",
+                "content": 'api_key = "super-secret-value-123456"\\n',
+                "sha256": "c" * 64,
+            }]
+
+    app.state.repository_index_store = CredentialStore()
+    try:
+        response = TestClient(app).get(
+            "/api/v1/organizations/org-1/projects/project-1/repository-index/search",
+            params={"q": "api_key"},
+        )
+        assert response.status_code == 200, response.text
+        result, = response.json()["results"]
+        assert "[REDACTED]" in result["snippet"]
+        assert "super-secret-value-123456" not in result["snippet"]
+    finally:
+        _restore_state(previous)

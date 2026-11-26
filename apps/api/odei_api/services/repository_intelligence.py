@@ -28,6 +28,7 @@ from odei_api.services.repository_index_store import (
     MongoRepositoryIndexStore,
     RepositoryIndexConflict,
 )
+from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
 
 logger = logging.getLogger(__name__)
@@ -502,7 +503,7 @@ async def search_repository(
                 if pattern.search(line, timeout=0.02):
                     hits.append({
                         "path": record["path"], "line": line_number,
-                        "snippet": line[:500], "sha256": record["sha256"],
+                        "snippet": redact_secrets(line[:500]), "sha256": record["sha256"],
                         "revision": state["revision"], "snapshot_id": state["snapshot_id"],
                     })
                     if len(hits) >= limit:
@@ -692,4 +693,10 @@ async def semantic_repository_search(
         "repository.search.semantic",
         {"query_length": len(payload.query), "result_count": len(results)},
     )
-    return {"results": results, "limit": payload.limit, "embedding_model": _EMBEDDING_MODEL}
+    # Index-time secret detection is intentionally conservative and best-effort;
+    # redact again at the retrieval boundary before source snippets leave the API.
+    safe_results = [
+        {**item, "snippet": redact_secrets(item.get("snippet", ""))}
+        for item in results
+    ]
+    return {"results": safe_results, "limit": payload.limit, "embedding_model": _EMBEDDING_MODEL}
