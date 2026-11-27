@@ -439,4 +439,7 @@ async def test_repair_iteration_rolls_back_when_audit_fails():
     raw = await tasks.find_one({"_id": "task-1", "organization_id": "org-1"})
     assert raw.get("repair_iterations", 0) == 0
 
+def test_task_store_rejects_missing_project_fence():
+    with pytest.raises(ValueError, match="projects collection"):
+        MongoTaskStore(FakeCollection(), FakeCollection(), FakeClient([]), projects=None)
 
