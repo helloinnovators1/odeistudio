@@ -136,7 +136,7 @@ class MongoExecutionArtifactStore:
         document = await self._metadata.find_one({
             "organization_id": organization_id, "project_id": project_id,
             "task_id": task_id, "run_id": run_id,
-            "state": {"$ne": "deleting"},
+            "state": {"$in": ["available", None]},
         })
         if document is None:
             return None
