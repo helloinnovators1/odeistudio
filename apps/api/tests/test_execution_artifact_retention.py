@@ -42,15 +42,24 @@ class Collection:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
 
+    @staticmethod
+    def matches(row, query):
+        for key, value in query.items():
+            if key == "$or":
+                if not any(Collection.matches(row, clause) for clause in value):
+                    return False
+            elif isinstance(value, dict) and "$lte" in value:
+                if row.get(key) is None or row[key] > value["$lte"]:
+                    return False
+            elif isinstance(value, dict) and "$in" in value:
+                if row.get(key) not in value["$in"]:
+                    return False
+            elif row.get(key) != value:
+                return False
+        return True
+
     def find(self, query):
-        rows = []
-        for row in self.rows:
-            if row.get("created_at") > query["created_at"]["$lte"]:
-                continue
-            if row.get("state") not in query["state"]["$in"]:
-                continue
-            rows.append(row)
-        return Cursor(rows)
+        return Cursor([row for row in self.rows if self.matches(row, query)])
 
     async def find_one(self, query, **_kwargs):
         def matches(row):
@@ -61,15 +70,11 @@ class Collection:
                 elif row.get(key) != value:
                     return False
             return True
-        return next((row for row in self.rows if matches(row)), None)
+        return next((row for row in self.rows if self.matches(row, query)), None)
 
     async def update_one(self, query, update, **_kwargs):
         row = await self.find_one({"_id": query["_id"]})
-        if (
-            row is None
-            or row.get("created_at") > query["created_at"]["$lte"]
-            or row.get("state") not in query["state"]["$in"]
-        ):
+        if row is None or not self.matches(row, query):
             return SimpleNamespace(matched_count=0)
         row.update(update["$set"])
         return SimpleNamespace(matched_count=1)
@@ -165,4 +170,26 @@ async def test_artifact_retention_resumes_after_partial_gridfs_failure(monkeypat
     assert buckets["execution_stdout"].deleted == {"stdout-1"}
     assert await store.delete_expired() == 1
     assert database["execution_artifacts"].rows == []
+    assert buckets["execution_stderr"].deleted == {"stderr-1"}
+
+@pytest.mark.asyncio
+async def test_artifact_retention_resumes_nonexpired_deletion_tombstone(monkeypatch):
+    row = artifact_row(state="deleting")
+    row["created_at"] = datetime.now(timezone.utc)
+    database = Database([row])
+    buckets = {"execution_stdout": Bucket(), "execution_stderr": Bucket()}
+    monkeypatch.setattr(
+        artifact_module, "AsyncGridFSBucket",
+        lambda _db, bucket_name: buckets[bucket_name],
+    )
+
+    async def fence(_projects, **_kwargs):
+        return None
+
+    monkeypatch.setattr(artifact_module, "fence_project_write", fence)
+    store = MongoExecutionArtifactStore(database)
+
+    assert await store.delete_expired() == 1
+    assert database["execution_artifacts"].rows == []
+    assert buckets["execution_stdout"].deleted == {"stdout-1"}
     assert buckets["execution_stderr"].deleted == {"stderr-1"}
