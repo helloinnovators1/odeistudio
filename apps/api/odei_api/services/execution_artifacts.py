@@ -81,7 +81,7 @@ class MongoExecutionArtifactStore:
             async with self._client.start_session() as session, await session.start_transaction():
                 await fence_project_write(
                     self._projects, organization_id=organization_id,
-                    project_id=project_id, session=session, allow_deleting=True,
+                    project_id=project_id, session=session,
                 )
                 await self._metadata.insert_one(document, session=session)
             return self.public_metadata(document)
