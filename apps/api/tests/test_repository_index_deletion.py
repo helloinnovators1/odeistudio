@@ -31,7 +31,7 @@ class Database:
         for name in (
             "repository_index_state", "repository_index_files",
             "repository_index_symbols", "repository_index_references",
-            "repository_index_imports", "repository_index_chunks",
+            "repository_index_imports", "repository_index_chunks", "projects",
         ):
             self.collections[name] = Collection([
                 {"organization_id": "org-a", "project_id": "project-a", "revision_id": "old"},

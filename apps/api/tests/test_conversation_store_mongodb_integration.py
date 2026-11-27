@@ -19,10 +19,17 @@ async def test_conversation_store_enforces_owner_scope_versions_and_limits_on_mo
     client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
     database_name = f"odei_conversation_test_{uuid4().hex}"
     database = client[database_name]
-    store = MongoConversationStore(database["nexus_conversations"])
+    store = MongoConversationStore(
+        database["nexus_conversations"], client, database["projects"],
+    )
     try:
         topology = await client.admin.command("hello")
         assert topology.get("setName") or topology.get("msg") == "isdbgrid"
+        await database["projects"].insert_one({
+            "organization_id": "org-integration",
+            "project_id": "project-integration",
+            "status": "active",
+        })
         await store.initialize()
         created = await store.create(
             organization_id="org-integration",
