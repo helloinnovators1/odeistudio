@@ -13,7 +13,6 @@ from uuid import uuid4
 from pymongo import ReturnDocument
 
 from odei_api.services.project_lifecycle import fence_project_write
-
 from odei_api.services.tasks import (
     InvalidTaskTransition,
     TaskRecord,

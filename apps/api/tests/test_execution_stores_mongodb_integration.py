@@ -42,7 +42,7 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
     artifacts = MongoExecutionArtifactStore(database)
     runs = MongoExecutionRunStore(
         database["execution_runs"], database["execution_run_events"], client,
-        audit_store=audit,
+        audit_store=audit, projects=database["projects"],
     )
     task_id, run_id = uuid4().hex, uuid4().hex
     now = datetime.now(timezone.utc)
@@ -58,6 +58,11 @@ async def test_snapshot_gridfs_and_approved_task_run_are_tenant_scoped_and_durab
     try:
         topology = await client.admin.command("hello")
         assert topology.get("setName") or topology.get("msg") == "isdbgrid"
+        await database["projects"].insert_one({
+            "organization_id": "org-integration",
+            "project_id": "project-integration",
+            "status": "active",
+        })
         await audit.initialize()
         await snapshots.initialize()
         await artifacts.initialize()

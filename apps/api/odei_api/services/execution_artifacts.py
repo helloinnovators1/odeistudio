@@ -9,8 +9,8 @@ from uuid import uuid4
 from gridfs.asynchronous import AsyncGridFSBucket
 from gridfs.errors import NoFile
 
-from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.project_lifecycle import fence_project_write
+from odei_api.services.secret_redaction import redact_secrets
 
 
 class ExecutionArtifactStoreError(RuntimeError):
