@@ -19,6 +19,20 @@ from odei_api.services.github_app import VerifiedGitHubRepository
 from odei_api.services.tasks import TaskRecord, TaskStatus, identity_owner_key
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
 class Collection:
     def __init__(self, document):
         self.document = document
@@ -55,18 +69,21 @@ class Collection:
     async def find_one(self, query):
         return self.document if self._matches(query) else None
 
-    async def update_one(self, query, update):
+    async def update_one(self, query, update, **_kwargs):
         if not self._matches(query):
             return SimpleNamespace(modified_count=0)
         for key, value in update.get("$set", {}).items():
             self.document[key] = value
         for key in update.get("$unset", {}):
             self.document.pop(key, None)
-        return SimpleNamespace(modified_count=1)
+        for key, amount in update.get("$inc", {}).items():
+            self.document[key] = self.document.get(key, 0) + amount
+        return SimpleNamespace(modified_count=1, matched_count=1)
 
 
 class Database:
     def __init__(self):
+        self.client = FakeClient()
         self.collections = {
             "organization_memberships": Collection({
                 "organization_id": "org-1",
@@ -272,7 +289,7 @@ def archive_base64():
 def execution_state():
     previous = {
         key: getattr(app.state, key, None)
-        for key in ("mongo_database", "audit_event_store", "task_store",
+        for key in ("mongo_database", "mongo_client", "audit_event_store", "task_store",
                     "execution_run_store", "workspace_snapshot_store",
                     "execution_profile_registry", "execution_artifact_store",
                     "github_app_client", "repository_merge_approval_store")
@@ -288,6 +305,7 @@ def execution_state():
     )
     tasks, snapshots, runs = Tasks(task), Snapshots(), Runs()
     app.state.mongo_database = database
+    app.state.mongo_client = database.client
     app.state.audit_event_store = audit
     app.state.task_store = tasks
     app.state.workspace_snapshot_store = snapshots

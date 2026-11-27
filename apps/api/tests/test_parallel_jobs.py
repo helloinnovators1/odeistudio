@@ -19,6 +19,7 @@ from odei_api.services.parallel_jobs import (
 class Result:
     def __init__(self, modified_count=1):
         self.modified_count = modified_count
+        self.matched_count = modified_count
 
 
 class Cursor:
@@ -134,7 +135,7 @@ async def test_parallel_jobs_claim_checkpoint_and_resume_with_lease():
 @pytest.mark.asyncio
 async def test_checkpoint_rejects_stale_lease_and_bounds_payload():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="g",
         jobs=[{"job_id": "job"}],
@@ -200,7 +201,7 @@ def test_worktree_manager_requires_safe_repository_and_base_commit(tmp_path):
 @pytest.mark.asyncio
 async def test_worker_can_renew_only_its_current_lease():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="lease-group",
         jobs=[{"job_id": "lease-job"}],
@@ -354,7 +355,7 @@ def test_safe_worktree_merge_back_uses_expected_base_compare_and_swap(tmp_path):
 @pytest.mark.asyncio
 async def test_parallel_job_retry_is_bounded_and_respects_cancellation():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="retry-group",
         jobs=[{"job_id": "retry-job"}], max_attempts=2,
@@ -576,7 +577,7 @@ async def test_worker_schedules_retry_for_transient_nexus_state_failure():
 @pytest.mark.asyncio
 async def test_group_cancellation_makes_dependency_blocked_jobs_claimable_for_cleanup():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="cancel-dependencies",
         jobs=[
