@@ -89,6 +89,8 @@ class MongoParallelJobStore:
     """Mongo-backed job groups; workers coordinate only through atomic leases."""
 
     def __init__(self, jobs: Any, groups: Any, events: Any, client: Any | None = None, projects: Any | None = None):
+        if client is None or projects is None:
+            raise ValueError("MongoParallelJobStore requires a MongoDB client and projects collection for lifecycle fencing")
         self._jobs, self._groups, self._events = jobs, groups, events
         self._client, self._projects = client, projects
 
