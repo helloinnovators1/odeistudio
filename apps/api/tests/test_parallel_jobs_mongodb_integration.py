@@ -43,7 +43,7 @@ async def test_parallel_worker_orchestrates_real_execution_run_and_cancellation(
     audit = MongoAuditEventStore(database["audit_events"])
     runs = MongoExecutionRunStore(
         database["execution_runs"], database["execution_run_events"], client,
-        audit_store=audit,
+        audit_store=audit, projects=database["projects"],
     )
     await database["projects"].insert_one({
         "organization_id": "org-integration",
