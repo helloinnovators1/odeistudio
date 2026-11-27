@@ -24,6 +24,20 @@ from odei_api.services.parallel_jobs import MongoParallelJobStore
 logger = logging.getLogger("odei.parallel.worker")
 
 
+def _create_worker_stores(database, client, audit):
+    """Build project-fenced stores shared by the parallel worker."""
+    projects = database["projects"]
+    runs = MongoExecutionRunStore(
+        database["execution_runs"], database["execution_run_events"], client,
+        audit_store=audit, projects=projects,
+    )
+    jobs = MongoParallelJobStore(
+        database["nexus_parallel_jobs"], database["nexus_parallel_job_groups"],
+        database["nexus_parallel_job_events"], client, projects,
+    )
+    return runs, jobs
+
+
 async def _main() -> None:
     settings = get_settings()
     if settings.mongodb_uri is None or not settings.mongodb_uri.get_secret_value():
@@ -36,15 +50,8 @@ async def _main() -> None:
 
     audit = MongoAuditEventStore(database["audit_events"])
     await audit.initialize()
-    runs = MongoExecutionRunStore(
-        database["execution_runs"], database["execution_run_events"], client,
-        audit_store=audit,
-    )
+    runs, jobs = _create_worker_stores(database, client, audit)
     await runs.initialize()
-    jobs = MongoParallelJobStore(
-        database["nexus_parallel_jobs"], database["nexus_parallel_job_groups"],
-        database["nexus_parallel_job_events"],
-    )
     await jobs.initialize()
     heartbeats = MongoWorkerHeartbeatStore(database["execution_worker_heartbeats"])
     await heartbeats.initialize()
