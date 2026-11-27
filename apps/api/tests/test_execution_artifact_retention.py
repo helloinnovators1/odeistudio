@@ -65,7 +65,11 @@ class Collection:
 
     async def update_one(self, query, update, **_kwargs):
         row = await self.find_one({"_id": query["_id"]})
-        if row is None or row.get("created_at") > query["created_at"]["$lte"] or row.get("state") not in query["state"]["$in"]:
+        if (
+            row is None
+            or row.get("created_at") > query["created_at"]["$lte"]
+            or row.get("state") not in query["state"]["$in"]
+        ):
             return SimpleNamespace(matched_count=0)
         row.update(update["$set"])
         return SimpleNamespace(matched_count=1)
@@ -117,7 +121,10 @@ def artifact_row(*, state="available", run_id="run-1"):
 async def test_artifact_retention_fences_project_and_skips_active_run(monkeypatch):
     database = Database([artifact_row()])
     buckets = {"execution_stdout": Bucket(), "execution_stderr": Bucket()}
-    monkeypatch.setattr(artifact_module, "AsyncGridFSBucket", lambda _db, bucket_name: buckets[bucket_name])
+    monkeypatch.setattr(
+        artifact_module, "AsyncGridFSBucket",
+        lambda _db, bucket_name: buckets[bucket_name],
+    )
     fenced = []
 
     async def fence(_projects, **kwargs):
@@ -140,7 +147,10 @@ async def test_artifact_retention_resumes_after_partial_gridfs_failure(monkeypat
     database = Database([artifact_row()])
     buckets = {"execution_stdout": Bucket(), "execution_stderr": Bucket()}
     buckets["execution_stderr"].fail_blob = "stderr-1"
-    monkeypatch.setattr(artifact_module, "AsyncGridFSBucket", lambda _db, bucket_name: buckets[bucket_name])
+    monkeypatch.setattr(
+        artifact_module, "AsyncGridFSBucket",
+        lambda _db, bucket_name: buckets[bucket_name],
+    )
 
     async def fence(_projects, **_kwargs):
         return None
