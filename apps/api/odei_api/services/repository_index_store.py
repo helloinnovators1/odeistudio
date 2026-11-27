@@ -160,17 +160,6 @@ class MongoRepositoryIndexStore:
             return [{**common, **item} for item in items]
 
         try:
-            for collection, items in (
-                (self._files, files),
-                (self._symbols, symbols),
-                (self._references, references),
-                (self._imports, imports),
-                (self._chunks, chunks),
-            ):
-                batch = documents(items)
-                for start in range(0, len(batch), 25):
-                    await collection.insert_many(batch[start:start + 25], ordered=True)
-
             now = datetime.now(timezone.utc)
             state = {
                 "organization_id": organization_id,
@@ -197,6 +186,37 @@ class MongoRepositoryIndexStore:
                         self._projects, organization_id=organization_id,
                         project_id=project_id, session=active_session,
                     )
+                    # Staging rows and the active pointer share the lifecycle fence
+                    # transaction. No late index batches can appear after tombstoning.
+                    for collection, items in (
+                        (self._files, files),
+                        (self._symbols, symbols),
+                        (self._references, references),
+                        (self._imports, imports),
+                        (self._chunks, chunks),
+                    ):
+                        batch = documents(items)
+                        for start in range(0, len(batch), 25):
+                            await collection.insert_many(
+                                batch[start:start + 25], ordered=True, session=active_session,
+                            )
+                    if previous is not None and previous.get("revision_id"):
+                        retire_at = now + timedelta(hours=1)
+                        if isinstance(previous.get("expires_at"), datetime):
+                            retire_at = min(retire_at, previous["expires_at"])
+                        for collection in (
+                            self._files, self._symbols, self._references,
+                            self._imports, self._chunks,
+                        ):
+                            await collection.update_many(
+                                {
+                                    "organization_id": organization_id,
+                                    "project_id": project_id,
+                                    "revision_id": previous["revision_id"],
+                                },
+                                {"$set": {"expires_at": retire_at}},
+                                session=active_session,
+                            )
                     if previous is None:
                         await self._state.insert_one(state, session=active_session)
                     else:
@@ -235,27 +255,6 @@ class MongoRepositoryIndexStore:
                     )
                 await session.with_transaction(transaction)
 
-            if previous is not None and previous.get("revision_id"):
-                retire_at = now + timedelta(hours=1)
-                if isinstance(previous.get("expires_at"), datetime):
-                    retire_at = min(retire_at, previous["expires_at"])
-                for collection in (
-                    self._files, self._symbols, self._references, self._imports, self._chunks,
-                ):
-                    try:
-                        await collection.update_many(
-                            {
-                                "organization_id": organization_id,
-                                "project_id": project_id,
-                                "revision_id": previous["revision_id"],
-                            },
-                            {"$set": {"expires_at": retire_at}},
-                        )
-                    except PyMongoError as cleanup_error:
-                        logger.warning(
-                            "Could not shorten retention for superseded repository index (%s)",
-                            type(cleanup_error).__name__,
-                        )
             return self.public_state(state)
         except DuplicateKeyError as exc:
             await self._cleanup_unpublished_revision(
