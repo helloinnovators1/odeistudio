@@ -165,6 +165,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             application.state.execution_run_store = execution_run_store
             merge_approval_store = MongoRepositoryMergeApprovalStore(
                 application.state.mongo_database["nexus_repository_merge_approvals"],
+                client,
+                application.state.mongo_database["projects"],
             )
             await merge_approval_store.initialize()
             application.state.repository_merge_approval_store = merge_approval_store
