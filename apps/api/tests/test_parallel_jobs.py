@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +19,7 @@ from odei_api.services.parallel_jobs import (
 class Result:
     def __init__(self, modified_count=1):
         self.modified_count = modified_count
+        self.matched_count = modified_count
 
 
 class Cursor:
@@ -32,19 +33,42 @@ class Cursor:
         return self.rows[:length]
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
+class FakeProjects:
+    def __init__(self, status="active"):
+        self.status = status
+    async def find_one(self, *_args, **_kwargs):
+        return {"status": self.status}
+    async def update_one(self, *_args, **_kwargs):
+        return Result(1)
+
+
 class Collection:
     def __init__(self):
         self.rows = {}
         self.events = []
     async def create_index(self, *_args, **_kwargs):
         return None
-    async def insert_one(self, row):
+    async def insert_one(self, row, **_kwargs):
         self.rows[row.get("_id", row.get("job_id"))] = dict(row)
         self.events.append(dict(row))
-    async def insert_many(self, rows, ordered=True):
+    async def insert_many(self, rows, ordered=True, **_kwargs):
         for row in rows:
             self.rows[row["_id"]] = dict(row)
-    async def delete_one(self, query):
+    async def delete_one(self, query, **_kwargs):
         self.rows.pop(query["_id"], None)
     def find(self, query):
         rows = list(self.rows.values())
@@ -58,10 +82,10 @@ class Collection:
             elif value is not None and not isinstance(value, dict):
                 rows = [r for r in rows if (value in r.get(key, []) if isinstance(r.get(key), list) else r.get(key) == value)]
         return Cursor(rows)
-    async def find_one(self, query):
+    async def find_one(self, query, **_kwargs):
         rows = await self.find(query).to_list(100)
         return rows[0] if rows else None
-    async def find_one_and_update(self, query, update, return_document=None):
+    async def find_one_and_update(self, query, update, return_document=None, **_kwargs):
         row = await self.find_one(query)
         if row is None:
             return None
@@ -69,7 +93,7 @@ class Collection:
         for key, amount in update.get("$inc", {}).items():
             row[key] = row.get(key, 0) + amount
         return row
-    async def update_one(self, query, update):
+    async def update_one(self, query, update, **_kwargs):
         row = await self.find_one(query)
         if row is None:
             return Result(0)
@@ -77,7 +101,7 @@ class Collection:
         for key, amount in update.get("$inc", {}).items():
             row[key] = row.get(key, 0) + amount
         return Result()
-    async def update_many(self, query, update):
+    async def update_many(self, query, update, **_kwargs):
         rows = await self.find(query).to_list(1000)
         for row in rows:
             row.update(update.get("$set", {}))
@@ -89,7 +113,7 @@ class Collection:
 @pytest.mark.asyncio
 async def test_parallel_jobs_claim_checkpoint_and_resume_with_lease():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.initialize()
     await store.create_group(
         organization_id="org", project_id="project", group_id="group",
@@ -115,7 +139,7 @@ async def test_parallel_jobs_claim_checkpoint_and_resume_with_lease():
 @pytest.mark.asyncio
 async def test_checkpoint_rejects_stale_lease_and_bounds_payload():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="g",
         jobs=[{"job_id": "job"}],
@@ -143,7 +167,7 @@ async def test_checkpoint_rejects_stale_lease_and_bounds_payload():
 
 @pytest.mark.asyncio
 async def test_dependency_cycles_and_unknown_dependencies_are_rejected():
-    store = MongoParallelJobStore(Collection(), Collection(), Collection())
+    store = MongoParallelJobStore(Collection(), Collection(), Collection(), FakeClient(), FakeProjects())
     with pytest.raises(ValueError, match="dependencies"):
         await store.create_group(
             organization_id="org", project_id="project", group_id="g",
@@ -181,7 +205,7 @@ def test_worktree_manager_requires_safe_repository_and_base_commit(tmp_path):
 @pytest.mark.asyncio
 async def test_worker_can_renew_only_its_current_lease():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="lease-group",
         jobs=[{"job_id": "lease-job"}],
@@ -335,7 +359,7 @@ def test_safe_worktree_merge_back_uses_expected_base_compare_and_swap(tmp_path):
 @pytest.mark.asyncio
 async def test_parallel_job_retry_is_bounded_and_respects_cancellation():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="retry-group",
         jobs=[{"job_id": "retry-job"}], max_attempts=2,
@@ -557,7 +581,7 @@ async def test_worker_schedules_retry_for_transient_nexus_state_failure():
 @pytest.mark.asyncio
 async def test_group_cancellation_makes_dependency_blocked_jobs_claimable_for_cleanup():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.create_group(
         organization_id="org", project_id="project", group_id="cancel-dependencies",
         jobs=[
@@ -585,3 +609,41 @@ async def test_group_cancellation_makes_dependency_blocked_jobs_claimable_for_cl
         organization_id="org", job_id=second.id, worker_id="worker-b",
         lease_token=second.lease_token,
     )
+
+
+@pytest.mark.asyncio
+async def test_project_deletion_drains_completed_job_without_unblocking_dependents():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    projects = FakeProjects()
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), projects)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="drain",
+        jobs=[{"job_id": "first"}, {"job_id": "second", "depends_on": ["first"]}],
+    )
+    claimed = await store.claim_next(worker_id="worker")
+    projects.status = "deleting"
+    completed = await store.finish(
+        organization_id="org", job_id="first", worker_id="worker",
+        lease_token=claimed.lease_token, expected_version=claimed.version,
+        outcome="completed",
+    )
+    assert completed.status == "completed"
+    assert next(row for row in jobs.rows.values() if row["job_id"] == "second")["status"] == "cancelled"
+    assert await store.claim_next(worker_id="another-worker") is None
+
+
+@pytest.mark.asyncio
+async def test_expired_parallel_lease_is_not_requeued_during_project_deletion():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    projects = FakeProjects()
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), projects)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="expired",
+        jobs=[{"job_id": "job"}],
+    )
+    await store.claim_next(worker_id="worker")
+    row = next(row for row in jobs.rows.values() if row["job_id"] == "job")
+    row["lease_expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+    projects.status = "deleting"
+    assert await store.claim_next(worker_id="replacement") is None
+    assert row["status"] == "failed"

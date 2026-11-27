@@ -12,6 +12,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from odei_api.security.auth import Principal
 from odei_api.services.audit_store import MongoAuditEventStore
+from odei_api.services.project_lifecycle import fence_project_write
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ class MongoRepositoryIndexStore:
         self._imports = database["repository_index_imports"]
         self._chunks = database["repository_index_chunks"]
         self._state = database["repository_index_state"]
+        self._projects = database["projects"]
+        self._client = database.client
 
     async def initialize(self) -> None:
         await self._state.create_index(
@@ -157,17 +160,6 @@ class MongoRepositoryIndexStore:
             return [{**common, **item} for item in items]
 
         try:
-            for collection, items in (
-                (self._files, files),
-                (self._symbols, symbols),
-                (self._references, references),
-                (self._imports, imports),
-                (self._chunks, chunks),
-            ):
-                batch = documents(items)
-                for start in range(0, len(batch), 25):
-                    await collection.insert_many(batch[start:start + 25], ordered=True)
-
             now = datetime.now(timezone.utc)
             state = {
                 "organization_id": organization_id,
@@ -190,6 +182,41 @@ class MongoRepositoryIndexStore:
             }
             async with mongo_client.start_session() as session:
                 async def transaction(active_session):
+                    await fence_project_write(
+                        self._projects, organization_id=organization_id,
+                        project_id=project_id, session=active_session,
+                    )
+                    # Staging rows and the active pointer share the lifecycle fence
+                    # transaction. No late index batches can appear after tombstoning.
+                    for collection, items in (
+                        (self._files, files),
+                        (self._symbols, symbols),
+                        (self._references, references),
+                        (self._imports, imports),
+                        (self._chunks, chunks),
+                    ):
+                        batch = documents(items)
+                        for start in range(0, len(batch), 25):
+                            await collection.insert_many(
+                                batch[start:start + 25], ordered=True, session=active_session,
+                            )
+                    if previous is not None and previous.get("revision_id"):
+                        retire_at = now + timedelta(hours=1)
+                        if isinstance(previous.get("expires_at"), datetime):
+                            retire_at = min(retire_at, previous["expires_at"])
+                        for collection in (
+                            self._files, self._symbols, self._references,
+                            self._imports, self._chunks,
+                        ):
+                            await collection.update_many(
+                                {
+                                    "organization_id": organization_id,
+                                    "project_id": project_id,
+                                    "revision_id": previous["revision_id"],
+                                },
+                                {"$set": {"expires_at": retire_at}},
+                                session=active_session,
+                            )
                     if previous is None:
                         await self._state.insert_one(state, session=active_session)
                     else:
@@ -228,27 +255,6 @@ class MongoRepositoryIndexStore:
                     )
                 await session.with_transaction(transaction)
 
-            if previous is not None and previous.get("revision_id"):
-                retire_at = now + timedelta(hours=1)
-                if isinstance(previous.get("expires_at"), datetime):
-                    retire_at = min(retire_at, previous["expires_at"])
-                for collection in (
-                    self._files, self._symbols, self._references, self._imports, self._chunks,
-                ):
-                    try:
-                        await collection.update_many(
-                            {
-                                "organization_id": organization_id,
-                                "project_id": project_id,
-                                "revision_id": previous["revision_id"],
-                            },
-                            {"$set": {"expires_at": retire_at}},
-                        )
-                    except PyMongoError as cleanup_error:
-                        logger.warning(
-                            "Could not shorten retention for superseded repository index (%s)",
-                            type(cleanup_error).__name__,
-                        )
             return self.public_state(state)
         except DuplicateKeyError as exc:
             await self._cleanup_unpublished_revision(
@@ -288,6 +294,37 @@ class MongoRepositoryIndexStore:
                 "Could not clean up unpublished repository index revision (%s)",
                 type(exc).__name__,
             )
+
+    async def delete_project_index(
+        self, *, organization_id: str, project_id: str,
+    ) -> dict[str, int]:
+        """Idempotently remove every persisted index revision in one fenced transaction."""
+        if not organization_id or not project_id:
+            raise ValueError("organization_id and project_id are required")
+        deleted: dict[str, int] = {}
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            state_result = await self._state.delete_one({
+                "organization_id": organization_id,
+                "project_id": project_id,
+            }, session=session)
+            deleted["state"] = state_result.deleted_count
+            for name, collection in (
+                ("files", self._files),
+                ("symbols", self._symbols),
+                ("references", self._references),
+                ("imports", self._imports),
+                ("chunks", self._chunks),
+            ):
+                result = await collection.delete_many({
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                }, session=session)
+                deleted[name] = result.deleted_count
+        return deleted
 
     @staticmethod
     def public_state(state: dict[str, Any]) -> dict[str, Any]:

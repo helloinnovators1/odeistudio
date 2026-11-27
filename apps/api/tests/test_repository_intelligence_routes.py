@@ -61,6 +61,11 @@ class SnapshotStore:
 
 
 class RepositoryStore:
+    async def delete_project_index(self, *, organization_id, project_id):
+        assert (organization_id, project_id) == ("org-1", "project-1")
+        self.deleted = True
+        return {"state": 1, "files": 2, "symbols": 3, "references": 4, "imports": 5, "chunks": 6}
+
     async def get_state(self, *, organization_id, project_id):
         assert (organization_id, project_id) == ("org-1", "project-1")
         return {
@@ -221,5 +226,42 @@ def test_project_search_fails_closed_when_index_snapshot_is_stale():
         )
         assert response.status_code == 409
         assert response.json()["detail"]["code"] == "REPOSITORY_INDEX_STALE"
+    finally:
+        _restore_state(previous)
+
+
+
+def test_repository_index_delete_removes_all_collections_and_is_audited():
+    previous, audit = _install_state(Principal(
+        subject="owner", issuer="https://identity.example/",
+    ))
+    store = app.state.repository_index_store
+    try:
+        response = TestClient(app).delete(
+            "/api/v1/organizations/org-1/projects/project-1/repository-index",
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["deleted"] is True
+        assert response.json()["collections"] == {
+            "state": 1, "files": 2, "symbols": 3, "references": 4,
+            "imports": 5, "chunks": 6,
+        }
+        assert store.deleted is True
+        assert audit.events[-1]["action"] == "repository.index.delete"
+    finally:
+        _restore_state(previous)
+
+
+def test_repository_index_delete_is_owner_only():
+    previous, audit = _install_state(Principal(
+        subject="intruder", issuer="https://identity.example/",
+    ))
+    try:
+        response = TestClient(app).delete(
+            "/api/v1/organizations/org-1/projects/project-1/repository-index",
+        )
+        assert response.status_code == 404
+        assert not any(event["action"] == "repository.index.delete" and event["outcome"] == "success"
+                       for event in audit.events)
     finally:
         _restore_state(previous)

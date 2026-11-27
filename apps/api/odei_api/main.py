@@ -55,6 +55,7 @@ from odei_api.services.repository_index_store import MongoRepositoryIndexStore
 from odei_api.services.repository_intelligence import router as repository_intelligence_router
 from odei_api.services.repository_merge_approvals import MongoRepositoryMergeApprovalStore
 from odei_api.services.task_store import MongoTaskStore
+from odei_api.services.workspace_snapshot_retention import run_snapshot_retention
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own the optional MongoDB client for the lifetime of the API process."""
     client = None
     database_name = None
+    snapshot_retention_task = None
     http_client = httpx.AsyncClient(timeout=5.0)
     application.state.http_client = http_client
     mcp_gateway = McpGateway(load_mcp_servers(settings.nexus_mcp_servers_json))
@@ -134,13 +136,22 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 application.state.mongo_database["task_events"],
                 client,
                 audit_store=audit_store,
+                projects=application.state.mongo_database["projects"],
             )
             await task_store.initialize()
             application.state.task_store = task_store
-            conversation_store = MongoConversationStore(application.state.mongo_database["nexus_conversations"])
+            conversation_store = MongoConversationStore(
+                application.state.mongo_database["nexus_conversations"],
+                client,
+                application.state.mongo_database["projects"],
+            )
             await conversation_store.initialize()
             application.state.conversation_store = conversation_store
-            patch_proposal_store = MongoPatchProposalStore(application.state.mongo_database["nexus_patch_proposals"])
+            patch_proposal_store = MongoPatchProposalStore(
+                application.state.mongo_database["nexus_patch_proposals"],
+                client,
+                application.state.mongo_database["projects"],
+            )
             await patch_proposal_store.initialize()
             application.state.patch_proposal_store = patch_proposal_store
             execution_run_store = MongoExecutionRunStore(
@@ -148,11 +159,14 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 application.state.mongo_database["execution_run_events"],
                 client,
                 audit_store=audit_store,
+                projects=application.state.mongo_database["projects"],
             )
             await execution_run_store.initialize()
             application.state.execution_run_store = execution_run_store
             merge_approval_store = MongoRepositoryMergeApprovalStore(
                 application.state.mongo_database["nexus_repository_merge_approvals"],
+                client,
+                application.state.mongo_database["projects"],
             )
             await merge_approval_store.initialize()
             application.state.repository_merge_approval_store = merge_approval_store
@@ -160,12 +174,18 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 application.state.mongo_database["nexus_parallel_jobs"],
                 application.state.mongo_database["nexus_parallel_job_groups"],
                 application.state.mongo_database["nexus_parallel_job_events"],
+                client,
+                application.state.mongo_database["projects"],
             )
             await parallel_job_store.initialize()
             application.state.parallel_job_store = parallel_job_store
             snapshot_store = MongoWorkspaceSnapshotStore(application.state.mongo_database)
             await snapshot_store.initialize()
             application.state.workspace_snapshot_store = snapshot_store
+            snapshot_retention_task = asyncio.create_task(
+                run_snapshot_retention(snapshot_store),
+                name="odei-workspace-snapshot-retention",
+            )
             repository_index_store = MongoRepositoryIndexStore(application.state.mongo_database)
             await repository_index_store.initialize()
             application.state.repository_index_store = repository_index_store
@@ -189,6 +209,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             application.state.execution_artifact_store = None
         yield
     finally:
+        if snapshot_retention_task is not None:
+            snapshot_retention_task.cancel()
+            try:
+                await snapshot_retention_task
+            except asyncio.CancelledError:
+                pass
         if client is not None:
             await client.close()
         mcp_gateway.close()

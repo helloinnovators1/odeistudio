@@ -13,6 +13,8 @@ from uuid import uuid4
 
 from pymongo import ReturnDocument
 
+from odei_api.services.project_lifecycle import fence_project_write
+
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
 _MAX_CHECKPOINT_BYTES = 256_000
 _MAX_JOBS_PER_GROUP = 32
@@ -86,8 +88,9 @@ def _checkpoint(value: dict[str, Any] | None) -> tuple[dict[str, Any] | None, st
 class MongoParallelJobStore:
     """Mongo-backed job groups; workers coordinate only through atomic leases."""
 
-    def __init__(self, jobs: Any, groups: Any, events: Any):
+    def __init__(self, jobs: Any, groups: Any, events: Any, client: Any | None = None, projects: Any | None = None):
         self._jobs, self._groups, self._events = jobs, groups, events
+        self._client, self._projects = client, projects
 
     async def initialize(self) -> None:
         await self._groups.create_index(
@@ -159,35 +162,33 @@ class MongoParallelJobStore:
             visited.add(node)
         for node in graph:
             visit(node)
-        await self._groups.insert_one(group)
-        try:
-            await self._jobs.insert_many(documents, ordered=True)
+        if self._client is None or self._projects is None:
+            raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            await self._groups.insert_one(group, session=session)
+            await self._jobs.insert_many(documents, ordered=True, session=session)
             for row in documents:
                 await self._events.insert_one({
                     "organization_id": organization_id, "job_id": row["job_id"], "version": 0,
                     "event": "job.queued" if row["initial_status"] == "queued" else "job.blocked",
                     "group_id": group_id, "occurred_at": now,
-                })
+                }, session=session)
             for row in documents:
                 activated = await self._jobs.update_one(
                     {"organization_id": organization_id, "job_id": row["job_id"], "status": "staging"},
                     {"$set": {"status": row["initial_status"], "updated_at": now},
-                     "$unset": {"initial_status": ""}},
+                     "$unset": {"initial_status": ""}}, session=session,
                 )
                 if not activated.modified_count:
                     raise ParallelJobConflict("job group activation failed")
             await self._groups.update_one(
                 {"_id": group["_id"], "organization_id": organization_id},
-                {"$set": {"status": "queued", "updated_at": now}},
+                {"$set": {"status": "queued", "updated_at": now}}, session=session,
             )
-        except Exception:
-            for row in documents:
-                await self._jobs.delete_one({"_id": row["_id"]})
-                await self._events.delete_one({
-                    "organization_id": organization_id, "job_id": row["job_id"], "version": 0,
-                })
-            await self._groups.delete_one({"_id": group["_id"], "organization_id": organization_id})
-            raise
         for row in documents:
             row["status"] = row["initial_status"]
             row.pop("initial_status", None)
@@ -204,23 +205,39 @@ class MongoParallelJobStore:
         }).limit(100).to_list(length=100)
         for row in expired:
             cancelled = bool(row.get("cancel_requested"))
-            retry = row["attempt"] < row["max_attempts"] and not cancelled
-            next_status = "cancelled" if cancelled else "queued" if retry else "failed"
-            update = await self._jobs.update_one(
-                {"_id": row["_id"], "version": row["version"], "lease_expires_at": {"$lte": now}},
-                {"$set": {"status": next_status,
-                          "worker_id": None, "lease_token": None, "lease_expires_at": None,
-                          "available_at": now, "updated_at": now},
-                 "$unset": {"cancel_requested": ""},
-                 "$inc": {"version": 1}},
-            )
-            if update.modified_count:
-                await self._events.insert_one({
-                    "organization_id": row["organization_id"], "job_id": row["job_id"],
-                    "version": row["version"] + 1,
-                    "event": "job.cancelled" if cancelled else "job.retry_scheduled" if retry else "job.failed",
-                    "occurred_at": now,
-                })
+            if self._client is None or self._projects is None:
+                raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+            async with self._client.start_session() as session, await session.start_transaction():
+                project = await self._projects.find_one(
+                    {"organization_id": row["organization_id"], "project_id": row["project_id"]},
+                    session=session,
+                )
+                if project is None:
+                    continue
+                retry = (
+                    project.get("status") == "active"
+                    and row["attempt"] < row["max_attempts"] and not cancelled
+                )
+                next_status = "cancelled" if cancelled else "queued" if retry else "failed"
+                await fence_project_write(
+                    self._projects, organization_id=row["organization_id"],
+                    project_id=row["project_id"], session=session, allow_deleting=True,
+                )
+                update = await self._jobs.update_one(
+                    {"_id": row["_id"], "version": row["version"], "lease_expires_at": {"$lte": now}},
+                    {"$set": {"status": next_status,
+                              "worker_id": None, "lease_token": None, "lease_expires_at": None,
+                              "available_at": now, "updated_at": now},
+                     "$unset": {"cancel_requested": ""},
+                     "$inc": {"version": 1}}, session=session,
+                )
+                if update.modified_count:
+                    await self._events.insert_one({
+                        "organization_id": row["organization_id"], "job_id": row["job_id"],
+                        "version": row["version"] + 1,
+                        "event": "job.cancelled" if cancelled else "job.retry_scheduled" if retry else "job.failed",
+                        "occurred_at": now,
+                    }, session=session)
         candidates = await self._jobs.find({
             "status": "queued", "available_at": {"$lte": now},
         }).sort("created_at", 1).limit(100).to_list(length=100)
@@ -233,25 +250,39 @@ class MongoParallelJobStore:
                 }).to_list(length=len(dependencies))
                 if len(rows) != len(dependencies) or any(r["status"] != "completed" for r in rows):
                     if any(r["status"] in {"failed", "cancelled"} for r in rows):
-                        await self._jobs.update_one(
-                            {"_id": candidate["_id"], "version": candidate["version"], "status": "queued"},
-                            {"$set": {"status": "cancelled", "updated_at": now}, "$inc": {"version": 1}},
-                        )
+                        async with self._client.start_session() as session, await session.start_transaction():
+                            await fence_project_write(
+                                self._projects, organization_id=candidate["organization_id"],
+                                project_id=candidate["project_id"], session=session,
+                            )
+                            await self._jobs.update_one(
+                                {"_id": candidate["_id"], "version": candidate["version"], "status": "queued"},
+                                {"$set": {"status": "cancelled", "updated_at": now}, "$inc": {"version": 1}},
+                                session=session,
+                            )
                     continue
             token = uuid4().hex
-            claimed = await self._jobs.find_one_and_update(
-                {"_id": candidate["_id"], "version": candidate["version"], "status": "queued"},
-                {"$set": {"status": "leased", "worker_id": worker_id, "lease_token": token,
-                          "lease_expires_at": now + timedelta(seconds=lease_seconds), "updated_at": now},
-                 "$inc": {"attempt": 1, "version": 1}},
-                return_document=ReturnDocument.AFTER,
-            )
+            if self._client is None or self._projects is None:
+                raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+            async with self._client.start_session() as session, await session.start_transaction():
+                claimed = await self._jobs.find_one_and_update(
+                    {"_id": candidate["_id"], "version": candidate["version"], "status": "queued"},
+                    {"$set": {"status": "leased", "worker_id": worker_id, "lease_token": token,
+                              "lease_expires_at": now + timedelta(seconds=lease_seconds), "updated_at": now},
+                     "$inc": {"attempt": 1, "version": 1}},
+                    return_document=ReturnDocument.AFTER, session=session,
+                )
+                if claimed is not None:
+                    await fence_project_write(
+                        self._projects, organization_id=claimed["organization_id"],
+                        project_id=claimed["project_id"], session=session,
+                    )
+                    await self._events.insert_one({
+                        "organization_id": claimed["organization_id"], "job_id": claimed["job_id"],
+                        "version": claimed["version"], "event": "job.leased",
+                        "worker_id": worker_id, "occurred_at": now,
+                    }, session=session)
             if claimed is not None:
-                await self._events.insert_one({
-                    "organization_id": claimed["organization_id"], "job_id": claimed["job_id"],
-                    "version": claimed["version"], "event": "job.leased",
-                    "worker_id": worker_id, "occurred_at": now,
-                })
                 return self._from_doc(claimed)
         return None
 
@@ -262,15 +293,29 @@ class MongoParallelJobStore:
         if isinstance(lease_seconds, bool) or not 5 <= lease_seconds <= 600:
             raise ValueError("lease_seconds must be between 5 and 600")
         now = datetime.now(timezone.utc)
-        result = await self._jobs.update_one(
-            {"organization_id": organization_id, "job_id": job_id,
-             "worker_id": worker_id, "lease_token": lease_token,
-             "status": "leased", "lease_expires_at": {"$gt": now}},
-            {"$set": {"lease_expires_at": now + timedelta(seconds=lease_seconds),
-                      "updated_at": now}},
-        )
-        if result.modified_count != 1:
-            raise ParallelJobConflict("worker lease is missing, expired or no longer owned")
+        if self._client is None or self._projects is None:
+            raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            current = await self._jobs.find_one({
+                "organization_id": organization_id, "job_id": job_id,
+                "worker_id": worker_id, "lease_token": lease_token,
+                "status": "leased", "lease_expires_at": {"$gt": now},
+            }, session=session)
+            if current is None:
+                raise ParallelJobConflict("worker lease is missing, expired or no longer owned")
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=current["project_id"], session=session, allow_deleting=True,
+            )
+            result = await self._jobs.update_one(
+                {"organization_id": organization_id, "job_id": job_id,
+                 "worker_id": worker_id, "lease_token": lease_token,
+                 "status": "leased", "lease_expires_at": {"$gt": now}},
+                {"$set": {"lease_expires_at": now + timedelta(seconds=lease_seconds),
+                          "updated_at": now}}, session=session,
+            )
+            if result.modified_count != 1:
+                raise ParallelJobConflict("worker lease is missing, expired or no longer owned")
 
     async def checkpoint(
         self, *, organization_id: str, job_id: str, worker_id: str,
@@ -278,20 +323,33 @@ class MongoParallelJobStore:
     ) -> ParallelJob:
         safe, digest = _checkpoint(checkpoint)
         now = datetime.now(timezone.utc)
-        row = await self._jobs.find_one_and_update(
-            {"organization_id": organization_id, "job_id": job_id, "worker_id": worker_id,
-             "lease_token": lease_token, "lease_expires_at": {"$gt": now},
-             "status": "leased", "version": expected_version},
-            {"$set": {"checkpoint": safe, "checkpoint_sha256": digest, "updated_at": now},
-             "$inc": {"version": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if row is None:
-            raise ParallelJobConflict("job lease expired or checkpoint version changed")
-        await self._events.insert_one({
-            "organization_id": organization_id, "job_id": job_id, "version": row["version"],
-            "event": "job.checkpointed", "checkpoint_sha256": digest, "occurred_at": now,
-        })
+        if self._client is None or self._projects is None:
+            raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            current = await self._jobs.find_one({
+                "organization_id": organization_id, "job_id": job_id,
+                "worker_id": worker_id, "lease_token": lease_token,
+                "lease_expires_at": {"$gt": now}, "status": "leased",
+                "version": expected_version,
+            }, session=session)
+            if current is None:
+                raise ParallelJobConflict("job lease expired or checkpoint version changed")
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=current["project_id"], session=session, allow_deleting=True,
+            )
+            row = await self._jobs.find_one_and_update(
+                {"_id": current["_id"], "version": expected_version, "status": "leased"},
+                {"$set": {"checkpoint": safe, "checkpoint_sha256": digest, "updated_at": now},
+                 "$inc": {"version": 1}},
+                return_document=ReturnDocument.AFTER, session=session,
+            )
+            if row is None:
+                raise ParallelJobConflict("job lease expired or checkpoint version changed")
+            await self._events.insert_one({
+                "organization_id": organization_id, "job_id": job_id, "version": row["version"],
+                "event": "job.checkpointed", "checkpoint_sha256": digest, "occurred_at": now,
+            }, session=session)
         return self._from_doc(row)
 
     async def get_claimed(
@@ -328,38 +386,45 @@ class MongoParallelJobStore:
         if isinstance(delay_seconds, bool) or not 0 <= delay_seconds <= 900:
             raise ValueError("retry delay must be between 0 and 900 seconds")
         now = datetime.now(timezone.utc)
-        current = await self._jobs.find_one({
-            "organization_id": organization_id, "job_id": job_id,
-            "worker_id": worker_id, "lease_token": lease_token,
-            "status": "leased", "version": expected_version,
-            "lease_expires_at": {"$gt": now},
-        })
-        if current is None:
-            raise ParallelJobConflict("worker lease changed before retry scheduling")
-        cancelled = bool(current.get("cancel_requested"))
-        retryable = current["attempt"] < current["max_attempts"] and not cancelled
-        outcome = "cancelled" if cancelled else "queued" if retryable else "failed"
-        updated = await self._jobs.find_one_and_update(
-            {"_id": current["_id"], "organization_id": organization_id,
-             "version": expected_version, "worker_id": worker_id,
-             "lease_token": lease_token, "status": "leased",
-             "lease_expires_at": {"$gt": now}},
-            {"$set": {"status": outcome, "worker_id": None, "lease_token": None,
-                      "lease_expires_at": None,
-                      "available_at": now + timedelta(seconds=delay_seconds),
-                      "updated_at": now},
-             "$unset": {"cancel_requested": ""},
-             "$inc": {"version": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if updated is None:
-            raise ParallelJobConflict("job changed while retry was being scheduled")
-        await self._events.insert_one({
-            "organization_id": organization_id, "job_id": job_id,
-            "version": updated["version"],
-            "event": "job.retry_scheduled" if outcome == "queued" else f"job.{outcome}",
-            "attempt": updated["attempt"], "occurred_at": now,
-        })
+        if self._client is None or self._projects is None:
+            raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            current = await self._jobs.find_one({
+                "organization_id": organization_id, "job_id": job_id,
+                "worker_id": worker_id, "lease_token": lease_token,
+                "status": "leased", "version": expected_version,
+                "lease_expires_at": {"$gt": now},
+            }, session=session)
+            if current is None:
+                raise ParallelJobConflict("worker lease changed before retry scheduling")
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=current["project_id"], session=session,
+            )
+            cancelled = bool(current.get("cancel_requested"))
+            retryable = current["attempt"] < current["max_attempts"] and not cancelled
+            outcome = "cancelled" if cancelled else "queued" if retryable else "failed"
+            updated = await self._jobs.find_one_and_update(
+                {"_id": current["_id"], "organization_id": organization_id,
+                 "version": expected_version, "worker_id": worker_id,
+                 "lease_token": lease_token, "status": "leased",
+                 "lease_expires_at": {"$gt": now}},
+                {"$set": {"status": outcome, "worker_id": None, "lease_token": None,
+                          "lease_expires_at": None,
+                          "available_at": now + timedelta(seconds=delay_seconds),
+                          "updated_at": now},
+                 "$unset": {"cancel_requested": ""},
+                 "$inc": {"version": 1}},
+                return_document=ReturnDocument.AFTER, session=session,
+            )
+            if updated is None:
+                raise ParallelJobConflict("job changed while retry was being scheduled")
+            await self._events.insert_one({
+                "organization_id": organization_id, "job_id": job_id,
+                "version": updated["version"],
+                "event": "job.retry_scheduled" if outcome == "queued" else f"job.{outcome}",
+                "attempt": updated["attempt"], "occurred_at": now,
+            }, session=session)
         return self._from_doc(updated)
 
     async def finish(
@@ -369,43 +434,79 @@ class MongoParallelJobStore:
         if outcome not in _TERMINAL:
             raise ValueError("outcome must be completed, failed or cancelled")
         now = datetime.now(timezone.utc)
-        row = await self._jobs.find_one_and_update(
-            {"organization_id": organization_id, "job_id": job_id, "worker_id": worker_id,
-             "lease_token": lease_token, "lease_expires_at": {"$gt": now},
-             "status": "leased", "version": expected_version},
-            {"$set": {"status": outcome, "worker_id": None, "lease_token": None,
-                      "lease_expires_at": None, "updated_at": now},
-             "$inc": {"version": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if row is None:
-            raise ParallelJobConflict("job lease expired or job state changed")
-        await self._events.insert_one({
-            "organization_id": organization_id, "job_id": job_id, "version": row["version"],
-            "event": f"job.{outcome}", "occurred_at": now,
-        })
-        if outcome == "completed":
-            await self._jobs.update_many(
-                {"organization_id": organization_id, "group_id": row["group_id"],
-                 "status": "blocked", "depends_on": job_id},
-                {"$set": {"status": "queued", "available_at": now, "updated_at": now},
-                 "$inc": {"version": 1}},
+        if self._client is None or self._projects is None:
+            raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            current = await self._jobs.find_one({
+                "organization_id": organization_id, "job_id": job_id,
+                "worker_id": worker_id, "lease_token": lease_token,
+                "lease_expires_at": {"$gt": now}, "status": "leased",
+                "version": expected_version,
+            }, session=session)
+            if current is None:
+                raise ParallelJobConflict("job lease expired or job state changed")
+            project = await self._projects.find_one(
+                {"organization_id": organization_id, "project_id": current["project_id"]},
+                session=session,
             )
+            if project is None:
+                raise ParallelJobConflict("project no longer exists")
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=current["project_id"], session=session, allow_deleting=True,
+            )
+            row = await self._jobs.find_one_and_update(
+                {"_id": current["_id"], "version": expected_version, "status": "leased"},
+                {"$set": {"status": outcome, "worker_id": None, "lease_token": None,
+                          "lease_expires_at": None, "updated_at": now},
+                 "$inc": {"version": 1}},
+                return_document=ReturnDocument.AFTER, session=session,
+            )
+            if row is None:
+                raise ParallelJobConflict("job lease expired or job state changed")
+            await self._events.insert_one({
+                "organization_id": organization_id, "job_id": job_id, "version": row["version"],
+                "event": f"job.{outcome}", "occurred_at": now,
+            }, session=session)
+            if outcome == "completed":
+                if project.get("status") == "active":
+                    await self._jobs.update_many(
+                        {"organization_id": organization_id, "project_id": row["project_id"],
+                         "group_id": row["group_id"], "status": "blocked", "depends_on": job_id},
+                        {"$set": {"status": "queued", "available_at": now, "updated_at": now},
+                         "$inc": {"version": 1}}, session=session,
+                    )
+                else:
+                    await self._jobs.update_many(
+                        {"organization_id": organization_id, "project_id": row["project_id"],
+                         "group_id": row["group_id"], "status": "blocked"},
+                        {"$set": {"status": "cancelled", "cancel_requested": True,
+                                  "updated_at": now}, "$inc": {"version": 1}}, session=session,
+                    )
         return self._from_doc(row)
 
     async def cancel_group(self, *, organization_id: str, project_id: str, group_id: str) -> int:
         now = datetime.now(timezone.utc)
-        queued = await self._jobs.update_many(
-            {"organization_id": organization_id, "project_id": project_id,
-             "group_id": group_id, "status": {"$in": ["queued", "blocked"]}},
-            {"$set": {"status": "queued", "cancel_requested": True,
-                      "available_at": now, "updated_at": now}, "$inc": {"version": 1}},
-        )
-        leased = await self._jobs.update_many(
-            {"organization_id": organization_id, "project_id": project_id,
-             "group_id": group_id, "status": "leased"},
-            {"$set": {"cancel_requested": True, "updated_at": now}},
-        )
+        if self._client is None or self._projects is None:
+            raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            queued = await self._jobs.update_many(
+                {"organization_id": organization_id, "project_id": project_id,
+                 "group_id": group_id, "status": {"$in": ["queued", "blocked"]}},
+                {"$set": {"status": "queued", "cancel_requested": True,
+                          "available_at": now, "updated_at": now}, "$inc": {"version": 1}},
+                session=session,
+            )
+            leased = await self._jobs.update_many(
+                {"organization_id": organization_id, "project_id": project_id,
+                 "group_id": group_id, "status": "leased"},
+                {"$set": {"cancel_requested": True, "updated_at": now}},
+                session=session,
+            )
         return queued.modified_count + leased.modified_count
 
     async def cancellation_requested(

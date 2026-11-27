@@ -24,6 +24,29 @@ class Cursor:
         return deepcopy(self.rows[:length])
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
+class FakeProjects:
+    async def update_one(self, *_args, **_kwargs):
+        return type("Result", (), {"matched_count": 1})()
+
+
+def make_store(collection):
+    return MongoConversationStore(collection, FakeClient(), FakeProjects())
+
+
 class Collection:
     def __init__(self):
         self.documents = {}
@@ -31,7 +54,7 @@ class Collection:
     async def create_index(self, *_args, **_kwargs):
         return "index"
 
-    async def insert_one(self, document):
+    async def insert_one(self, document, **_kwargs):
         self.documents[document["conversation_id"]] = deepcopy(document)
 
     def find(self, query, _projection=None):
@@ -47,14 +70,14 @@ class Collection:
                 return deepcopy(row)
         return None
 
-    async def delete_one(self, query):
+    async def delete_one(self, query, **_kwargs):
         key = query["conversation_id"]
         row = self.documents.get(key)
         if row is None or any(row.get(field) != query[field] for field in ("organization_id", "project_id", "owner_issuer", "owner_subject")):
             return type("DeleteResult", (), {"deleted_count": 0})()
         del self.documents[key]
         return type("DeleteResult", (), {"deleted_count": 1})()
-    async def find_one_and_update(self, query, update, return_document=None):
+    async def find_one_and_update(self, query, update, return_document=None, **_kwargs):
         row = self.documents.get(query["conversation_id"])
         if row is None:
             return None
@@ -76,7 +99,7 @@ class Collection:
 @pytest.mark.asyncio
 async def test_conversation_store_scopes_reads_to_owner_project_and_organization():
     collection = Collection()
-    store = MongoConversationStore(collection)
+    store = make_store(collection)
     await store.initialize()
     created = await store.create(
         organization_id="org-a", project_id="project-a",
@@ -102,7 +125,7 @@ async def test_conversation_store_scopes_reads_to_owner_project_and_organization
 @pytest.mark.asyncio
 async def test_conversation_append_uses_optimistic_version_and_persists_messages():
     collection = Collection()
-    store = MongoConversationStore(collection)
+    store = make_store(collection)
     created = await store.create(
         organization_id="org-a", project_id="project-a",
         owner_issuer="https://id.example/", owner_subject="alice", title="Chat",
@@ -124,7 +147,7 @@ async def test_conversation_append_uses_optimistic_version_and_persists_messages
 @pytest.mark.asyncio
 async def test_conversation_turn_persists_validated_mode_metadata():
     collection = Collection()
-    store = MongoConversationStore(collection)
+    store = make_store(collection)
     created = await store.create(
         organization_id="org-a", project_id="project-a",
         owner_issuer="https://id.example/", owner_subject="alice", title="Mode history",
@@ -143,7 +166,7 @@ async def test_conversation_turn_persists_validated_mode_metadata():
 @pytest.mark.asyncio
 async def test_conversation_list_is_owner_scoped_and_bounded():
     collection = Collection()
-    store = MongoConversationStore(collection)
+    store = make_store(collection)
     await store.create(
         organization_id="org-a", project_id="project-a",
         owner_issuer="https://id.example/", owner_subject="alice", title="A",
@@ -163,7 +186,7 @@ async def test_conversation_list_is_owner_scoped_and_bounded():
 @pytest.mark.asyncio
 async def test_conversation_store_rejects_invalid_title_and_message():
     collection = Collection()
-    store = MongoConversationStore(collection)
+    store = make_store(collection)
     with pytest.raises(ValueError):
         await store.create(
             organization_id="org-a", project_id="project-a",
@@ -184,7 +207,7 @@ async def test_conversation_store_rejects_invalid_title_and_message():
 @pytest.mark.asyncio
 async def test_conversation_delete_is_owner_scoped():
     collection = Collection()
-    store = MongoConversationStore(collection)
+    store = make_store(collection)
     created = await store.create(
         organization_id="org-a", project_id="project-a",
         owner_issuer="https://id.example/", owner_subject="alice", title="Delete me",
@@ -201,7 +224,7 @@ async def test_conversation_delete_is_owner_scoped():
 @pytest.mark.asyncio
 async def test_conversation_store_redacts_secret_like_titles_and_messages():
     collection = Collection()
-    store = MongoConversationStore(collection)
+    store = make_store(collection)
     created = await store.create(
         organization_id="org-a", project_id="project-a",
         owner_issuer="https://id.example/", owner_subject="alice",

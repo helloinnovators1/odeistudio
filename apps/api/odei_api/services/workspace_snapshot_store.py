@@ -9,6 +9,8 @@ from uuid import uuid4
 from gridfs.asynchronous import AsyncGridFSBucket
 from gridfs.errors import NoFile
 
+from odei_api.services.project_lifecycle import fence_project_write
+
 
 class SnapshotStoreError(RuntimeError):
     """Snapshot object storage is unavailable or inconsistent."""
@@ -19,6 +21,8 @@ class MongoWorkspaceSnapshotStore:
 
     def __init__(self, database: Any):
         self._metadata = database["workspace_snapshots"]
+        self._projects = database["projects"]
+        self._client = database.client
         self._runs = database["execution_runs"]
         self._bucket = AsyncGridFSBucket(database, bucket_name="workspace_snapshot_blobs")
 
@@ -68,7 +72,12 @@ class MongoWorkspaceSnapshotStore:
             "state": "available",
         }
         try:
-            await self._metadata.insert_one(document)
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session,
+                )
+                await self._metadata.insert_one(document, session=session)
         except Exception:
             await self._bucket.delete(blob_id)
             raise
@@ -120,11 +129,32 @@ class MongoWorkspaceSnapshotStore:
         })
         if document is None:
             return False
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session, allow_deleting=True,
+            )
+            active_run = await self._runs.find_one(
+                {"snapshot_id": snapshot_id,
+                 "status": {"$in": ["queued", "leased", "running", "collecting"]}},
+                session=session,
+            )
+            if active_run is not None:
+                return False
+            await self._metadata.update_one(
+                {"_id": snapshot_id, "organization_id": organization_id,
+                 "project_id": project_id},
+                {"$set": {"state": "deleting", "deleting_at": datetime.now(timezone.utc)}},
+                session=session,
+            )
         try:
             await self._bucket.delete(document["blob_id"])
         except NoFile:
             pass
-        await self._metadata.delete_one({"_id": snapshot_id, "organization_id": organization_id})
+        await self._metadata.delete_one({
+            "_id": snapshot_id, "organization_id": organization_id,
+            "project_id": project_id, "state": "deleting",
+        })
         return True
 
     async def delete_expired(self, *, limit: int = 100) -> int:
@@ -135,18 +165,35 @@ class MongoWorkspaceSnapshotStore:
         rows = await cursor.to_list(length=limit)
         deleted = 0
         for row in rows:
-            active_run = await self._runs.find_one({
-                "snapshot_id": row["_id"],
-                "status": {"$in": ["queued", "leased", "running", "collecting"]},
-            })
-            if active_run is not None:
-                continue
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=row["organization_id"],
+                    project_id=row["project_id"], session=session, allow_deleting=True,
+                )
+                active_run = await self._runs.find_one(
+                    {"snapshot_id": row["_id"],
+                     "status": {"$in": ["queued", "leased", "running", "collecting"]}},
+                    session=session,
+                )
+                if active_run is not None:
+                    continue
+                marked = await self._metadata.update_one(
+                    {"_id": row["_id"], "expires_at": {"$lte": now},
+                     "state": {"$in": ["available", "deleting"]}},
+                    {"$set": {"state": "deleting", "deleting_at": now}},
+                    session=session,
+                )
+                if not marked.matched_count:
+                    continue
             try:
                 await self._bucket.delete(row["blob_id"])
             except NoFile:
                 pass
-            await self._metadata.delete_one({"_id": row["_id"], "expires_at": {"$lte": now}})
-            deleted += 1
+            removed = await self._metadata.delete_one({
+                "_id": row["_id"], "organization_id": row["organization_id"],
+                "project_id": row["project_id"], "state": "deleting",
+            })
+            deleted += removed.deleted_count
         return deleted
 
     @staticmethod

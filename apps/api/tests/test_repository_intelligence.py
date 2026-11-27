@@ -104,6 +104,8 @@ class Collection:
 class Database:
     def __init__(self, collections):
         self.collections = collections
+        self.client = object()
+        self.collections.setdefault("projects", Collection())
 
     def __getitem__(self, key):
         return self.collections.setdefault(key, Collection())

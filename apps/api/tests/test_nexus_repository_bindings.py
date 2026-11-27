@@ -10,6 +10,20 @@ from odei_api.security.auth import Principal, get_current_principal
 from odei_api.services.github_app import VerifiedGitHubRepository
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
 class Collection:
     def __init__(self, rows=()):
         self.rows = [dict(row) for row in rows]
@@ -46,27 +60,29 @@ class Collection:
                 return dict(row)
         return None
 
-    async def insert_one(self, document):
+    async def insert_one(self, document, **_kwargs):
         self.rows.append(dict(document))
 
-    async def update_one(self, query, update):
+    async def update_one(self, query, update, **_kwargs):
         for row in self.rows:
             if self._matches(row, query):
                 for key in update.get("$unset", {}):
                     row.pop(key, None)
                 for key, value in update.get("$set", {}).items():
                     row[key] = value
-                return SimpleNamespace(modified_count=1)
-        return SimpleNamespace(modified_count=0)
+                for key, amount in update.get("$inc", {}).items():
+                    row[key] = row.get(key, 0) + amount
+                return SimpleNamespace(modified_count=1, matched_count=1)
+        return SimpleNamespace(modified_count=0, matched_count=0)
 
-    async def replace_one(self, query, document, upsert=False):
+    async def replace_one(self, query, document, upsert=False, **_kwargs):
         for index, row in enumerate(self.rows):
             if self._matches(row, query):
                 self.rows[index] = dict(document)
                 return SimpleNamespace(modified_count=1)
         return SimpleNamespace(modified_count=0)
 
-    async def delete_one(self, query):
+    async def delete_one(self, query, **_kwargs):
         for index, row in enumerate(self.rows):
             if self._matches(row, query):
                 self.rows.pop(index)
@@ -76,6 +92,7 @@ class Collection:
 
 class Database:
     def __init__(self):
+        self.client = FakeClient()
         self.collections = {
             "organization_memberships": Collection([{
                 "organization_id": "org", "identity_issuer": "https://id.example/",
@@ -116,10 +133,11 @@ class GitHub:
 
 
 def install(principal):
-    keys = ("mongo_database", "audit_event_store", "github_app_client")
+    keys = ("mongo_database", "mongo_client", "audit_event_store", "github_app_client")
     previous = {key: getattr(app.state, key, None) for key in keys}
     database, audit = Database(), Audit()
     app.state.mongo_database = database
+    app.state.mongo_client = database.client
     app.state.audit_event_store = audit
     app.state.github_app_client = GitHub()
     app.dependency_overrides[get_current_principal] = lambda: principal

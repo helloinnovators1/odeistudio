@@ -31,6 +31,7 @@ async def test_task_lifecycle_and_audit_share_real_mongodb_transaction():
         database["task_events"],
         client,
         audit_store=audit_store,
+        projects=database["projects"],
     )
     task_id = f"task-{uuid4().hex}"
     base_audit_event = {
@@ -47,6 +48,11 @@ async def test_task_lifecycle_and_audit_share_real_mongodb_transaction():
         topology = await client.admin.command("hello")
         assert topology.get("setName") or topology.get("msg") == "isdbgrid"
 
+        await database["projects"].insert_one({
+            "organization_id": "org-integration",
+            "project_id": "project-integration",
+            "status": "active",
+        })
         await audit_store.initialize()
         await task_store.initialize()
         task = TaskRecord(

@@ -234,6 +234,50 @@ async def get_repository_index_state(
     return {**_active_state_response(state), "stale": stale}
 
 
+@router.delete(
+    f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/repository-index",
+    tags=["repository-intelligence"],
+)
+async def delete_repository_index(
+    request: Request,
+    organization_id: str = ApiPath(min_length=1, max_length=128),
+    project_id: str = ApiPath(min_length=1, max_length=128),
+    principal: Principal = principal_dependency,
+) -> dict:
+    """Delete all persisted index revisions; only the project owner may do so."""
+    project = await _authorize(request, principal, organization_id, project_id)
+    if (
+        project.get("owner_issuer") != principal.issuer
+        or project.get("owner_subject") != principal.subject
+    ):
+        await _audit(
+            request, principal, organization_id, project_id,
+            "repository.index.delete", {"outcome": "denied", "reason": "project_owner_required"},
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "PROJECT_OWNER_REQUIRED", "message": "Only the project owner may delete its repository index."},
+        )
+    store = getattr(request.app.state, "repository_index_store", None)
+    if store is None:
+        raise HTTPException(status_code=503, detail={"code": "REPOSITORY_STORE_UNAVAILABLE"})
+    try:
+        deleted = await store.delete_project_index(
+            organization_id=organization_id, project_id=project_id,
+        )
+    except PyMongoError as exc:
+        logger.error("Repository index deletion failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "REPOSITORY_INDEX_DELETE_INCOMPLETE", "message": "Index deletion is incomplete and can be safely retried."},
+        ) from exc
+    await _audit(
+        request, principal, organization_id, project_id,
+        "repository.index.delete", {"deleted": deleted},
+    )
+    return {"deleted": True, "organization_id": organization_id, "project_id": project_id, "collections": deleted}
+
+
 @router.post(
     f"{settings.api_prefix}/organizations/{{organization_id}}/projects/{{project_id}}/repository-index",
     tags=["repository-intelligence"],

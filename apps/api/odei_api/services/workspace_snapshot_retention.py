@@ -1,0 +1,36 @@
+"""Background retention worker for immutable workspace snapshots."""
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+from pymongo.errors import PyMongoError
+
+logger = logging.getLogger(__name__)
+
+
+async def run_snapshot_retention(
+    snapshot_store: Any, *, interval_seconds: float = 300.0, batch_size: int = 100,
+) -> None:
+    """Repeatedly delete expired snapshots without interrupting API availability.
+
+    MongoWorkspaceSnapshotStore.delete_expired is idempotent: it tolerates an
+    already-missing GridFS blob and leaves snapshots referenced by active runs
+    untouched. A failed batch is retried on the next interval.
+    """
+    if interval_seconds <= 0 or not 1 <= batch_size <= 1000:
+        raise ValueError("snapshot retention worker bounds are invalid")
+    while True:
+        try:
+            deleted = await snapshot_store.delete_expired(limit=batch_size)
+            if deleted:
+                logger.info("Expired workspace snapshot retention removed %d snapshot(s)", deleted)
+        except asyncio.CancelledError:
+            raise
+        except PyMongoError as exc:
+            logger.warning(
+                "Expired workspace snapshot cleanup failed (%s); it will be retried",
+                type(exc).__name__,
+            )
+        await asyncio.sleep(interval_seconds)

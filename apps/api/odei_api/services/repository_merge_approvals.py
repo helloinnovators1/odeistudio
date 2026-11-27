@@ -9,6 +9,8 @@ from uuid import uuid4
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from odei_api.services.project_lifecycle import fence_project_write
+
 
 class RepositoryMergeApprovalConflict(RuntimeError):
     """A merge approval is expired, already used, or conflicts with another approval."""
@@ -17,8 +19,10 @@ class RepositoryMergeApprovalConflict(RuntimeError):
 class MongoRepositoryMergeApprovalStore:
     """Stores one immutable merge approval per execution run."""
 
-    def __init__(self, collection: Any) -> None:
+    def __init__(self, collection: Any, client: Any | None = None, projects: Any | None = None) -> None:
         self._approvals = collection
+        self._client = client
+        self._projects = projects
 
     async def initialize(self) -> None:
         await self._approvals.create_index(
@@ -63,7 +67,14 @@ class MongoRepositoryMergeApprovalStore:
             "merge_commit_sha": None, "failure_code": None,
         }
         try:
-            await self._approvals.insert_one(document)
+            if self._client is None or self._projects is None:
+                raise RuntimeError("merge approvals require transactional project lifecycle fencing")
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session,
+                )
+                await self._approvals.insert_one(document, session=session)
         except DuplicateKeyError as exc:
             raise RepositoryMergeApprovalConflict(
                 "A merge approval has already been created for this execution",
@@ -82,24 +93,31 @@ class MongoRepositoryMergeApprovalStore:
         task_id: str, run_id: str, actor_issuer: str, actor_subject: str,
     ) -> dict[str, Any] | None:
         now = datetime.now(timezone.utc)
-        return await self._approvals.find_one_and_update(
-            {
-                "_id": approval_id, "organization_id": organization_id,
-                "project_id": project_id, "task_id": task_id, "run_id": run_id,
-                "status": "pending", "expires_at": {"$gt": now},
-                "created_by_issuer": actor_issuer,
-                "created_by_subject": actor_subject,
-            },
-            {
-                "$set": {
-                    "status": "consuming", "consumed_at": now,
-                    "consumed_by_issuer": actor_issuer,
-                    "consumed_by_subject": actor_subject,
+        if self._client is None or self._projects is None:
+            raise RuntimeError("merge approvals require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            return await self._approvals.find_one_and_update(
+                {
+                    "_id": approval_id, "organization_id": organization_id,
+                    "project_id": project_id, "task_id": task_id, "run_id": run_id,
+                    "status": "pending", "expires_at": {"$gt": now},
+                    "created_by_issuer": actor_issuer,
+                    "created_by_subject": actor_subject,
                 },
-                "$inc": {"version": 1},
-            },
-            return_document=ReturnDocument.AFTER,
-        )
+                {
+                    "$set": {
+                        "status": "consuming", "consumed_at": now,
+                        "consumed_by_issuer": actor_issuer,
+                        "consumed_by_subject": actor_subject,
+                    },
+                    "$inc": {"version": 1},
+                },
+                return_document=ReturnDocument.AFTER, session=session,
+            )
 
     async def finish(
         self, *, approval_id: str, organization_id: str, project_id: str,
@@ -117,21 +135,28 @@ class MongoRepositoryMergeApprovalStore:
             not isinstance(failure_code, str) or not re.fullmatch(r"[A-Z0-9_]{1,64}", failure_code)
         ):
             raise ValueError("merge approval failure code is invalid")
-        updated = await self._approvals.find_one_and_update(
-            {
-                "_id": approval_id, "organization_id": organization_id,
-                "project_id": project_id, "status": "consuming",
-            },
-            {
-                "$set": {
-                    "status": status, "finished_at": datetime.now(timezone.utc),
-                    "merge_commit_sha": merge_commit_sha,
-                    "failure_code": failure_code,
+        if self._client is None or self._projects is None:
+            raise RuntimeError("merge approvals require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session, allow_deleting=True,
+            )
+            updated = await self._approvals.find_one_and_update(
+                {
+                    "_id": approval_id, "organization_id": organization_id,
+                    "project_id": project_id, "status": "consuming",
                 },
-                "$inc": {"version": 1},
-            },
-            return_document=ReturnDocument.AFTER,
-        )
+                {
+                    "$set": {
+                        "status": status, "finished_at": datetime.now(timezone.utc),
+                        "merge_commit_sha": merge_commit_sha,
+                        "failure_code": failure_code,
+                    },
+                    "$inc": {"version": 1},
+                },
+                return_document=ReturnDocument.AFTER, session=session,
+            )
         if updated is None:
             raise RepositoryMergeApprovalConflict("Merge approval is no longer consuming")
         return updated

@@ -16,6 +16,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from odei_api.config import get_settings
 from odei_api.security.auth import Principal, get_current_principal, require_organization_membership
+from odei_api.services.project_lifecycle import fence_project_write
 
 router = APIRouter()
 settings = get_settings()
@@ -356,6 +357,10 @@ async def add_project_member(
             "status": "active", "updated_at": now,
         }
         async with client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                database["projects"], organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
             existing = await database["project_memberships"].find_one({
                 "organization_id": organization_id, "project_id": project_id,
                 "identity_issuer": payload.identity_issuer,
@@ -418,6 +423,10 @@ async def remove_project_member(
     client = request.app.state.mongo_client
     try:
         async with client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                database["projects"], organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
             result = await database["project_memberships"].update_one({
                 "organization_id": organization_id, "project_id": project_id,
                 "identity_issuer": payload.identity_issuer,
