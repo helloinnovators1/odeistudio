@@ -141,6 +141,16 @@ def _check_type(kernel32, handle, *, directory: bool) -> None:
         raise UnsafeWindowsPath("Filesystem object has an unexpected type")
 
 
+def _file_identity(kernel32, handle) -> tuple[int, bytes]:
+    """Return the native volume/file ID for one already-open handle."""
+    info = _FileIdInfo()
+    if not kernel32.GetFileInformationByHandleEx(
+        handle, _FILE_ID_INFO_CLASS, ctypes.byref(info), ctypes.sizeof(info)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return int(info.VolumeSerialNumber), bytes(info.FileId)
+
+
 def _open_child(kernel32, ntdll, parent, name: str, *, directory: bool, allow_write: bool = False):
     if not name or "\\" in name or "/" in name or name in {".", ".."}:
         raise UnsafeWindowsPath("Invalid path component")
@@ -475,6 +485,15 @@ FILE_RENAME_INFORMATION_EX = 65
 class _FileDispositionInfo(ctypes.Structure):
     _fields_ = [("DeleteFile", ctypes.c_ubyte)]
 
+class _FileIdInfo(ctypes.Structure):
+    _fields_ = [
+        ("VolumeSerialNumber", ctypes.c_ulonglong),
+        ("FileId", ctypes.c_ubyte * 16),
+    ]
+
+
+_FILE_ID_INFO_CLASS = 18
+
 
 def _open_relative_parent(root_handle, parts: tuple[str, ...]):
     kernel32, ntdll = _apis()
@@ -738,6 +757,7 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
     target_name = parts[-1]
     temporary_name = ".odei-" + secrets.token_hex(16) + ".tmp"
     temporary_handle = None
+    temporary_installed = False
     try:
         stage = "read-current-target"
         current = _read_windows_file(root_handle, parts)
@@ -789,9 +809,32 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                 latest = _read_windows_file(root_handle, parts)
                 if latest is not None:
                     raise UnsafeWindowsPath("A file appeared at the approved create path")
-                _rename_relative(
-                    kernel32, temporary_handle, parent, target_name, replace=False,
-                )
+                try:
+                    _rename_relative(
+                        kernel32, temporary_handle, parent, target_name, replace=False,
+                    )
+                except Exception:
+                    # NtSetInformationFile may have completed the rename before
+                    # a wrapper/late error is surfaced. Compare native file IDs,
+                    # not just content hashes, before deciding whether the staged
+                    # handle is still a temporary file that should be deleted.
+                    try:
+                        installed_handle = _open_child(
+                            kernel32, ntdll, parent, target_name, directory=False,
+                        )
+                    except OSError:
+                        pass
+                    else:
+                        try:
+                            temporary_installed = (
+                                _file_identity(kernel32, installed_handle)
+                                == _file_identity(kernel32, temporary_handle)
+                            )
+                        finally:
+                            kernel32.CloseHandle(installed_handle)
+                    raise
+                else:
+                    temporary_installed = True
             else:
                 stage = "open-target-for-replace"
                 try:
@@ -823,9 +866,28 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
                     # delete sharing, so the replacement is performed against the
                     # exact file that was just hash-checked.
                     stage = "rename-staged-file-over-target"
-                    _rename_relative(
-                        kernel32, temporary_handle, parent, target_name, replace=True,
-                    )
+                    try:
+                        _rename_relative(
+                            kernel32, temporary_handle, parent, target_name, replace=True,
+                        )
+                    except Exception:
+                        try:
+                            installed_handle = _open_child(
+                                kernel32, ntdll, parent, target_name, directory=False,
+                            )
+                        except OSError:
+                            pass
+                        else:
+                            try:
+                                temporary_installed = (
+                                    _file_identity(kernel32, installed_handle)
+                                    == _file_identity(kernel32, temporary_handle)
+                                )
+                            finally:
+                                kernel32.CloseHandle(installed_handle)
+                        raise
+                    else:
+                        temporary_installed = True
                 finally:
                     if descriptor is not None:
                         try:
@@ -851,10 +913,11 @@ def apply_single_file_patch_from_handle(root_handle, item: dict, parsed) -> dict
         ) from exc
     finally:
         if temporary_handle is not None:
-            try:
-                _mark_for_delete(kernel32, temporary_handle)
-            except OSError:
-                pass
+            if not temporary_installed:
+                try:
+                    _mark_for_delete(kernel32, temporary_handle)
+                except OSError:
+                    pass
             kernel32.CloseHandle(temporary_handle)
         for handle in reversed(directories):
             kernel32.CloseHandle(handle)
