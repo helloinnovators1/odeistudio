@@ -134,6 +134,13 @@ class MongoWorkspaceSnapshotStore:
                 self._projects, organization_id=organization_id,
                 project_id=project_id, session=session, allow_deleting=True,
             )
+            active_run = await self._runs.find_one(
+                {"snapshot_id": snapshot_id,
+                 "status": {"$in": ["queued", "leased", "running", "collecting"]}},
+                session=session,
+            )
+            if active_run is not None:
+                return False
             await self._metadata.update_one(
                 {"_id": snapshot_id, "organization_id": organization_id,
                  "project_id": project_id},
@@ -158,17 +165,18 @@ class MongoWorkspaceSnapshotStore:
         rows = await cursor.to_list(length=limit)
         deleted = 0
         for row in rows:
-            active_run = await self._runs.find_one({
-                "snapshot_id": row["_id"],
-                "status": {"$in": ["queued", "leased", "running", "collecting"]},
-            })
-            if active_run is not None:
-                continue
             async with self._client.start_session() as session, await session.start_transaction():
                 await fence_project_write(
                     self._projects, organization_id=row["organization_id"],
                     project_id=row["project_id"], session=session, allow_deleting=True,
                 )
+                active_run = await self._runs.find_one(
+                    {"snapshot_id": row["_id"],
+                     "status": {"$in": ["queued", "leased", "running", "collecting"]}},
+                    session=session,
+                )
+                if active_run is not None:
+                    continue
                 marked = await self._metadata.update_one(
                     {"_id": row["_id"], "expires_at": {"$lte": now},
                      "state": {"$in": ["available", "deleting"]}},
