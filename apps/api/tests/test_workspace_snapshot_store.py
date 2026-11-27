@@ -303,3 +303,59 @@ async def test_snapshot_put_rejects_invalid_metadata_before_gridfs_upload(
 
     with pytest.raises(ValueError, match=message):
         await store.put(**arguments)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"retention_days": True}, "retention"),
+        ({"retention_days": 0}, "retention"),
+        ({"retention_days": 31}, "retention"),
+        ({"organization_id": " org"}, "organization_id"),
+        ({"project_id": "project "}, "project_id"),
+        ({"task_id": ""}, "task_id"),
+        ({"owner_issuer": "issuer\\n"}, "owner_issuer"),
+        ({"owner_subject": "x" * 129}, "owner_subject"),
+    ],
+)
+async def test_snapshot_put_rejects_malformed_retention_and_identifiers_before_upload(
+    monkeypatch, overrides, message,
+):
+    database = Database()
+
+    class RejectingBucket:
+        async def upload_from_stream(self, *_args, **_kwargs):
+            raise AssertionError("invalid metadata must be rejected before GridFS upload")
+
+    monkeypatch.setattr(
+        snapshot_module, "AsyncGridFSBucket",
+        lambda _database, bucket_name: RejectingBucket(),
+    )
+    store = MongoWorkspaceSnapshotStore(database)
+    arguments = {
+        "organization_id": "org",
+        "project_id": "project",
+        "task_id": "task",
+        "owner_issuer": "issuer",
+        "owner_subject": "subject",
+        "archive": b"zip-data",
+        "sha256": "0" * 64,
+        "file_count": 1,
+        "total_bytes": 10,
+        "retention_days": 7,
+    }
+    arguments.update(overrides)
+
+    with pytest.raises(ValueError, match=message):
+        await store.put(**arguments)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [True, False, 0, 1001, 1.5, "10"])
+async def test_snapshot_retention_rejects_invalid_batch_limits(limit):
+    database = Database()
+    store = MongoWorkspaceSnapshotStore(database)
+
+    with pytest.raises(ValueError, match="batch limit"):
+        await store.delete_expired(limit=limit)
