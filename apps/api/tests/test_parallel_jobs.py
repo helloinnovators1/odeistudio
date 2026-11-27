@@ -32,19 +32,38 @@ class Cursor:
         return self.rows[:length]
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
+class FakeProjects:
+    async def update_one(self, *_args, **_kwargs):
+        return Result(1)
+
+
 class Collection:
     def __init__(self):
         self.rows = {}
         self.events = []
     async def create_index(self, *_args, **_kwargs):
         return None
-    async def insert_one(self, row):
+    async def insert_one(self, row, **_kwargs):
         self.rows[row.get("_id", row.get("job_id"))] = dict(row)
         self.events.append(dict(row))
-    async def insert_many(self, rows, ordered=True):
+    async def insert_many(self, rows, ordered=True, **_kwargs):
         for row in rows:
             self.rows[row["_id"]] = dict(row)
-    async def delete_one(self, query):
+    async def delete_one(self, query, **_kwargs):
         self.rows.pop(query["_id"], None)
     def find(self, query):
         rows = list(self.rows.values())
@@ -58,10 +77,10 @@ class Collection:
             elif value is not None and not isinstance(value, dict):
                 rows = [r for r in rows if (value in r.get(key, []) if isinstance(r.get(key), list) else r.get(key) == value)]
         return Cursor(rows)
-    async def find_one(self, query):
+    async def find_one(self, query, **_kwargs):
         rows = await self.find(query).to_list(100)
         return rows[0] if rows else None
-    async def find_one_and_update(self, query, update, return_document=None):
+    async def find_one_and_update(self, query, update, return_document=None, **_kwargs):
         row = await self.find_one(query)
         if row is None:
             return None
@@ -69,7 +88,7 @@ class Collection:
         for key, amount in update.get("$inc", {}).items():
             row[key] = row.get(key, 0) + amount
         return row
-    async def update_one(self, query, update):
+    async def update_one(self, query, update, **_kwargs):
         row = await self.find_one(query)
         if row is None:
             return Result(0)
@@ -77,7 +96,7 @@ class Collection:
         for key, amount in update.get("$inc", {}).items():
             row[key] = row.get(key, 0) + amount
         return Result()
-    async def update_many(self, query, update):
+    async def update_many(self, query, update, **_kwargs):
         rows = await self.find(query).to_list(1000)
         for row in rows:
             row.update(update.get("$set", {}))
@@ -89,7 +108,7 @@ class Collection:
 @pytest.mark.asyncio
 async def test_parallel_jobs_claim_checkpoint_and_resume_with_lease():
     jobs, groups, events = Collection(), Collection(), Collection()
-    store = MongoParallelJobStore(jobs, groups, events)
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), FakeProjects())
     await store.initialize()
     await store.create_group(
         organization_id="org", project_id="project", group_id="group",
@@ -143,7 +162,7 @@ async def test_checkpoint_rejects_stale_lease_and_bounds_payload():
 
 @pytest.mark.asyncio
 async def test_dependency_cycles_and_unknown_dependencies_are_rejected():
-    store = MongoParallelJobStore(Collection(), Collection(), Collection())
+    store = MongoParallelJobStore(Collection(), Collection(), Collection(), FakeClient(), FakeProjects())
     with pytest.raises(ValueError, match="dependencies"):
         await store.create_group(
             organization_id="org", project_id="project", group_id="g",
