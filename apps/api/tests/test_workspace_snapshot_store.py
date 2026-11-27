@@ -90,8 +90,12 @@ class Collection:
 class Bucket:
     def __init__(self):
         self.deleted = []
+        self.fail_next = False
 
     async def delete(self, blob_id):
+        if self.fail_next:
+            self.fail_next = False
+            raise OSError("injected GridFS delete failure")
         if blob_id in self.deleted:
             raise NoFile("already deleted")
         self.deleted.append(blob_id)
@@ -164,3 +168,28 @@ async def test_expired_snapshot_cleanup_is_retry_safe_after_blob_was_removed(mon
 
     assert deleted == 1
     assert database["workspace_snapshots"].rows == []
+
+
+@pytest.mark.asyncio
+async def test_expired_snapshot_cleanup_resumes_after_gridfs_delete_failure(monkeypatch):
+    database = Database()
+    bucket = Bucket()
+    bucket.fail_next = True
+    monkeypatch.setattr(
+        snapshot_module, "AsyncGridFSBucket",
+        lambda _database, bucket_name: bucket,
+    )
+    row = {
+        "_id": "snapshot-fault", "blob_id": "blob-fault",
+        "organization_id": "org", "project_id": "project", "state": "available",
+        "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
+    }
+    database["workspace_snapshots"].rows.append(row)
+    store = MongoWorkspaceSnapshotStore(database)
+
+    with pytest.raises(OSError, match="injected GridFS"):
+        await store.delete_expired(limit=10)
+    assert database["workspace_snapshots"].rows[0]["state"] == "deleting"
+    assert await store.delete_expired(limit=10) == 1
+    assert database["workspace_snapshots"].rows == []
+    assert bucket.deleted == ["blob-fault"]
