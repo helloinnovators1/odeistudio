@@ -79,7 +79,25 @@ class MongoWorkspaceSnapshotStore:
                 )
                 await self._metadata.insert_one(document, session=session)
         except Exception:
-            await self._bucket.delete(blob_id)
+            # A transaction commit can have an unknown outcome when the
+            # connection drops after MongoDB commits. Never compensate-delete
+            # a blob until the metadata lookup proves it is unreferenced.
+            try:
+                committed = await self._metadata.find_one({
+                    "_id": snapshot_id,
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                    "blob_id": blob_id,
+                })
+            except Exception:
+                # Preserve the blob when metadata state cannot be established;
+                # an orphan is recoverable, a dangling committed reference is not.
+                raise
+            if committed is None:
+                try:
+                    await self._bucket.delete(blob_id)
+                except NoFile:
+                    pass
             raise
         return self.public_metadata(document)
 
