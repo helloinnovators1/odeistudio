@@ -161,7 +161,12 @@ class MongoWorkspaceSnapshotStore:
         if not 1 <= limit <= 1000:
             raise ValueError("deletion batch limit is invalid")
         now = datetime.now(timezone.utc)
-        cursor = self._metadata.find({"expires_at": {"$lte": now}}).limit(limit)
+        cursor = self._metadata.find({
+            "$or": [
+                {"state": "deleting"},
+                {"expires_at": {"$lte": now}},
+            ],
+        }).limit(limit)
         rows = await cursor.to_list(length=limit)
         deleted = 0
         for row in rows:
@@ -178,8 +183,12 @@ class MongoWorkspaceSnapshotStore:
                 if active_run is not None:
                     continue
                 marked = await self._metadata.update_one(
-                    {"_id": row["_id"], "expires_at": {"$lte": now},
-                     "state": {"$in": ["available", "deleting"]}},
+                    {"_id": row["_id"],
+                     "state": {"$in": ["available", "deleting"]},
+                     "$or": [
+                         {"state": "deleting"},
+                         {"expires_at": {"$lte": now}},
+                     ]},
                     {"$set": {"state": "deleting", "deleting_at": now}},
                     session=session,
                 )
