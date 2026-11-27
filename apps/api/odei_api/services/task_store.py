@@ -23,6 +23,8 @@ from odei_api.services.tasks import (
 
 class MongoTaskStore:
     def __init__(self, collection: Any, events_collection: Any, client: Any, audit_store: Any | None = None, projects: Any | None = None):
+        if client is None or projects is None:
+            raise ValueError("MongoTaskStore requires a MongoDB client and projects collection for lifecycle fencing")
         self._collection = collection
         self._events = events_collection
         self._client = client
