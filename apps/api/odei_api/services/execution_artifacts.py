@@ -41,12 +41,27 @@ class MongoExecutionArtifactStore:
         run_id: str, exit_code: int, duration_ms: int, timed_out: bool,
         stdout: str, stderr: str, stdout_truncated: bool, stderr_truncated: bool,
     ) -> dict[str, Any]:
+        for field_name, value in (
+            ("organization_id", organization_id), ("project_id", project_id),
+            ("task_id", task_id), ("run_id", run_id),
+        ):
+            if not isinstance(value, str) or not value or value != value.strip() or len(value) > 128:
+                raise ValueError(f"execution artifact {field_name} is invalid")
+        if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not -255 <= exit_code <= 255:
+            raise ValueError("execution exit code is invalid")
+        if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 0 <= duration_ms <= 600_000:
+            raise ValueError("execution duration is invalid")
+        for field_name, value in (
+            ("timed_out", timed_out),
+            ("stdout_truncated", stdout_truncated),
+            ("stderr_truncated", stderr_truncated),
+        ):
+            if not isinstance(value, bool):
+                raise ValueError(f"execution artifact {field_name} must be boolean")
         if not isinstance(stdout, str) or not isinstance(stderr, str):
             raise TypeError("execution output must be text")
         if len(stdout.encode("utf-8")) > 1_048_576 or len(stderr.encode("utf-8")) > 1_048_576:
             raise ValueError("execution output exceeds its storage limit")
-        if not 0 <= duration_ms <= 600_000:
-            raise ValueError("execution duration is invalid")
         existing = await self._metadata.find_one({
             "organization_id": organization_id, "project_id": project_id,
             "task_id": task_id, "run_id": run_id,
