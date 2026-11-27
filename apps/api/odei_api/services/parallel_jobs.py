@@ -445,6 +445,12 @@ class MongoParallelJobStore:
             }, session=session)
             if current is None:
                 raise ParallelJobConflict("job lease expired or job state changed")
+            project = await self._projects.find_one(
+                {"organization_id": organization_id, "project_id": current["project_id"]},
+                session=session,
+            )
+            if project is None:
+                raise ParallelJobConflict("project no longer exists")
             await fence_project_write(
                 self._projects, organization_id=organization_id,
                 project_id=current["project_id"], session=session, allow_deleting=True,
@@ -463,12 +469,20 @@ class MongoParallelJobStore:
                 "event": f"job.{outcome}", "occurred_at": now,
             }, session=session)
             if outcome == "completed":
-                await self._jobs.update_many(
-                    {"organization_id": organization_id, "project_id": row["project_id"],
-                     "group_id": row["group_id"], "status": "blocked", "depends_on": job_id},
-                    {"$set": {"status": "queued", "available_at": now, "updated_at": now},
-                     "$inc": {"version": 1}}, session=session,
-                )
+                if project.get("status") == "active":
+                    await self._jobs.update_many(
+                        {"organization_id": organization_id, "project_id": row["project_id"],
+                         "group_id": row["group_id"], "status": "blocked", "depends_on": job_id},
+                        {"$set": {"status": "queued", "available_at": now, "updated_at": now},
+                         "$inc": {"version": 1}}, session=session,
+                    )
+                else:
+                    await self._jobs.update_many(
+                        {"organization_id": organization_id, "project_id": row["project_id"],
+                         "group_id": row["group_id"], "status": "blocked"},
+                        {"$set": {"status": "cancelled", "cancel_requested": True,
+                                  "updated_at": now}, "$inc": {"version": 1}}, session=session,
+                    )
         return self._from_doc(row)
 
     async def cancel_group(self, *, organization_id: str, project_id: str, group_id: str) -> int:
