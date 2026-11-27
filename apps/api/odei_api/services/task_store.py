@@ -12,6 +12,8 @@ from uuid import uuid4
 
 from pymongo import ReturnDocument
 
+from odei_api.services.project_lifecycle import fence_project_write
+
 from odei_api.services.tasks import (
     InvalidTaskTransition,
     TaskRecord,
@@ -21,11 +23,12 @@ from odei_api.services.tasks import (
 
 
 class MongoTaskStore:
-    def __init__(self, collection: Any, events_collection: Any, client: Any, audit_store: Any | None = None):
+    def __init__(self, collection: Any, events_collection: Any, client: Any, audit_store: Any | None = None, projects: Any | None = None):
         self._collection = collection
         self._events = events_collection
         self._client = client
         self._audit_store = audit_store
+        self._projects = projects
 
     async def _append_audit_in_transaction(
         self, audit_event: Mapping[str, Any] | None, session: Any
@@ -77,6 +80,11 @@ class MongoTaskStore:
             "$set": {"repair_iteration_updated_at": now},
         }
         async with self._client.start_session() as session, await session.start_transaction():
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session,
+                )
             updated = await self._collection.find_one_and_update(
                 query, update, return_document=ReturnDocument.AFTER, session=session,
             )
@@ -118,6 +126,11 @@ class MongoTaskStore:
             "occurred_at": now,
         }
         async with self._client.start_session() as session, await session.start_transaction():
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=task.organization_id,
+                    project_id=task.project_id, session=session,
+                )
             await self._collection.insert_one(document, session=session)
             await self._events.insert_one(event, session=session)
             await self._append_audit_in_transaction(audit_event, session)
@@ -236,6 +249,11 @@ class MongoTaskStore:
             "occurred_at": occurred_at,
         }
         async with self._client.start_session() as session, await session.start_transaction():
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=current.project_id, session=session,
+                )
             document = await self._collection.find_one_and_update(
                 {
                     "_id": task_id,
