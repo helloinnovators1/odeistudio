@@ -135,7 +135,8 @@ class MongoWorkspaceSnapshotStore:
                 project_id=project_id, session=session, allow_deleting=True,
             )
             active_run = await self._runs.find_one(
-                {"snapshot_id": snapshot_id,
+                {"organization_id": organization_id, "project_id": project_id,
+                 "snapshot_id": snapshot_id,
                  "status": {"$in": ["queued", "leased", "running", "collecting"]}},
                 session=session,
             )
@@ -176,7 +177,8 @@ class MongoWorkspaceSnapshotStore:
                     project_id=row["project_id"], session=session, allow_deleting=True,
                 )
                 active_run = await self._runs.find_one(
-                    {"snapshot_id": row["_id"],
+                    {"organization_id": row["organization_id"], "project_id": row["project_id"],
+                     "snapshot_id": row["_id"],
                      "status": {"$in": ["queued", "leased", "running", "collecting"]}},
                     session=session,
                 )
