@@ -86,9 +86,32 @@ class MongoExecutionArtifactStore:
                 await self._metadata.insert_one(document, session=session)
             return self.public_metadata(document)
         except Exception:
-            await self._stdout.delete(stdout_id)
-            if stderr_id is not None:
-                await self._stderr.delete(stderr_id)
+            # A lost commit acknowledgement can leave the transaction outcome
+            # unknown. Preserve blobs whenever metadata may have committed;
+            # deleting them would create a dangling artifact record.
+            try:
+                committed = await self._metadata.find_one({
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                    "task_id": task_id,
+                    "run_id": run_id,
+                    "stdout_blob_id": stdout_id,
+                    "stderr_blob_id": stderr_id,
+                })
+            except Exception:
+                # An orphan can be reconciled later; a committed record must
+                # never be left pointing at blobs removed by compensation.
+                raise
+            if committed is None:
+                try:
+                    await self._stdout.delete(stdout_id)
+                except NoFile:
+                    pass
+                if stderr_id is not None:
+                    try:
+                        await self._stderr.delete(stderr_id)
+                    except NoFile:
+                        pass
             raise
 
     async def get_for_tenant(
