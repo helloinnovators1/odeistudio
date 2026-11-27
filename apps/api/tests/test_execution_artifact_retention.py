@@ -249,3 +249,17 @@ async def test_artifact_retention_rejects_invalid_policy_bounds(retention_days, 
 
     with pytest.raises(ValueError, match="retention days and batch limit"):
         await store.delete_expired(retention_days=retention_days, limit=limit)
+
+
+@pytest.mark.asyncio
+async def test_artifact_read_hides_unknown_nonavailable_states():
+    row = artifact_row(state="quarantined")
+    database = Database([row])
+    store = MongoExecutionArtifactStore(database)
+
+    result = await store.get_for_tenant(
+        organization_id="org-1", project_id="project-1",
+        task_id="task-1", run_id="run-1",
+    )
+
+    assert result is None
