@@ -36,6 +36,7 @@ class MongoRepositoryIndexStore:
         self._chunks = database["repository_index_chunks"]
         self._state = database["repository_index_state"]
         self._projects = database["projects"]
+        self._client = database.client
 
     async def initialize(self) -> None:
         await self._state.create_index(
@@ -298,31 +299,32 @@ class MongoRepositoryIndexStore:
     async def delete_project_index(
         self, *, organization_id: str, project_id: str,
     ) -> dict[str, int]:
-        """Idempotently remove every persisted index revision for one tenant project.
-
-        Remove the active pointer first so retrieval fails closed while the
-        bounded collection cleanup proceeds. Every deletion is tenant/project
-        scoped; retrying after a partial storage failure completes the cleanup.
-        """
+        """Idempotently remove every persisted index revision in one fenced transaction."""
         if not organization_id or not project_id:
             raise ValueError("organization_id and project_id are required")
-        state_result = await self._state.delete_one({
-            "organization_id": organization_id,
-            "project_id": project_id,
-        })
-        deleted = {"state": state_result.deleted_count}
-        for name, collection in (
-            ("files", self._files),
-            ("symbols", self._symbols),
-            ("references", self._references),
-            ("imports", self._imports),
-            ("chunks", self._chunks),
-        ):
-            result = await collection.delete_many({
+        deleted: dict[str, int] = {}
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            state_result = await self._state.delete_one({
                 "organization_id": organization_id,
                 "project_id": project_id,
-            })
-            deleted[name] = result.deleted_count
+            }, session=session)
+            deleted["state"] = state_result.deleted_count
+            for name, collection in (
+                ("files", self._files),
+                ("symbols", self._symbols),
+                ("references", self._references),
+                ("imports", self._imports),
+                ("chunks", self._chunks),
+            ):
+                result = await collection.delete_many({
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                }, session=session)
+                deleted[name] = result.deleted_count
         return deleted
 
     @staticmethod

@@ -7,18 +7,32 @@ import pytest
 from odei_api.services.repository_index_store import MongoRepositoryIndexStore
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
 class Collection:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
         self.queries = []
 
-    async def delete_one(self, query):
+    async def delete_one(self, query, **_kwargs):
         self.queries.append(query)
         before = len(self.rows)
         self.rows = [row for row in self.rows if not all(row.get(k) == v for k, v in query.items())]
         return SimpleNamespace(deleted_count=before-len(self.rows))
 
-    async def delete_many(self, query):
+    async def delete_many(self, query, **_kwargs):
         self.queries.append(query)
         before = len(self.rows)
         self.rows = [row for row in self.rows if not all(row.get(k) == v for k, v in query.items())]
@@ -27,11 +41,12 @@ class Collection:
 
 class Database:
     def __init__(self):
-        self.collections = {}
+        self.client = FakeClient()
+        self.collections = {
         for name in (
             "repository_index_state", "repository_index_files",
             "repository_index_symbols", "repository_index_references",
-            "repository_index_imports", "repository_index_chunks", "projects",
+            "repository_index_imports", "repository_index_chunks",
         ):
             self.collections[name] = Collection([
                 {"organization_id": "org-a", "project_id": "project-a", "revision_id": "old"},
@@ -39,6 +54,12 @@ class Database:
                 {"organization_id": "org-b", "project_id": "project-a", "revision_id": "other-tenant"},
                 {"organization_id": "org-a", "project_id": "project-b", "revision_id": "other-project"},
             ])
+        self.collections["projects"] = Collection([
+            {"organization_id": "org-a", "project_id": "project-a", "status": "active"},
+        ])
+        async def update_one(query, update, **_kwargs):
+            return SimpleNamespace(matched_count=1)
+        self.collections["projects"].update_one = update_one
 
     def __getitem__(self, name):
         return self.collections[name]
