@@ -1,6 +1,6 @@
 # NEXUS repository retrieval benchmark
 
-The evaluator is \`odei_api.services.retrieval_benchmark.run_retrieval_benchmark\`.
+The evaluator is `odei_api.services.retrieval_benchmark.run_retrieval_benchmark`.
 It evaluates rankings returned by a supplied retrieval callback; that callback must
 invoke the same authenticated, tenant-scoped retrieval implementation used by NEXUS.
 The evaluator does not call an embedding service, manufacture relevance labels, or
@@ -8,9 +8,9 @@ pretend a synthetic fixture represents a production repository.
 
 ## Label format
 
-Each query contains a unique \`query_id\`, non-empty \`query\`, and non-empty
-\`relevant_documents\` list. A chunk ID is \`relative/path#chunk_index\`, matching
-the repository index's \`path\` and \`chunk_index\` fields. Path-only IDs are
+Each query contains a unique `query_id`, non-empty `query`, and non-empty
+`relevant_documents` list. A chunk ID is `relative/path#chunk_index`, matching
+the repository index's `path` and `chunk_index` fields. Path-only IDs are
 supported for path-level retrievers. Labels must be created and reviewed by the
 corpus owner.
 
