@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from pymongo.errors import DuplicateKeyError
@@ -11,6 +12,25 @@ from odei_api.services.repository_merge_approvals import (
 )
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
+class FakeProjects:
+    async def update_one(self, *_args, **_kwargs):
+        return SimpleNamespace(matched_count=1)
+
+
 class Collection:
     def __init__(self):
         self.documents = {}
@@ -19,7 +39,7 @@ class Collection:
     async def create_index(self, keys, **kwargs):
         self.indexes.append((keys, kwargs))
 
-    async def insert_one(self, document):
+    async def insert_one(self, document, **_kwargs):
         key = (document["organization_id"], document["project_id"], document["run_id"])
         if any(
             (row["organization_id"], row["project_id"], row["run_id"]) == key
@@ -64,7 +84,7 @@ def approval_values():
 @pytest.mark.asyncio
 async def test_merge_approval_is_durable_single_use_and_bound_to_same_owner():
     collection = Collection()
-    store = MongoRepositoryMergeApprovalStore(collection)
+    store = MongoRepositoryMergeApprovalStore(collection, FakeClient(), FakeProjects())
     await store.initialize()
     approval = await store.create(**approval_values())
     assert approval["status"] == "pending"

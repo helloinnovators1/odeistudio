@@ -32,8 +32,8 @@ from odei_api.services.patch_proposals import (
     PatchProposalError,
     build_patch_proposal,
 )
-from odei_api.services.secret_redaction import redact_secrets
 from odei_api.services.project_lifecycle import fence_project_write
+from odei_api.services.secret_redaction import redact_secrets
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
