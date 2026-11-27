@@ -34,6 +34,7 @@ class MongoExecutionArtifactStore:
             unique=True,
         )
         await self._metadata.create_index([("created_at", -1)])
+        await self._metadata.create_index([("state", 1), ("created_at", 1)])
 
     async def put(
         self, *, organization_id: str, project_id: str, task_id: str,
@@ -75,6 +76,7 @@ class MongoExecutionArtifactStore:
                 "stdout_bytes": len(safe_stdout.encode("utf-8")),
                 "stderr_bytes": len(safe_stderr.encode("utf-8")),
                 "created_at": datetime.now(timezone.utc),
+                "state": "available",
             }
             async with self._client.start_session() as session, await session.start_transaction():
                 await fence_project_write(
@@ -114,16 +116,35 @@ class MongoExecutionArtifactStore:
         if not 1 <= retention_days <= 365 or not 1 <= limit <= 1000:
             raise ValueError("artifact retention policy is invalid")
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        cursor = self._metadata.find({"created_at": {"$lte": cutoff}}).limit(limit)
+        cursor = self._metadata.find({
+            "created_at": {"$lte": cutoff},
+            "state": {"$in": ["available", "deleting", None]},
+        }).limit(limit)
         rows = await cursor.to_list(length=limit)
         deleted = 0
         for row in rows:
-            active_run = await self._runs.find_one({
-                "organization_id": row["organization_id"], "_id": row["run_id"],
-                "status": {"$in": ["queued", "leased", "running", "collecting"]},
-            })
-            if active_run is not None:
-                continue
+            # Fence the tombstone and active-run check against project deletion
+            # and concurrent artifact writers in one transaction. A deleting
+            # tombstone remains resumable after a process crash.
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=row["organization_id"],
+                    project_id=row["project_id"], session=session, allow_deleting=True,
+                )
+                active_run = await self._runs.find_one({
+                    "organization_id": row["organization_id"], "_id": row["run_id"],
+                    "status": {"$in": ["queued", "leased", "running", "collecting"]},
+                }, session=session)
+                if active_run is not None:
+                    continue
+                marked = await self._metadata.update_one(
+                    {"_id": row["_id"], "created_at": {"$lte": cutoff},
+                     "state": {"$in": ["available", "deleting", None]}},
+                    {"$set": {"state": "deleting", "deleting_at": datetime.now(timezone.utc)}},
+                    session=session,
+                )
+                if not marked.matched_count:
+                    continue
             for bucket, blob_id in (
                 (self._stdout, row["stdout_blob_id"]),
                 (self._stderr, row["stderr_blob_id"]),
@@ -132,10 +153,9 @@ class MongoExecutionArtifactStore:
                     await bucket.delete(blob_id)
                 except NoFile:
                     pass
-            await self._metadata.delete_one({"_id": row["_id"], "created_at": {"$lte": cutoff}})
-            deleted += 1
+            removed = await self._metadata.delete_one({"_id": row["_id"], "state": "deleting"})
+            deleted += removed.deleted_count
         return deleted
-
     @staticmethod
     def public_metadata(document: dict[str, Any]) -> dict[str, Any]:
         return {
