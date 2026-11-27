@@ -166,13 +166,6 @@ async def bind_repository(
         })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
-    try:
-        await collection.update_one(
-            {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
-            {"$unset": {"merge_lock": ""}},
-        )
-    except PyMongoError as exc:
-        raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.repository_binding.bind", "started",
                  {"installation_id": payload.installation_id})
@@ -220,6 +213,10 @@ async def bind_repository(
             await fence_project_write(
                 database["projects"], organization_id=organization_id,
                 project_id=project_id, session=session,
+            )
+            await collection.update_one(
+                {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
+                {"$unset": {"merge_lock": ""}}, session=session,
             )
             if existing is None:
                 await collection.insert_one(document, session=session)
