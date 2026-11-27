@@ -47,7 +47,7 @@ class MongoExecutionArtifactStore:
         ):
             if not isinstance(value, str) or not value or value != value.strip() or len(value) > 128:
                 raise ValueError(f"execution artifact {field_name} is invalid")
-        if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not -255 <= exit_code <= 255:
+        if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not -(2 ** 31) <= exit_code <= (2 ** 32 - 1):
             raise ValueError("execution exit code is invalid")
         if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 0 <= duration_ms <= 600_000:
             raise ValueError("execution duration is invalid")
