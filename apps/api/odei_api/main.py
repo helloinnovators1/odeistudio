@@ -55,8 +55,8 @@ from odei_api.services.repository_index_store import MongoRepositoryIndexStore
 from odei_api.services.repository_intelligence import router as repository_intelligence_router
 from odei_api.services.repository_merge_approvals import MongoRepositoryMergeApprovalStore
 from odei_api.services.task_store import MongoTaskStore
-from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 from odei_api.services.workspace_snapshot_retention import run_snapshot_retention
+from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
 logger = logging.getLogger(__name__)
 
