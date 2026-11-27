@@ -23,7 +23,7 @@ class ConversationStoreError(ValueError):
 class MongoConversationStore:
     """Persist conversation records with tenant, project and identity ownership filters."""
 
-    def __init__(self, collection: Any, client: Any | None = None, projects: Any | None = None):
+    def __init__(self, collection: Any, client: Any, projects: Any):
         self._collection = collection
         self._client = client
         self._projects = projects
@@ -57,15 +57,12 @@ class MongoConversationStore:
             "created_at": now,
             "updated_at": now,
         }
-        if self._client is not None and self._projects is not None:
-            async with self._client.start_session() as session, await session.start_transaction():
-                await fence_project_write(
-                    self._projects, organization_id=organization_id,
-                    project_id=project_id, session=session,
-                )
-                await self._collection.insert_one(document, session=session)
-        else:
-            await self._collection.insert_one(document)
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            await self._collection.insert_one(document, session=session)
         return document
 
     async def list_for_owner(
@@ -98,27 +95,18 @@ class MongoConversationStore:
         self, *, organization_id: str, project_id: str,
         owner_issuer: str, owner_subject: str, conversation_id: str,
     ) -> bool:
-        if self._client is not None and self._projects is not None:
-            async with self._client.start_session() as session, await session.start_transaction():
-                await fence_project_write(
-                    self._projects, organization_id=organization_id,
-                    project_id=project_id, session=session,
-                )
-                result = await self._collection.delete_one({
-                    "conversation_id": conversation_id,
-                    "organization_id": organization_id,
-                    "project_id": project_id,
-                    "owner_issuer": owner_issuer,
-                    "owner_subject": owner_subject,
-                }, session=session)
-        else:
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
             result = await self._collection.delete_one({
                 "conversation_id": conversation_id,
-            "organization_id": organization_id,
-            "project_id": project_id,
-            "owner_issuer": owner_issuer,
-            "owner_subject": owner_subject,
-            })
+                "organization_id": organization_id,
+                "project_id": project_id,
+                "owner_issuer": owner_issuer,
+                "owner_subject": owner_subject,
+            }, session=session)
         return result.deleted_count == 1
 
     async def append(
@@ -169,21 +157,14 @@ class MongoConversationStore:
             **({"mode": mode} if mode is not None else {}),
             "created_at": now,
         }
-        if self._client is not None and self._projects is not None:
-            async with self._client.start_session() as session, await session.start_transaction():
-                await fence_project_write(
-                    self._projects, organization_id=organization_id,
-                    project_id=project_id, session=session,
-                )
-                updated = await self._collection.find_one_and_update(
-                    query,
-                    {"$push": {"messages": message}, "$inc": {"version": 1}, "$set": {"updated_at": now}},
-                    return_document=ReturnDocument.AFTER, session=session,
-                )
-        else:
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
             updated = await self._collection.find_one_and_update(
                 query,
                 {"$push": {"messages": message}, "$inc": {"version": 1}, "$set": {"updated_at": now}},
-                return_document=ReturnDocument.AFTER,
+                return_document=ReturnDocument.AFTER, session=session,
             )
         return updated
