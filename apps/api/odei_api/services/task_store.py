@@ -258,6 +258,10 @@ class MongoTaskStore:
                 await fence_project_write(
                     self._projects, organization_id=organization_id,
                     project_id=current.project_id, session=session,
+                    allow_deleting=next_status in {
+                        TaskStatus.CANCELLED, TaskStatus.COMPLETED,
+                        TaskStatus.FAILED, TaskStatus.EXPIRED,
+                    },
                 )
             document = await self._collection.find_one_and_update(
                 {

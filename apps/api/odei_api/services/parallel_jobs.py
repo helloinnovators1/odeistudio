@@ -212,7 +212,7 @@ class MongoParallelJobStore:
             async with self._client.start_session() as session, await session.start_transaction():
                 await fence_project_write(
                     self._projects, organization_id=row["organization_id"],
-                    project_id=row["project_id"], session=session,
+                    project_id=row["project_id"], session=session, allow_deleting=True,
                 )
                 update = await self._jobs.update_one(
                     {"_id": row["_id"], "version": row["version"], "lease_expires_at": {"$lte": now}},
@@ -241,10 +241,16 @@ class MongoParallelJobStore:
                 }).to_list(length=len(dependencies))
                 if len(rows) != len(dependencies) or any(r["status"] != "completed" for r in rows):
                     if any(r["status"] in {"failed", "cancelled"} for r in rows):
-                        await self._jobs.update_one(
-                            {"_id": candidate["_id"], "version": candidate["version"], "status": "queued"},
-                            {"$set": {"status": "cancelled", "updated_at": now}, "$inc": {"version": 1}},
-                        )
+                        async with self._client.start_session() as session, await session.start_transaction():
+                            await fence_project_write(
+                                self._projects, organization_id=candidate["organization_id"],
+                                project_id=candidate["project_id"], session=session,
+                            )
+                            await self._jobs.update_one(
+                                {"_id": candidate["_id"], "version": candidate["version"], "status": "queued"},
+                                {"$set": {"status": "cancelled", "updated_at": now}, "$inc": {"version": 1}},
+                                session=session,
+                            )
                     continue
             token = uuid4().hex
             if self._client is None or self._projects is None:
@@ -290,7 +296,7 @@ class MongoParallelJobStore:
                 raise ParallelJobConflict("worker lease is missing, expired or no longer owned")
             await fence_project_write(
                 self._projects, organization_id=organization_id,
-                project_id=current["project_id"], session=session,
+                project_id=current["project_id"], session=session, allow_deleting=True,
             )
             result = await self._jobs.update_one(
                 {"organization_id": organization_id, "job_id": job_id,

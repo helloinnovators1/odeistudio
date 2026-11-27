@@ -18,7 +18,7 @@ class ProjectLifecycleWriteBlocked(HTTPException):
     def __init__(self) -> None:
         super().__init__(status_code=409, detail={
             "code": "PROJECT_LIFECYCLE_CLOSED",
-            "message": "The project is missing or is closing; no project writes are accepted.",
+            "message": "The project is missing or is closing; this operation is not permitted.",
         })
 
 
@@ -28,6 +28,7 @@ async def fence_project_write(
     organization_id: str,
     project_id: str,
     session: Any,
+    allow_deleting: bool = False,
 ) -> None:
     if not organization_id or not project_id or session is None:
         raise ValueError("tenant, project and transaction session are required")
@@ -35,7 +36,7 @@ async def fence_project_write(
         {
             "organization_id": organization_id,
             "project_id": project_id,
-            "status": "active",
+            "status": {"$in": ["active", "deleting"]} if allow_deleting else "active",
         },
         {"$inc": {"lifecycle_write_seq": 1}},
         session=session,

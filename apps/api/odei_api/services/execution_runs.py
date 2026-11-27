@@ -387,7 +387,7 @@ class MongoExecutionRunStore:
                 if self._projects is not None:
                     await fence_project_write(
                         self._projects, organization_id=row["organization_id"],
-                        project_id=row["project_id"], session=session,
+                        project_id=row["project_id"], session=session, allow_deleting=True,
                     )
                 status = ExecutionRunStatus(row["status"])
                 updated = await self._runs.find_one_and_update(
@@ -464,7 +464,7 @@ class MongoExecutionRunStore:
             if self._projects is not None:
                 await fence_project_write(
                     self._projects, organization_id=current["organization_id"],
-                    project_id=current["project_id"], session=session,
+                    project_id=current["project_id"], session=session, allow_deleting=True,
                 )
             result = await self._runs.update_one(
                 {"_id": run_id, "organization_id": organization_id,
