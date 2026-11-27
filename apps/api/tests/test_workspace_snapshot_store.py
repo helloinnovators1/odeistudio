@@ -22,6 +22,20 @@ class Cursor:
         return self.rows[:length]
 
 
+class FakeSession:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        return False
+    async def start_transaction(self):
+        return self
+
+
+class FakeClient:
+    def start_session(self):
+        return FakeSession()
+
+
 class Collection:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
@@ -46,11 +60,23 @@ class Collection:
                 return row
         return None
 
-    async def delete_one(self, query):
+    async def update_one(self, query, update, **_kwargs):
+        row = await self.find_one(query)
+        if row is None:
+            return SimpleNamespace(matched_count=0, modified_count=0)
+        row.update(update.get("$set", {}))
+        for key, amount in update.get("$inc", {}).items():
+            row[key] = row.get(key, 0) + amount
+        return SimpleNamespace(matched_count=1, modified_count=1)
+
+    async def delete_one(self, query, **_kwargs):
         def matches(row):
             for key, value in query.items():
                 if isinstance(value, dict) and "$lte" in value:
                     if row.get(key) is None or row[key] > value["$lte"]:
+                        return False
+                elif isinstance(value, dict) and "$in" in value:
+                    if row.get(key) not in value["$in"]:
                         return False
                 elif row.get(key) != value:
                     return False
@@ -73,11 +99,13 @@ class Bucket:
 
 class Database:
     def __init__(self):
-        self.client = object()
+        self.client = FakeClient()
         self.collections = {
             "workspace_snapshots": Collection(),
             "execution_runs": Collection(),
-            "projects": Collection(),
+            "projects": Collection([
+                {"organization_id": "org", "project_id": "project", "status": "active"},
+            ]),
         }
 
     def __getitem__(self, name):
@@ -95,8 +123,10 @@ async def test_expired_snapshot_cleanup_skips_active_runs_and_deletes_inactive_b
     now = datetime.now(timezone.utc)
     database["workspace_snapshots"].rows.extend([
         {"_id": "active-snapshot", "blob_id": "blob-active",
+         "organization_id": "org", "project_id": "project", "state": "available",
          "expires_at": now - timedelta(seconds=1)},
         {"_id": "expired-snapshot", "blob_id": "blob-expired",
+         "organization_id": "org", "project_id": "project", "state": "available",
          "expires_at": now - timedelta(seconds=1)},
     ])
     database["execution_runs"].rows.append({
@@ -123,6 +153,7 @@ async def test_expired_snapshot_cleanup_is_retry_safe_after_blob_was_removed(mon
     )
     expired = {
         "_id": "snapshot-retry", "blob_id": "blob-retry",
+        "organization_id": "org", "project_id": "project", "state": "available",
         "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
     }
     database["workspace_snapshots"].rows.append(expired)
