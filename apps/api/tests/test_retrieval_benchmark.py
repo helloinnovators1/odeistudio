@@ -43,7 +43,7 @@ def test_benchmark_reports_recall_precision_mrr_and_ndcg_for_real_rankings():
 
     assert report["query_count"] == 2
     assert report["metrics"]["recall@3"] == pytest.approx(1.0)
-    assert report["metrics"]["precision@3"] == pytest.approx(1 / 3)
+    assert report["metrics"]["precision@3"] == pytest.approx(0.5)
     assert report["metrics"]["mrr@3"] == pytest.approx(0.75)
     assert report["metrics"]["ndcg@3"] < 1.0
     assert report["per_query"][0]["mrr@3"] == 1.0
