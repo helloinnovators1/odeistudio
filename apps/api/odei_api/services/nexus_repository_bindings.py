@@ -16,6 +16,7 @@ from odei_api.services.github_app import (
     GitHubRepositoryVerificationError,
 )
 from odei_api.services.project_access import require_project_access
+from odei_api.services.project_lifecycle import fence_project_write
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -95,13 +96,14 @@ async def _owner_only(request: Request, organization_id: str, project_id: str, p
     return database, audit
 
 
-async def _audit(audit, principal, organization_id, project_id, action, outcome, metadata=None):
+async def _audit(audit, principal, organization_id, project_id, action, outcome, metadata=None, session=None):
     try:
         await audit.append(
             organization_id=organization_id, actor_issuer=principal.issuer,
             actor_subject=principal.subject, action=action,
             target_type="nexus_repository_binding", target_id=project_id,
             outcome=outcome, request_id=uuid4().hex, metadata=metadata or {},
+            session=session,
         )
     except Exception as exc:
         logger.error("Repository binding audit write failed (%s)", type(exc).__name__)
@@ -213,18 +215,25 @@ async def bind_repository(
         "created_at": existing.get("created_at", now) if existing else now,
     }
     try:
-        if existing is None:
-            await collection.insert_one(document)
-        else:
-            result = await collection.replace_one({
-                "_id": key, "binding_version": payload.expected_version,
-                "merge_lock": {"$exists": False},
-            }, document, upsert=False)
-            if result.modified_count != 1:
-                raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})
-        await _audit(audit, principal, organization_id, project_id,
-                     "nexus.repository_binding.bind", "success",
-                     {"repository_id": verified.repository_id, "binding_version": version})
+        client = request.app.state.mongo_client
+        async with client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                database["projects"], organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            if existing is None:
+                await collection.insert_one(document, session=session)
+            else:
+                result = await collection.replace_one({
+                    "_id": key, "binding_version": payload.expected_version,
+                    "merge_lock": {"$exists": False},
+                }, document, upsert=False, session=session)
+                if result.modified_count != 1:
+                    raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})
+            await _audit(audit, principal, organization_id, project_id,
+                         "nexus.repository_binding.bind", "success",
+                         {"repository_id": verified.repository_id, "binding_version": version},
+                         session=session)
     except DuplicateKeyError as exc:
         raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"}) from exc
     except PyMongoError as exc:
@@ -266,17 +275,23 @@ async def remove_repository_binding(
                  "nexus.repository_binding.remove", "started",
                  {"binding_version": payload.expected_version})
     try:
-        result = await collection.delete_one({
-            "_id": key,
-            "organization_id": organization_id, "project_id": project_id,
-            "binding_version": payload.expected_version,
-            "merge_lock": {"$exists": False},
-        })
-        if result.deleted_count != 1:
-            raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})
-        await _audit(audit, principal, organization_id, project_id,
-                     "nexus.repository_binding.remove", "success",
-                     {"binding_version": payload.expected_version})
+        client = request.app.state.mongo_client
+        async with client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                database["projects"], organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            result = await collection.delete_one({
+                "_id": key,
+                "organization_id": organization_id, "project_id": project_id,
+                "binding_version": payload.expected_version,
+                "merge_lock": {"$exists": False},
+            }, session=session)
+            if result.deleted_count != 1:
+                raise HTTPException(status_code=409, detail={"code": "REPOSITORY_BINDING_VERSION_CONFLICT"})
+            await _audit(audit, principal, organization_id, project_id,
+                         "nexus.repository_binding.remove", "success",
+                         {"binding_version": payload.expected_version}, session=session)
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
     return {"removed": True, "binding_version": payload.expected_version}

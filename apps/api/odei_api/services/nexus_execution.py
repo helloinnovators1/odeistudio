@@ -23,6 +23,7 @@ from odei_api.services.execution_runs import ExecutionRun, ExecutionRunConflict,
 from odei_api.services.github_app import GitHubAppNotConfigured, GitHubRepositoryVerificationError
 from odei_api.services.nexus_capabilities import NexusCapabilityDenied, NexusCapabilityPolicy
 from odei_api.services.project_access import require_project_access
+from odei_api.services.project_lifecycle import fence_project_write
 from odei_api.services.repository_merge_approvals import RepositoryMergeApprovalConflict
 from odei_api.services.tasks import TaskStatus, identity_owner_key
 from odei_api.services.workspace_snapshots import SnapshotError, WorkspaceSnapshotIngestor
@@ -89,42 +90,52 @@ async def _acquire_repository_merge_lock(database, run: ExecutionRun, approval_i
     collection = database["nexus_repository_bindings"]
     key = f"{run.organization_id}:{run.project_id}"
     now = datetime.now(timezone.utc)
-    await collection.update_one(
-        {"_id": key, "merge_lock.expires_at": {"$lte": now}},
-        {"$unset": {"merge_lock": ""}},
-    )
-    result = await collection.update_one(
-        {
-            "_id": key, "organization_id": run.organization_id,
-            "project_id": run.project_id, "state": "verified",
-            "binding_version": run.repository_binding_version,
-            "repository_id": run.repository_id,
-            "repository_node_id": run.repository_node_id,
-            "merge_lock": {"$exists": False},
-        },
-        {"$set": {
-            "merge_lock": {
-                "approval_id": approval_id, "run_id": run.id,
-                "expires_at": now + timedelta(minutes=2),
+    async with database.client.start_session() as session, await session.start_transaction():
+        await fence_project_write(
+            database["projects"], organization_id=run.organization_id,
+            project_id=run.project_id, session=session,
+        )
+        await collection.update_one(
+            {"_id": key, "merge_lock.expires_at": {"$lte": now}},
+            {"$unset": {"merge_lock": ""}}, session=session,
+        )
+        result = await collection.update_one(
+            {
+                "_id": key, "organization_id": run.organization_id,
+                "project_id": run.project_id, "state": "verified",
+                "binding_version": run.repository_binding_version,
+                "repository_id": run.repository_id,
+                "repository_node_id": run.repository_node_id,
+                "merge_lock": {"$exists": False},
             },
-        }},
-    )
-    if result.modified_count != 1:
-        raise HTTPException(status_code=409, detail={
-            "code": "REPOSITORY_MERGE_LOCKED",
-            "message": "The trusted repository binding is being changed or another merge is in progress.",
-        })
+            {"$set": {
+                "merge_lock": {
+                    "approval_id": approval_id, "run_id": run.id,
+                    "expires_at": now + timedelta(minutes=2),
+                },
+            }}, session=session,
+        )
+        if result.modified_count != 1:
+            raise HTTPException(status_code=409, detail={
+                "code": "REPOSITORY_MERGE_LOCKED",
+                "message": "The trusted repository binding is being changed or another merge is in progress.",
+            })
 
 
 async def _release_repository_merge_lock(database, run: ExecutionRun, approval_id: str) -> None:
-    await database["nexus_repository_bindings"].update_one(
-        {
-            "_id": f"{run.organization_id}:{run.project_id}",
-            "merge_lock.approval_id": approval_id,
-            "merge_lock.run_id": run.id,
-        },
-        {"$unset": {"merge_lock": ""}},
-    )
+    async with database.client.start_session() as session, await session.start_transaction():
+        await fence_project_write(
+            database["projects"], organization_id=run.organization_id,
+            project_id=run.project_id, session=session, allow_deleting=True,
+        )
+        await database["nexus_repository_bindings"].update_one(
+            {
+                "_id": f"{run.organization_id}:{run.project_id}",
+                "merge_lock.approval_id": approval_id,
+                "merge_lock.run_id": run.id,
+            },
+            {"$unset": {"merge_lock": ""}}, session=session,
+        )
 
 def _expected_worker_pull_request(run: ExecutionRun) -> dict:
     if (
