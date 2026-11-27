@@ -9,6 +9,8 @@ from uuid import uuid4
 from gridfs.asynchronous import AsyncGridFSBucket
 from gridfs.errors import NoFile
 
+from odei_api.services.project_lifecycle import fence_project_write
+
 
 class SnapshotStoreError(RuntimeError):
     """Snapshot object storage is unavailable or inconsistent."""
@@ -19,6 +21,8 @@ class MongoWorkspaceSnapshotStore:
 
     def __init__(self, database: Any):
         self._metadata = database["workspace_snapshots"]
+        self._projects = database["projects"]
+        self._client = database.client
         self._runs = database["execution_runs"]
         self._bucket = AsyncGridFSBucket(database, bucket_name="workspace_snapshot_blobs")
 
@@ -68,7 +72,12 @@ class MongoWorkspaceSnapshotStore:
             "state": "available",
         }
         try:
-            await self._metadata.insert_one(document)
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session,
+                )
+                await self._metadata.insert_one(document, session=session)
         except Exception:
             await self._bucket.delete(blob_id)
             raise

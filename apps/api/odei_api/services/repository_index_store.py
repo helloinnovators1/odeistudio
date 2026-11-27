@@ -12,6 +12,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from odei_api.security.auth import Principal
 from odei_api.services.audit_store import MongoAuditEventStore
+from odei_api.services.project_lifecycle import fence_project_write
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class MongoRepositoryIndexStore:
         self._imports = database["repository_index_imports"]
         self._chunks = database["repository_index_chunks"]
         self._state = database["repository_index_state"]
+        self._projects = database["projects"]
 
     async def initialize(self) -> None:
         await self._state.create_index(
@@ -190,6 +192,10 @@ class MongoRepositoryIndexStore:
             }
             async with mongo_client.start_session() as session:
                 async def transaction(active_session):
+                    await fence_project_write(
+                        self._projects, organization_id=organization_id,
+                        project_id=project_id, session=active_session,
+                    )
                     if previous is None:
                         await self._state.insert_one(state, session=active_session)
                     else:

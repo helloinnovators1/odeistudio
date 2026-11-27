@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from pymongo import ReturnDocument
 
+from odei_api.services.project_lifecycle import fence_project_write
+
 from odei_api.services.secret_redaction import redact_secrets
 
 MAX_CONVERSATIONS_PAGE = 50
@@ -22,8 +24,10 @@ class ConversationStoreError(ValueError):
 class MongoConversationStore:
     """Persist conversation records with tenant, project and identity ownership filters."""
 
-    def __init__(self, collection: Any):
+    def __init__(self, collection: Any, client: Any | None = None, projects: Any | None = None):
         self._collection = collection
+        self._client = client
+        self._projects = projects
 
     async def initialize(self) -> None:
         await self._collection.create_index(
@@ -54,7 +58,15 @@ class MongoConversationStore:
             "created_at": now,
             "updated_at": now,
         }
-        await self._collection.insert_one(document)
+        if self._client is not None and self._projects is not None:
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session,
+                )
+                await self._collection.insert_one(document, session=session)
+        else:
+            await self._collection.insert_one(document)
         return document
 
     async def list_for_owner(
@@ -87,13 +99,27 @@ class MongoConversationStore:
         self, *, organization_id: str, project_id: str,
         owner_issuer: str, owner_subject: str, conversation_id: str,
     ) -> bool:
-        result = await self._collection.delete_one({
-            "conversation_id": conversation_id,
+        if self._client is not None and self._projects is not None:
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session,
+                )
+                result = await self._collection.delete_one({
+                    "conversation_id": conversation_id,
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                    "owner_issuer": owner_issuer,
+                    "owner_subject": owner_subject,
+                }, session=session)
+        else:
+            result = await self._collection.delete_one({
+                "conversation_id": conversation_id,
             "organization_id": organization_id,
             "project_id": project_id,
             "owner_issuer": owner_issuer,
             "owner_subject": owner_subject,
-        })
+            })
         return result.deleted_count == 1
 
     async def append(
@@ -144,9 +170,21 @@ class MongoConversationStore:
             **({"mode": mode} if mode is not None else {}),
             "created_at": now,
         }
-        updated = await self._collection.find_one_and_update(
-            query,
-            {"$push": {"messages": message}, "$inc": {"version": 1}, "$set": {"updated_at": now}},
-            return_document=ReturnDocument.AFTER,
-        )
+        if self._client is not None and self._projects is not None:
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session,
+                )
+                updated = await self._collection.find_one_and_update(
+                    query,
+                    {"$push": {"messages": message}, "$inc": {"version": 1}, "$set": {"updated_at": now}},
+                    return_document=ReturnDocument.AFTER, session=session,
+                )
+        else:
+            updated = await self._collection.find_one_and_update(
+                query,
+                {"$push": {"messages": message}, "$inc": {"version": 1}, "$set": {"updated_at": now}},
+                return_document=ReturnDocument.AFTER,
+            )
         return updated
