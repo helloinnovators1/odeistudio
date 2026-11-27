@@ -152,8 +152,13 @@ class MongoExecutionArtifactStore:
         }
 
     async def delete_expired(self, *, retention_days: int = 30, limit: int = 100) -> int:
-        if not 1 <= retention_days <= 365 or not 1 <= limit <= 1000:
-            raise ValueError("artifact retention policy is invalid")
+        if (
+            isinstance(retention_days, bool) or not isinstance(retention_days, int)
+            or not 1 <= retention_days <= 365
+            or isinstance(limit, bool) or not isinstance(limit, int)
+            or not 1 <= limit <= 1000
+        ):
+            raise ValueError("artifact retention days and batch limit must be bounded integers")
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
         cursor = self._metadata.find({
             "$or": [
