@@ -431,8 +431,8 @@ def test_windows_batch_compensates_when_native_namespace_operation_mutates_then_
     tmp_path, monkeypatch, operation,
 ):
     from odei_api.services import windows_file_handles
-    from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
     from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+    from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
 
     project = tmp_path / "project"
     project.mkdir()
