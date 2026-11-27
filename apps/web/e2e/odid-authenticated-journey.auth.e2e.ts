@@ -82,11 +82,31 @@ test("ODID PKCE browser journey authenticates and loads tenant-scoped projects",
     });
   });
 
+  let projectAuthorization = "";
   await page.route(`${api}/api/v1/organizations/org-e2e/projects/project-e2e/**`, async (route) => {
+    projectAuthorization = route.request().headers().authorization ?? "";
+    expect(projectAuthorization).toBe("Bearer e2e-access-token");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ conversations: [], proposals: [], limit: 100 }),
+    });
+  });
+
+  await page.route(`${api}/api/v1/organizations/org-e2e/projects/project-e2e/repository-index/search**`, async (route) => {
+    expect(route.request().headers().authorization).toBe("Bearer e2e-access-token");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: 7,
+        limit: 20,
+        mode: "exact",
+        results: [{
+          path: "src/auth.ts", line: 42, snippet: "requireProjectAccess()",
+          sha256: "a".repeat(64), revision: 7, snapshot_id: "snapshot-e2e",
+        }],
+      }),
     });
   });
 
@@ -107,4 +127,20 @@ test("ODID PKCE browser journey authenticates and loads tenant-scoped projects",
   await project.selectOption("project-e2e");
   await expect(page.getByText("Project: Authenticated E2E Project")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+
+  // Reuse the bearer header observed on the authenticated project request to
+  // verify repository search and its source-location/hash citation contract.
+  expect(projectAuthorization).toBe("Bearer e2e-access-token");
+  const search = await page.evaluate(async ({ url, authorization }) => {
+    const response = await fetch(url, { headers: { Authorization: authorization } });
+    return { status: response.status, body: await response.json() };
+  }, {
+    url: `${api}/api/v1/organizations/org-e2e/projects/project-e2e/repository-index/search?q=needle`,
+    authorization: projectAuthorization,
+  });
+  expect(search.status).toBe(200);
+  expect(search.body.results[0]).toMatchObject({
+    path: "src/auth.ts", line: 42, revision: 7, snapshot_id: "snapshot-e2e",
+  });
+  expect(search.body.results[0].sha256).toMatch(/^[a-f0-9]{64}$/);
 });
