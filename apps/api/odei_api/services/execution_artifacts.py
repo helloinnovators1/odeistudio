@@ -133,7 +133,8 @@ class MongoExecutionArtifactStore:
                     project_id=row["project_id"], session=session, allow_deleting=True,
                 )
                 active_run = await self._runs.find_one({
-                    "organization_id": row["organization_id"], "_id": row["run_id"],
+                    "organization_id": row["organization_id"], "project_id": row["project_id"],
+                    "_id": row["run_id"],
                     "status": {"$in": ["queued", "leased", "running", "collecting"]},
                 }, session=session)
                 if active_run is not None:
