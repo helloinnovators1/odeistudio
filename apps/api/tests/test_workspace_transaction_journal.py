@@ -423,3 +423,68 @@ def test_batch_compensates_when_native_namespace_operation_mutates_then_raises(
             assert target.read_text(encoding="utf-8") == before
     finally:
         registry.close()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows native handle fault-injection boundary")
+@pytest.mark.parametrize("operation", ["create", "update", "delete"])
+def test_windows_batch_compensates_when_native_namespace_operation_mutates_then_raises(
+    tmp_path, monkeypatch, operation,
+):
+    from odei_api.services import windows_file_handles
+    from odei_api.services.workspace_patch_apply import WorkspacePatchBatchError
+    from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+
+    project = tmp_path / "project"
+    project.mkdir()
+    target = project / "target.py"
+    before = "before"
+    after = "after"
+    if operation != "create":
+        target.write_text(before, encoding="utf-8")
+    content = after if operation != "delete" else None
+    patch = {
+        "path": "target.py",
+        "operation": operation,
+        "base_sha256": hashlib.sha256(before.encode()).hexdigest() if operation != "create" else None,
+        "result_sha256": hashlib.sha256(after.encode()).hexdigest() if content is not None else None,
+        "content": content,
+    }
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "state" / "journal.sqlite3")
+    )
+    workspace_id = registry.register_selected_root(project, allow_patch_apply=True)
+    calls = {"count": 0}
+
+    if operation == "delete":
+        original = windows_file_handles._mark_for_delete
+
+        def mark_then_fail(kernel32, handle):
+            result = original(kernel32, handle)
+            if calls["count"] == 0:
+                calls["count"] += 1
+                raise OSError("injected failure after native delete disposition")
+            return result
+
+        monkeypatch.setattr(windows_file_handles, "_mark_for_delete", mark_then_fail)
+    else:
+        original = windows_file_handles._rename_relative
+
+        def rename_then_fail(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if calls["count"] == 0:
+                calls["count"] += 1
+                raise OSError("injected failure after native relative rename")
+            return result
+
+        monkeypatch.setattr(windows_file_handles, "_rename_relative", rename_then_fail)
+
+    try:
+        with pytest.raises(WorkspacePatchBatchError) as caught:
+            registry.apply_patch_batch(workspace_id, [patch])
+        assert caught.value.rollback_complete is True
+        if operation == "create":
+            assert not target.exists()
+        else:
+            assert target.read_text(encoding="utf-8") == before
+    finally:
+        registry.close()
