@@ -12,6 +12,9 @@ from gridfs.errors import NoFile
 from odei_api.services.project_lifecycle import fence_project_write
 
 
+_MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
+
+
 class SnapshotStoreError(RuntimeError):
     """Snapshot object storage is unavailable or inconsistent."""
 
@@ -43,6 +46,10 @@ class MongoWorkspaceSnapshotStore:
     ) -> dict[str, Any]:
         if not 1 <= retention_days <= 30:
             raise ValueError("snapshot retention must be between 1 and 30 days")
+        if not isinstance(archive, bytes) or not archive:
+            raise ValueError("snapshot archive must be non-empty bytes")
+        if len(archive) > _MAX_ARCHIVE_BYTES:
+            raise ValueError("snapshot archive exceeds the 50 MiB storage limit")
         snapshot_id = uuid4().hex
         now = datetime.now(timezone.utc)
         blob_id = await self._bucket.upload_from_stream(
