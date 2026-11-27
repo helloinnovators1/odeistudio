@@ -46,7 +46,9 @@ async def test_parallel_worker_orchestrates_real_execution_run_and_cancellation(
         audit_store=audit,
     )
     await database["projects"].insert_one({
-        "organization_id": "org", "project_id": "project", "status": "active",
+        "organization_id": "org-integration",
+        "project_id": "project-integration",
+        "status": "active",
     })
     jobs = MongoParallelJobStore(
         database["nexus_parallel_jobs"], database["nexus_parallel_job_groups"],

@@ -4,9 +4,9 @@ import os
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 from pymongo import AsyncMongoClient
-import pytest
 
 from odei_api.services.project_lifecycle import fence_project_write
 
