@@ -132,7 +132,8 @@ async def test_artifact_retention_fences_project_and_skips_active_run(monkeypatc
 
     monkeypatch.setattr(artifact_module, "fence_project_write", fence)
     database["execution_runs"].rows.append({
-        "organization_id": "org-1", "_id": "run-1", "status": "running",
+        "organization_id": "org-1", "project_id": "project-1",
+        "_id": "run-1", "status": "running",
     })
     store = MongoExecutionArtifactStore(database)
 
