@@ -289,6 +289,36 @@ class MongoRepositoryIndexStore:
                 type(exc).__name__,
             )
 
+    async def delete_project_index(
+        self, *, organization_id: str, project_id: str,
+    ) -> dict[str, int]:
+        """Idempotently remove every persisted index revision for one tenant project.
+
+        Remove the active pointer first so retrieval fails closed while the
+        bounded collection cleanup proceeds. Every deletion is tenant/project
+        scoped; retrying after a partial storage failure completes the cleanup.
+        """
+        if not organization_id or not project_id:
+            raise ValueError("organization_id and project_id are required")
+        state_result = await self._state.delete_one({
+            "organization_id": organization_id,
+            "project_id": project_id,
+        })
+        deleted = {"state": state_result.deleted_count}
+        for name, collection in (
+            ("files", self._files),
+            ("symbols", self._symbols),
+            ("references", self._references),
+            ("imports", self._imports),
+            ("chunks", self._chunks),
+        ):
+            result = await collection.delete_many({
+                "organization_id": organization_id,
+                "project_id": project_id,
+            })
+            deleted[name] = result.deleted_count
+        return deleted
+
     @staticmethod
     def public_state(state: dict[str, Any]) -> dict[str, Any]:
         return {
