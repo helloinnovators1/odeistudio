@@ -641,7 +641,7 @@ async def test_expired_parallel_lease_is_not_requeued_during_project_deletion():
         organization_id="org", project_id="project", group_id="expired",
         jobs=[{"job_id": "job"}],
     )
-    claimed = await store.claim_next(worker_id="worker")
+    await store.claim_next(worker_id="worker")
     row = jobs.rows["org:project:expired:job"]
     row["lease_expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
     projects.status = "deleting"
