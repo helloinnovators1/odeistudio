@@ -295,14 +295,46 @@ def apply_file_patch_batch(
 
     applied: list[tuple[dict[str, Any], str | None]] = []
     results: list[dict[str, Any]] = []
+    in_flight: tuple[dict[str, Any], str | None, Any] | None = None
     try:
-        for item, original in zip(items, originals, strict=True):
-            results.append(apply_single_file_patch(grant, item))
+        for item, original, parsed in zip(items, originals, parsed_items, strict=True):
+            in_flight = (item, original, parsed)
+            result = apply_single_file_patch(grant, item)
             applied.append((item, original))
+            in_flight = None
+            results.append(result)
     except (OSError, ValueError) as failure:
+        uncertain_paths: list[str] = []
+        # A native operation can mutate the directory and then fail during
+        # temporary-name cleanup or a durability step. Detect that exact
+        # post-image before deciding which operations need compensation.
+        if in_flight is not None:
+            item, original, parsed = in_flight
+            operation, base_hash, result_hash = parsed[1], parsed[2], parsed[3]
+            try:
+                current = _read_for_batch(grant, item, parsed)
+                current_hash = (
+                    hashlib.sha256(current.encode("utf-8")).hexdigest()
+                    if current is not None else None
+                )
+                applied_after_error = (
+                    (operation == "create" and current_hash == result_hash)
+                    or (operation == "update" and current_hash == result_hash)
+                    or (operation == "delete" and current is None)
+                )
+                unchanged_after_error = (
+                    (operation == "create" and current is None)
+                    or (operation in {"update", "delete"} and current_hash == base_hash)
+                )
+                if applied_after_error:
+                    applied.append((item, original))
+                elif not unchanged_after_error:
+                    uncertain_paths.append(item["path"])
+            except (OSError, ValueError, WorkspacePatchApplyError):
+                uncertain_paths.append(item["path"])
         applied_paths = [item["path"] for item, _original in applied]
         rolled_back: list[str] = []
-        rollback_failures: list[str] = []
+        rollback_failures: list[str] = list(uncertain_paths)
         for item, original in reversed(applied):
             operation = item["operation"]
             if operation == "create":
