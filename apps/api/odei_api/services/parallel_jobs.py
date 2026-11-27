@@ -327,7 +327,7 @@ class MongoParallelJobStore:
                 raise ParallelJobConflict("job lease expired or checkpoint version changed")
             await fence_project_write(
                 self._projects, organization_id=organization_id,
-                project_id=current["project_id"], session=session,
+                project_id=current["project_id"], session=session, allow_deleting=True,
             )
             row = await self._jobs.find_one_and_update(
                 {"_id": current["_id"], "version": expected_version, "status": "leased"},

@@ -505,7 +505,7 @@ class MongoExecutionRunStore:
             if self._projects is not None:
                 await fence_project_write(
                     self._projects, organization_id=current["organization_id"],
-                    project_id=current["project_id"], session=session,
+                    project_id=current["project_id"], session=session, allow_deleting=True,
                 )
             if (
                 current.get("worker_commit_sha") is not None
