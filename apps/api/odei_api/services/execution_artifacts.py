@@ -98,6 +98,7 @@ class MongoExecutionArtifactStore:
         document = await self._metadata.find_one({
             "organization_id": organization_id, "project_id": project_id,
             "task_id": task_id, "run_id": run_id,
+            "state": {"$ne": "deleting"},
         })
         if document is None:
             return None
@@ -156,6 +157,7 @@ class MongoExecutionArtifactStore:
             removed = await self._metadata.delete_one({"_id": row["_id"], "state": "deleting"})
             deleted += removed.deleted_count
         return deleted
+
     @staticmethod
     def public_metadata(document: dict[str, Any]) -> dict[str, Any]:
         return {
