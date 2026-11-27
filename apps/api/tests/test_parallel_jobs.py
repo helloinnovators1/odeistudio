@@ -628,7 +628,7 @@ async def test_project_deletion_drains_completed_job_without_unblocking_dependen
         outcome="completed",
     )
     assert completed.status == "completed"
-    assert jobs.rows["org:project:drain:second"]["status"] == "cancelled"
+    assert next(row for row in jobs.rows.values() if row["job_id"] == "second")["status"] == "cancelled"
     assert await store.claim_next(worker_id="another-worker") is None
 
 
@@ -642,7 +642,7 @@ async def test_expired_parallel_lease_is_not_requeued_during_project_deletion():
         jobs=[{"job_id": "job"}],
     )
     await store.claim_next(worker_id="worker")
-    row = jobs.rows["org:project:expired:job"]
+    row = next(row for row in jobs.rows.values() if row["job_id"] == "job")
     row["lease_expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
     projects.status = "deleting"
     assert await store.claim_next(worker_id="replacement") is None

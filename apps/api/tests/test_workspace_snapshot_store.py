@@ -54,6 +54,8 @@ class Collection:
             if all(
                 row.get(key) in value["$in"]
                 if isinstance(value, dict) and "$in" in value
+                else row.get(key) <= value["$lte"]
+                if isinstance(value, dict) and "$lte" in value
                 else row.get(key) == value
                 for key, value in query.items()
             ):
