@@ -9,9 +9,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi import HTTPException
 
-class ProjectLifecycleWriteBlocked(RuntimeError):
+
+class ProjectLifecycleWriteBlocked(HTTPException):
     """The project is missing or no longer accepts new mutations."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=409, detail={
+            "code": "PROJECT_LIFECYCLE_CLOSED",
+            "message": "The project is missing or is closing; no project writes are accepted.",
+        })
 
 
 async def fence_project_write(
@@ -33,6 +41,4 @@ async def fence_project_write(
         session=session,
     )
     if result.matched_count != 1:
-        raise ProjectLifecycleWriteBlocked(
-            "Project is missing or is closing; no project writes are accepted"
-        )
+        raise ProjectLifecycleWriteBlocked()

@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from pymongo import ReturnDocument
 
+from odei_api.services.project_lifecycle import fence_project_write
+
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
 _PROFILE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
@@ -172,8 +174,9 @@ def _event(run: ExecutionRun, *, event_type: str, version: int,
 
 class MongoExecutionRunStore:
     """MongoDB run queue with transactional events and expiring worker leases."""
-    def __init__(self, runs: Any, events: Any, client: Any, audit_store: Any | None = None):
+    def __init__(self, runs: Any, events: Any, client: Any, audit_store: Any | None = None, projects: Any | None = None):
         self._runs, self._events, self._client, self._audit = runs, events, client, audit_store
+        self._projects = projects
 
     async def initialize(self) -> None:
         await self._runs.create_index([("organization_id", 1), ("_id", 1)], unique=True)
@@ -226,6 +229,11 @@ class MongoExecutionRunStore:
         now = datetime.now(timezone.utc)
         document = self._document(run, now)
         async with self._client.start_session() as session, await session.start_transaction():
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=run.organization_id,
+                    project_id=run.project_id, session=session,
+                )
             await self._runs.insert_one(document, session=session)
             await self._events.insert_one(_event(run, event_type="execution.queued", version=0,
                                                   actor_id=run.requester_subject), session=session)
@@ -244,6 +252,11 @@ class MongoExecutionRunStore:
         now = datetime.now(timezone.utc)
         document = self._document(run, now)
         async with self._client.start_session() as session, await session.start_transaction():
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=run.organization_id,
+                    project_id=run.project_id, session=session,
+                )
             task = await tasks.find_one({
                 "_id": run.task_id, "organization_id": run.organization_id,
                 "project_id": run.project_id, "status": {"$in": ["approved", "repairing"]},
@@ -343,6 +356,11 @@ class MongoExecutionRunStore:
                 sort=[("created_at", 1)], return_document=ReturnDocument.AFTER, session=session)
             if row is None:
                 return None
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=row["organization_id"],
+                    project_id=row["project_id"], session=session,
+                )
             claimed = self._from_document(row)
             await self._events.insert_one(_event(claimed, event_type="execution.leased",
                 version=claimed.version, actor_id=worker_id, attempt=claimed.attempts), session=session)
@@ -366,6 +384,11 @@ class MongoExecutionRunStore:
             cursor = self._runs.find(query, session=session).sort("created_at", 1).limit(limit)
             rows = await cursor.to_list(length=limit)
             for row in rows:
+                if self._projects is not None:
+                    await fence_project_write(
+                        self._projects, organization_id=row["organization_id"],
+                        project_id=row["project_id"], session=session,
+                    )
                 status = ExecutionRunStatus(row["status"])
                 updated = await self._runs.find_one_and_update(
                     {"_id": row["_id"], "organization_id": row["organization_id"],
@@ -461,6 +484,11 @@ class MongoExecutionRunStore:
             }, session=session)
             if current is None:
                 raise ExecutionRunConflict("worker lease is missing or no longer collecting")
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=current["organization_id"],
+                    project_id=current["project_id"], session=session,
+                )
             if (
                 current.get("worker_commit_sha") is not None
                 or current.get("repository_binding_version") != provenance["binding_version"]
@@ -538,6 +566,11 @@ class MongoExecutionRunStore:
                  "status": {"$in": ["leased", "running", "collecting"]}}, session=session)
             if current is None:
                 raise ExecutionRunConflict("worker lease is missing, expired or no longer owned")
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=current["organization_id"],
+                    project_id=current["project_id"], session=session,
+                )
             current_status = ExecutionRunStatus(current["status"])
             if current.get("cancel_requested") and next_status is not ExecutionRunStatus.CANCELLED:
                 raise ExecutionRunConflict("cancellation has been requested; worker must stop and clean up")
@@ -600,6 +633,11 @@ class MongoExecutionRunStore:
             current = await self._runs.find_one({"_id": run_id, "organization_id": organization_id}, session=session)
             if current is None:
                 raise ExecutionRunNotFound("execution run was not found")
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=current["organization_id"],
+                    project_id=current["project_id"], session=session,
+                )
             status = ExecutionRunStatus(current["status"])
             if status is ExecutionRunStatus.CANCELLED and current.get("cancel_requested"):
                 return self._from_document(current)

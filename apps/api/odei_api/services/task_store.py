@@ -178,6 +178,11 @@ class MongoTaskStore:
             "updated_at": planned.updated_at,
         }
         async with self._client.start_session() as session, await session.start_transaction():
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=task.organization_id,
+                    project_id=task.project_id, session=session,
+                )
             await self._collection.insert_one(document, session=session)
             for event in event_rows:
                 await self._events.insert_one(event, session=session)
