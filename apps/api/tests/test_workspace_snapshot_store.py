@@ -136,6 +136,7 @@ async def test_expired_snapshot_cleanup_skips_active_runs_and_deletes_inactive_b
          "expires_at": now - timedelta(seconds=1)},
     ])
     database["execution_runs"].rows.append({
+        "organization_id": "org", "project_id": "project",
         "snapshot_id": "active-snapshot", "status": "running",
     })
 
