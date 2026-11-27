@@ -217,3 +217,42 @@ async def test_snapshot_retention_resumes_nonexpired_deletion_tombstone_after_re
     assert await store.delete_expired(limit=10) == 1
     assert bucket.deleted == ["blob-manual"]
     assert database["workspace_snapshots"].rows == []
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("archive", "message"),
+    [
+        (b"", "non-empty bytes"),
+        ("not-bytes", "non-empty bytes"),
+        (b"x" * (50 * 1024 * 1024 + 1), "50 MiB"),
+    ],
+)
+async def test_snapshot_put_rejects_invalid_or_oversized_archive_before_gridfs_upload(
+    monkeypatch, archive, message,
+):
+    database = Database()
+
+    class RejectingBucket:
+        async def upload_from_stream(self, *_args, **_kwargs):
+            raise AssertionError("invalid archive must be rejected before GridFS upload")
+
+    monkeypatch.setattr(
+        snapshot_module, "AsyncGridFSBucket",
+        lambda _database, bucket_name: RejectingBucket(),
+    )
+    store = MongoWorkspaceSnapshotStore(database)
+
+    with pytest.raises(ValueError, match=message):
+        await store.put(
+            organization_id="org",
+            project_id="project",
+            task_id="task",
+            owner_issuer="issuer",
+            owner_subject="subject",
+            archive=archive,
+            sha256="0" * 64,
+            file_count=0,
+            total_bytes=0,
+        )
