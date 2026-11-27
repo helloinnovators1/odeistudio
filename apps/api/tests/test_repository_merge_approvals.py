@@ -124,7 +124,7 @@ async def test_merge_approval_is_durable_single_use_and_bound_to_same_owner():
 @pytest.mark.asyncio
 async def test_expired_approval_cannot_be_consumed():
     collection = Collection()
-    store = MongoRepositoryMergeApprovalStore(collection)
+    store = MongoRepositoryMergeApprovalStore(collection, FakeClient(), FakeProjects())
     approval = await store.create(**approval_values())
     collection.documents[approval["_id"]]["expires_at"] = (
         datetime.now(timezone.utc) - timedelta(seconds=1)
@@ -139,7 +139,7 @@ async def test_expired_approval_cannot_be_consumed():
 @pytest.mark.asyncio
 async def test_failed_approval_is_terminal_and_not_reusable():
     collection = Collection()
-    store = MongoRepositoryMergeApprovalStore(collection)
+    store = MongoRepositoryMergeApprovalStore(collection, FakeClient(), FakeProjects())
     approval = await store.create(**approval_values())
     await store.consume(
         approval_id=approval["approval_id"], organization_id="org-1",
