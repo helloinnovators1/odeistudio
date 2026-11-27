@@ -451,13 +451,31 @@ class MongoExecutionRunStore:
         if not 5 <= lease_seconds <= 300 or not re.fullmatch(r"[a-f0-9]{32}", lease_token or ""):
             raise ValueError("lease heartbeat parameters are invalid")
         expiry = now + timedelta(seconds=lease_seconds)
-        result = await self._runs.update_one(
-            {"_id": run_id, "organization_id": organization_id, "worker_id": worker_id,
-             "lease_token": lease_token, "status": {"$in": ["leased", "running", "collecting"]},
-             "lease_expires_at": {"$gt": now}},
-            {"$set": {"lease_expires_at": expiry, "updated_at": now}})
-        if result.modified_count != 1:
-            raise ExecutionRunConflict("worker lease is missing, expired or no longer owned")
+        async with self._client.start_session() as session, await session.start_transaction():
+            current = await self._runs.find_one(
+                {"_id": run_id, "organization_id": organization_id,
+                 "worker_id": worker_id, "lease_token": lease_token,
+                 "status": {"$in": ["leased", "running", "collecting"]},
+                 "lease_expires_at": {"$gt": now}},
+                session=session,
+            )
+            if current is None:
+                raise ExecutionRunConflict("worker lease is missing, expired or no longer owned")
+            if self._projects is not None:
+                await fence_project_write(
+                    self._projects, organization_id=current["organization_id"],
+                    project_id=current["project_id"], session=session,
+                )
+            result = await self._runs.update_one(
+                {"_id": run_id, "organization_id": organization_id,
+                 "worker_id": worker_id, "lease_token": lease_token,
+                 "status": {"$in": ["leased", "running", "collecting"]},
+                 "lease_expires_at": {"$gt": now}},
+                {"$set": {"lease_expires_at": expiry, "updated_at": now}},
+                session=session,
+            )
+            if result.modified_count != 1:
+                raise ExecutionRunConflict("worker lease is missing, expired or no longer owned")
         return expiry
 
 
