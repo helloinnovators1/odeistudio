@@ -10,6 +10,7 @@ from gridfs.asynchronous import AsyncGridFSBucket
 from gridfs.errors import NoFile
 
 from odei_api.services.secret_redaction import redact_secrets
+from odei_api.services.project_lifecycle import fence_project_write
 
 
 class ExecutionArtifactStoreError(RuntimeError):
@@ -22,6 +23,8 @@ class MongoExecutionArtifactStore:
     def __init__(self, database: Any):
         self._metadata = database["execution_artifacts"]
         self._runs = database["execution_runs"]
+        self._projects = database["projects"]
+        self._client = database.client
         self._stdout = AsyncGridFSBucket(database, bucket_name="execution_stdout")
         self._stderr = AsyncGridFSBucket(database, bucket_name="execution_stderr")
 
@@ -73,7 +76,12 @@ class MongoExecutionArtifactStore:
                 "stderr_bytes": len(safe_stderr.encode("utf-8")),
                 "created_at": datetime.now(timezone.utc),
             }
-            await self._metadata.insert_one(document)
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=organization_id,
+                    project_id=project_id, session=session, allow_deleting=True,
+                )
+                await self._metadata.insert_one(document, session=session)
             return self.public_metadata(document)
         except Exception:
             await self._stdout.delete(stdout_id)

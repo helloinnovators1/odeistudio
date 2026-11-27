@@ -33,6 +33,7 @@ from odei_api.services.patch_proposals import (
     build_patch_proposal,
 )
 from odei_api.services.secret_redaction import redact_secrets
+from odei_api.services.project_lifecycle import fence_project_write
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -101,8 +102,10 @@ class PatchApplyCapabilityRequest(BaseModel):
 class MongoPatchProposalStore:
     """Persist bounded patch previews and owner decisions in MongoDB."""
 
-    def __init__(self, collection: Any) -> None:
+    def __init__(self, collection: Any, client: Any | None = None, projects: Any | None = None) -> None:
         self.collection = collection
+        self._client = client
+        self._projects = projects
 
     async def initialize(self) -> None:
         await self.collection.create_index("proposal_id", unique=True)
@@ -136,7 +139,14 @@ class MongoPatchProposalStore:
             "decided_by_subject": None,
             "decided_at": None,
         }
-        await self.collection.insert_one(document)
+        if self._client is None or self._projects is None:
+            raise RuntimeError("patch proposal writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            await self.collection.insert_one(document, session=session)
         return document
 
     async def list_for_project(
@@ -168,26 +178,33 @@ class MongoPatchProposalStore:
         if decision not in {"approved", "rejected"}:
             raise ValueError("Unsupported proposal decision")
         now = datetime.now(timezone.utc)
-        return await self.collection.find_one_and_update(
-            {
-                "organization_id": organization_id,
-                "project_id": project_id,
-                "proposal_id": proposal_id,
-                "status": "pending",
-                "version": expected_version,
-            },
-            {
-                "$set": {
-                    "status": decision,
-                    "decided_by_issuer": actor_issuer,
-                    "decided_by_subject": actor_subject,
-                    "decided_at": now,
-                    "updated_at": now,
+        if self._client is None or self._projects is None:
+            raise RuntimeError("patch proposal writes require transactional project lifecycle fencing")
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session,
+            )
+            return await self.collection.find_one_and_update(
+                {
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                    "proposal_id": proposal_id,
+                    "status": "pending",
+                    "version": expected_version,
                 },
-                "$inc": {"version": 1},
-            },
-            return_document=ReturnDocument.AFTER,
-        )
+                {
+                    "$set": {
+                        "status": decision,
+                        "decided_by_issuer": actor_issuer,
+                        "decided_by_subject": actor_subject,
+                        "decided_at": now,
+                        "updated_at": now,
+                    },
+                    "$inc": {"version": 1},
+                },
+                return_document=ReturnDocument.AFTER, session=session,
+            )
 
 
 def _is_project_owner(project: dict[str, Any], principal: Principal) -> bool:

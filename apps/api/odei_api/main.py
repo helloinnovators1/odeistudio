@@ -147,7 +147,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             )
             await conversation_store.initialize()
             application.state.conversation_store = conversation_store
-            patch_proposal_store = MongoPatchProposalStore(application.state.mongo_database["nexus_patch_proposals"])
+            patch_proposal_store = MongoPatchProposalStore(
+                application.state.mongo_database["nexus_patch_proposals"],
+                client,
+                application.state.mongo_database["projects"],
+            )
             await patch_proposal_store.initialize()
             application.state.patch_proposal_store = patch_proposal_store
             execution_run_store = MongoExecutionRunStore(
