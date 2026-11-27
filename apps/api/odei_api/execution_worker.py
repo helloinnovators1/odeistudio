@@ -36,6 +36,14 @@ from odei_api.services.workspace_snapshots import WorkspaceSnapshotIngestor
 logger = logging.getLogger("odei.execution.worker")
 
 
+def _create_execution_run_store(database, client, audit):
+    """Build a project-fenced run store for the standalone worker."""
+    return MongoExecutionRunStore(
+        database["execution_runs"], database["execution_run_events"], client,
+        audit_store=audit, projects=database["projects"],
+    )
+
+
 class ExecutionWorker:
     """Lease-supervised worker that verifies immutable snapshots before sandbox execution."""
 
@@ -292,10 +300,7 @@ async def _main() -> None:
     )
     audit = MongoAuditEventStore(database["audit_events"])
     await audit.initialize()
-    runs = MongoExecutionRunStore(
-        database["execution_runs"], database["execution_run_events"], client,
-        audit_store=audit,
-    )
+    runs = _create_execution_run_store(database, client, audit)
     await runs.initialize()
     snapshots = MongoWorkspaceSnapshotStore(database)
     await snapshots.initialize()
