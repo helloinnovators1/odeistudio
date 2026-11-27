@@ -647,3 +647,8 @@ async def test_expired_parallel_lease_is_not_requeued_during_project_deletion():
     projects.status = "deleting"
     assert await store.claim_next(worker_id="replacement") is None
     assert row["status"] == "failed"
+
+def test_parallel_job_store_rejects_missing_project_fence():
+    with pytest.raises(ValueError, match="projects collection"):
+        MongoParallelJobStore(Collection(), Collection(), Collection(), FakeClient(), None)
+
