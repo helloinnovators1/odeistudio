@@ -49,7 +49,7 @@ class Collection:
                    for key, value in query.items())
         ])
 
-    async def find_one(self, query):
+    async def find_one(self, query, **_kwargs):
         for row in self.rows:
             if all(
                 row.get(key) in value["$in"]
