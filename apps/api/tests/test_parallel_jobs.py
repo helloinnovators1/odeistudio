@@ -609,3 +609,41 @@ async def test_group_cancellation_makes_dependency_blocked_jobs_claimable_for_cl
         organization_id="org", job_id=second.id, worker_id="worker-b",
         lease_token=second.lease_token,
     )
+
+
+@pytest.mark.asyncio
+async def test_project_deletion_drains_completed_job_without_unblocking_dependents():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    projects = FakeProjects()
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), projects)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="drain",
+        jobs=[{"job_id": "first"}, {"job_id": "second", "depends_on": ["first"]}],
+    )
+    claimed = await store.claim_next(worker_id="worker")
+    projects.status = "deleting"
+    completed = await store.finish(
+        organization_id="org", job_id="first", worker_id="worker",
+        lease_token=claimed.lease_token, expected_version=claimed.version,
+        outcome="completed",
+    )
+    assert completed.status == "completed"
+    assert jobs.rows["org:project:drain:second"]["status"] == "cancelled"
+    assert await store.claim_next(worker_id="another-worker") is None
+
+
+@pytest.mark.asyncio
+async def test_expired_parallel_lease_is_not_requeued_during_project_deletion():
+    jobs, groups, events = Collection(), Collection(), Collection()
+    projects = FakeProjects()
+    store = MongoParallelJobStore(jobs, groups, events, FakeClient(), projects)
+    await store.create_group(
+        organization_id="org", project_id="project", group_id="expired",
+        jobs=[{"job_id": "job"}],
+    )
+    claimed = await store.claim_next(worker_id="worker")
+    row = jobs.rows["org:project:expired:job"]
+    row["lease_expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
+    projects.status = "deleting"
+    assert await store.claim_next(worker_id="replacement") is None
+    assert row["status"] == "failed"
