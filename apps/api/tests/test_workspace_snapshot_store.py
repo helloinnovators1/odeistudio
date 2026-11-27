@@ -40,27 +40,27 @@ class Collection:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
 
+    @staticmethod
+    def matches(row, query):
+        for key, value in query.items():
+            if key == "$or":
+                if not any(Collection.matches(row, clause) for clause in value):
+                    return False
+            elif isinstance(value, dict) and "$lte" in value:
+                if row.get(key) is None or row[key] > value["$lte"]:
+                    return False
+            elif isinstance(value, dict) and "$in" in value:
+                if row.get(key) not in value["$in"]:
+                    return False
+            elif row.get(key) != value:
+                return False
+        return True
+
     def find(self, query):
-        return Cursor([
-            row for row in self.rows
-            if all(row.get(key, None) <= value["$lte"]
-                   if isinstance(value, dict) and "$lte" in value
-                   else row.get(key) == value
-                   for key, value in query.items())
-        ])
+        return Cursor([row for row in self.rows if self.matches(row, query)])
 
     async def find_one(self, query, **_kwargs):
-        for row in self.rows:
-            if all(
-                row.get(key) in value["$in"]
-                if isinstance(value, dict) and "$in" in value
-                else row.get(key) <= value["$lte"]
-                if isinstance(value, dict) and "$lte" in value
-                else row.get(key) == value
-                for key, value in query.items()
-            ):
-                return row
-        return None
+        return next((row for row in self.rows if self.matches(row, query)), None)
 
     async def update_one(self, query, update, **_kwargs):
         row = await self.find_one(query)
@@ -195,3 +195,24 @@ async def test_expired_snapshot_cleanup_resumes_after_gridfs_delete_failure(monk
     assert await store.delete_expired(limit=10) == 1
     assert database["workspace_snapshots"].rows == []
     assert bucket.deleted == ["blob-fault"]
+
+
+
+@pytest.mark.asyncio
+async def test_snapshot_retention_resumes_nonexpired_deletion_tombstone_after_restart(monkeypatch):
+    database = Database()
+    bucket = Bucket()
+    monkeypatch.setattr(
+        snapshot_module, "AsyncGridFSBucket",
+        lambda _database, bucket_name: bucket,
+    )
+    database["workspace_snapshots"].rows.append({
+        "_id": "manual-delete-retry", "blob_id": "blob-manual",
+        "organization_id": "org", "project_id": "project", "state": "deleting",
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=3),
+    })
+
+    store = MongoWorkspaceSnapshotStore(database)
+    assert await store.delete_expired(limit=10) == 1
+    assert bucket.deleted == ["blob-manual"]
+    assert database["workspace_snapshots"].rows == []
