@@ -129,3 +129,5 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run browser end-to-end tests
         run: npm run test:e2e
+      - name: Run authenticated ODID browser journey
+        run: npm run test:e2e:auth
