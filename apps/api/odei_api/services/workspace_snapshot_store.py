@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -50,6 +51,16 @@ class MongoWorkspaceSnapshotStore:
             raise ValueError("snapshot archive must be non-empty bytes")
         if len(archive) > _MAX_ARCHIVE_BYTES:
             raise ValueError("snapshot archive exceeds the 50 MiB storage limit")
+        if not all(isinstance(value, str) and value.strip() for value in (
+            organization_id, project_id, task_id, owner_issuer, owner_subject,
+        )):
+            raise ValueError("snapshot tenant, task and owner identifiers are required")
+        if not isinstance(sha256, str) or re.fullmatch(r"[0-9a-f]{64}", sha256) is None:
+            raise ValueError("snapshot manifest SHA-256 must be 64 lowercase hexadecimal characters")
+        if isinstance(file_count, bool) or not isinstance(file_count, int) or not 0 <= file_count <= 10_000:
+            raise ValueError("snapshot file count is invalid")
+        if isinstance(total_bytes, bool) or not isinstance(total_bytes, int) or not 0 <= total_bytes <= 512 * 1024 * 1024:
+            raise ValueError("snapshot expanded byte count is invalid")
         snapshot_id = uuid4().hex
         now = datetime.now(timezone.utc)
         blob_id = await self._bucket.upload_from_stream(
