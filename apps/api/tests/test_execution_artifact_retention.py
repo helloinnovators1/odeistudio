@@ -53,7 +53,15 @@ class Collection:
         return Cursor(rows)
 
     async def find_one(self, query, **_kwargs):
-        return next((row for row in self.rows if all(row.get(k) == v for k, v in query.items())), None)
+        def matches(row):
+            for key, value in query.items():
+                if isinstance(value, dict) and "$in" in value:
+                    if row.get(key) not in value["$in"]:
+                        return False
+                elif row.get(key) != value:
+                    return False
+            return True
+        return next((row for row in self.rows if matches(row)), None)
 
     async def update_one(self, query, update, **_kwargs):
         row = await self.find_one({"_id": query["_id"]})
