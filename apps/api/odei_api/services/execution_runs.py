@@ -175,6 +175,10 @@ def _event(run: ExecutionRun, *, event_type: str, version: int,
 class MongoExecutionRunStore:
     """MongoDB run queue with transactional events and expiring worker leases."""
     def __init__(self, runs: Any, events: Any, client: Any, audit_store: Any | None = None, projects: Any | None = None):
+        if projects is None:
+            raise ValueError("MongoExecutionRunStore requires the projects collection for lifecycle fencing")
+        if client is None:
+            raise ValueError("MongoExecutionRunStore requires a MongoDB client for transactional lifecycle fencing")
         self._runs, self._events, self._client, self._audit = runs, events, client, audit_store
         self._projects = projects
 
