@@ -129,11 +129,25 @@ class MongoWorkspaceSnapshotStore:
         })
         if document is None:
             return False
+        async with self._client.start_session() as session, await session.start_transaction():
+            await fence_project_write(
+                self._projects, organization_id=organization_id,
+                project_id=project_id, session=session, allow_deleting=True,
+            )
+            await self._metadata.update_one(
+                {"_id": snapshot_id, "organization_id": organization_id,
+                 "project_id": project_id},
+                {"$set": {"state": "deleting", "deleting_at": datetime.now(timezone.utc)}},
+                session=session,
+            )
         try:
             await self._bucket.delete(document["blob_id"])
         except NoFile:
             pass
-        await self._metadata.delete_one({"_id": snapshot_id, "organization_id": organization_id})
+        await self._metadata.delete_one({
+            "_id": snapshot_id, "organization_id": organization_id,
+            "project_id": project_id, "state": "deleting",
+        })
         return True
 
     async def delete_expired(self, *, limit: int = 100) -> int:
@@ -150,12 +164,28 @@ class MongoWorkspaceSnapshotStore:
             })
             if active_run is not None:
                 continue
+            async with self._client.start_session() as session, await session.start_transaction():
+                await fence_project_write(
+                    self._projects, organization_id=row["organization_id"],
+                    project_id=row["project_id"], session=session, allow_deleting=True,
+                )
+                marked = await self._metadata.update_one(
+                    {"_id": row["_id"], "expires_at": {"$lte": now},
+                     "state": {"$in": ["available", "deleting"]}},
+                    {"$set": {"state": "deleting", "deleting_at": now}},
+                    session=session,
+                )
+                if not marked.matched_count:
+                    continue
             try:
                 await self._bucket.delete(row["blob_id"])
             except NoFile:
                 pass
-            await self._metadata.delete_one({"_id": row["_id"], "expires_at": {"$lte": now}})
-            deleted += 1
+            removed = await self._metadata.delete_one({
+                "_id": row["_id"], "organization_id": row["organization_id"],
+                "project_id": row["project_id"], "state": "deleting",
+            })
+            deleted += removed.deleted_count
         return deleted
 
     @staticmethod
