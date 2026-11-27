@@ -256,3 +256,50 @@ async def test_snapshot_put_rejects_invalid_or_oversized_archive_before_gridfs_u
             file_count=0,
             total_bytes=0,
         )
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"sha256": "not-a-digest"}, "SHA-256"),
+        ({"sha256": "A" * 64}, "SHA-256"),
+        ({"file_count": -1}, "file count"),
+        ({"file_count": 10_001}, "file count"),
+        ({"file_count": True}, "file count"),
+        ({"total_bytes": -1}, "expanded byte"),
+        ({"total_bytes": 512 * 1024 * 1024 + 1}, "expanded byte"),
+        ({"total_bytes": True}, "expanded byte"),
+        ({"owner_subject": " "}, "identifiers"),
+    ],
+)
+async def test_snapshot_put_rejects_invalid_metadata_before_gridfs_upload(
+    monkeypatch, overrides, message,
+):
+    database = Database()
+
+    class RejectingBucket:
+        async def upload_from_stream(self, *_args, **_kwargs):
+            raise AssertionError("invalid metadata must be rejected before GridFS upload")
+
+    monkeypatch.setattr(
+        snapshot_module, "AsyncGridFSBucket",
+        lambda _database, bucket_name: RejectingBucket(),
+    )
+    store = MongoWorkspaceSnapshotStore(database)
+    arguments = {
+        "organization_id": "org",
+        "project_id": "project",
+        "task_id": "task",
+        "owner_issuer": "issuer",
+        "owner_subject": "subject",
+        "archive": b"zip-data",
+        "sha256": "0" * 64,
+        "file_count": 1,
+        "total_bytes": 10,
+    }
+    arguments.update(overrides)
+
+    with pytest.raises(ValueError, match=message):
+        await store.put(**arguments)
