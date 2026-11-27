@@ -236,3 +236,16 @@ async def test_artifact_put_rejects_invalid_metadata_before_gridfs_upload(
 
     with pytest.raises(ValueError, match=message):
         await store.put(**arguments)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("retention_days", "limit"),
+    [(True, 100), (0, 100), (366, 100), (30, False), (30, 0), (30, 1001), (30, 1.5)],
+)
+async def test_artifact_retention_rejects_invalid_policy_bounds(retention_days, limit):
+    database = Database([])
+    store = MongoExecutionArtifactStore(database)
+
+    with pytest.raises(ValueError, match="retention days and batch limit"):
+        await store.delete_expired(retention_days=retention_days, limit=limit)
