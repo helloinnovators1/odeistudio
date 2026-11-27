@@ -118,8 +118,13 @@ class MongoExecutionArtifactStore:
             raise ValueError("artifact retention policy is invalid")
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
         cursor = self._metadata.find({
-            "created_at": {"$lte": cutoff},
-            "state": {"$in": ["available", "deleting", None]},
+            "$or": [
+                {"state": "deleting"},
+                {
+                    "created_at": {"$lte": cutoff},
+                    "state": {"$in": ["available", None]},
+                },
+            ],
         }).limit(limit)
         rows = await cursor.to_list(length=limit)
         deleted = 0
@@ -140,8 +145,16 @@ class MongoExecutionArtifactStore:
                 if active_run is not None:
                     continue
                 marked = await self._metadata.update_one(
-                    {"_id": row["_id"], "created_at": {"$lte": cutoff},
-                     "state": {"$in": ["available", "deleting", None]}},
+                    {
+                        "_id": row["_id"],
+                        "$or": [
+                            {"state": "deleting"},
+                            {
+                                "created_at": {"$lte": cutoff},
+                                "state": {"$in": ["available", None]},
+                            },
+                        ],
+                    },
                     {"$set": {"state": "deleting", "deleting_at": datetime.now(timezone.utc)}},
                     session=session,
                 )
