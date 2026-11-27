@@ -5,7 +5,6 @@ import asyncio
 import logging
 from typing import Any
 
-from pymongo.errors import PyMongoError
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +27,34 @@ async def run_snapshot_retention(
                 logger.info("Expired workspace snapshot retention removed %d snapshot(s)", deleted)
         except asyncio.CancelledError:
             raise
-        except PyMongoError as exc:
+        except Exception as exc:
             logger.warning(
                 "Expired workspace snapshot cleanup failed (%s); it will be retried",
+                type(exc).__name__,
+            )
+        await asyncio.sleep(interval_seconds)
+
+
+async def run_execution_artifact_retention(
+    artifact_store: Any, *, interval_seconds: float = 300.0, batch_size: int = 100,
+) -> None:
+    """Repeatedly expire execution artifacts; failures remain retryable.
+
+    Artifact deletion tombstones survive partial GridFS failures and are picked
+    up by the next pass. Cancellation is always propagated during shutdown.
+    """
+    if interval_seconds <= 0 or not 1 <= batch_size <= 1000:
+        raise ValueError("execution artifact retention worker bounds are invalid")
+    while True:
+        try:
+            deleted = await artifact_store.delete_expired(limit=batch_size)
+            if deleted:
+                logger.info("Execution artifact retention removed %d artifact(s)", deleted)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Execution artifact cleanup failed (%s); it will be retried",
                 type(exc).__name__,
             )
         await asyncio.sleep(interval_seconds)
