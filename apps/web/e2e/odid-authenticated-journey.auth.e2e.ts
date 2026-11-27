@@ -90,7 +90,9 @@ test("ODID PKCE browser journey authenticates and loads tenant-scoped projects",
     });
   });
 
-  await page.goto("/?window=ide");
+  await page.goto("/");
+  // The app boots into the ODEI home screen; opening New Chat mounts NEXUS.
+  await page.getByRole("button", { name: "New Chat" }).click();
   await expect(page.getByRole("button", { name: "Sign in with ODID" })).toBeEnabled();
   await page.getByRole("button", { name: "Sign in with ODID" }).click();
 
