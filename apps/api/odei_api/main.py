@@ -168,6 +168,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 application.state.mongo_database["nexus_parallel_jobs"],
                 application.state.mongo_database["nexus_parallel_job_groups"],
                 application.state.mongo_database["nexus_parallel_job_events"],
+                client,
+                application.state.mongo_database["projects"],
             )
             await parallel_job_store.initialize()
             application.state.parallel_job_store = parallel_job_store
