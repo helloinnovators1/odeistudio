@@ -19,7 +19,14 @@ async def test_patch_proposal_store_persists_owner_decisions_with_optimistic_ver
     client = AsyncMongoClient(uri, serverSelectionTimeoutMS=5_000)
     database_name = f"odei_patch_proposal_test_{uuid4().hex}"
     database = client[database_name]
-    store = MongoPatchProposalStore(database["nexus_patch_proposals"])
+    await database["projects"].insert_one({
+        "organization_id": "org-integration",
+        "project_id": "project-integration",
+        "status": "active",
+    })
+    store = MongoPatchProposalStore(
+        database["nexus_patch_proposals"], client, database["projects"],
+    )
     try:
         topology = await client.admin.command("hello")
         assert topology.get("setName") or topology.get("msg") == "isdbgrid"

@@ -73,9 +73,11 @@ class Bucket:
 
 class Database:
     def __init__(self):
+        self.client = object()
         self.collections = {
             "workspace_snapshots": Collection(),
             "execution_runs": Collection(),
+            "projects": Collection(),
         }
 
     def __getitem__(self, name):
