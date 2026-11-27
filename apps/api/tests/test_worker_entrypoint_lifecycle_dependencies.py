@@ -34,3 +34,13 @@ def test_parallel_worker_entrypoint_injects_project_fence_and_shared_client():
     assert runs._audit is audit
     assert jobs._client is client
     assert jobs._projects is database["projects"]
+
+
+def test_execution_run_store_rejects_missing_project_fence():
+    import pytest
+
+    from odei_api.services.execution_runs import MongoExecutionRunStore
+
+    with pytest.raises(ValueError, match="projects collection"):
+        MongoExecutionRunStore(object(), object(), object(), projects=None)
+
