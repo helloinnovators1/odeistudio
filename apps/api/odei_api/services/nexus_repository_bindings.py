@@ -261,13 +261,6 @@ async def remove_repository_binding(
         })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
-    try:
-        await collection.update_one(
-            {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
-            {"$unset": {"merge_lock": ""}},
-        )
-    except PyMongoError as exc:
-        raise HTTPException(status_code=503, detail={"code": "REPOSITORY_BINDING_UNAVAILABLE"}) from exc
     await _audit(audit, principal, organization_id, project_id,
                  "nexus.repository_binding.remove", "started",
                  {"binding_version": payload.expected_version})
@@ -277,6 +270,10 @@ async def remove_repository_binding(
             await fence_project_write(
                 database["projects"], organization_id=organization_id,
                 project_id=project_id, session=session,
+            )
+            await collection.update_one(
+                {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
+                {"$unset": {"merge_lock": ""}}, session=session,
             )
             result = await collection.delete_one({
                 "_id": key,
