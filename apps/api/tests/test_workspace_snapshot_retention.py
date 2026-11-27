@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from pymongo.errors import PyMongoError
 
 from odei_api.services.workspace_snapshot_retention import run_snapshot_retention
 
@@ -36,7 +37,7 @@ async def test_snapshot_retention_retries_after_a_failed_batch():
             nonlocal attempts
             attempts += 1
             if attempts == 1:
-                raise RuntimeError("temporary storage failure")
+                raise PyMongoError("temporary storage failure")
             retried.set()
             return 0
 

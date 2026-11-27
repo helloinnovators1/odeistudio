@@ -47,11 +47,17 @@ class Collection:
         return None
 
     async def delete_one(self, query):
+        def matches(row):
+            for key, value in query.items():
+                if isinstance(value, dict) and "$lte" in value:
+                    if row.get(key) is None or row[key] > value["$lte"]:
+                        return False
+                elif row.get(key) != value:
+                    return False
+            return True
+
         before = len(self.rows)
-        self.rows = [
-            row for row in self.rows
-            if not all(row.get(key) == value for key, value in query.items())
-        ]
+        self.rows = [row for row in self.rows if not matches(row)]
         return SimpleNamespace(deleted_count=before - len(self.rows))
 
 
