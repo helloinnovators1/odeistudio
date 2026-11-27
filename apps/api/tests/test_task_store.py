@@ -1,4 +1,5 @@
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 
@@ -113,6 +114,20 @@ class FakeCollection:
         return deepcopy(document)
 
 
+class FakeProjectCollection(FakeCollection):
+    async def update_one(self, query, update, session=None):
+        for document in self.documents.values():
+            if (
+                document.get("organization_id") == query.get("organization_id")
+                and document.get("project_id") == query.get("project_id")
+                and document.get("status") == query.get("status")
+            ):
+                for field, amount in update.get("$inc", {}).items():
+                    document[field] = document.get(field, 0) + amount
+                return SimpleNamespace(matched_count=1)
+        return SimpleNamespace(matched_count=0)
+
+
 class FailingEventCollection(FakeCollection):
     async def insert_one(self, document, session=None):
         raise RuntimeError("event store unavailable")
@@ -129,9 +144,16 @@ def make_store(events_collection=None, audit_collection=None):
     tasks = FakeCollection()
     events = events_collection or FakeCollection()
     audit_events = audit_collection or FakeCollection()
-    client = FakeClient([tasks, events, audit_events])
+    projects = FakeProjectCollection()
+    projects.documents["project-1"] = {
+        "_id": "project-1", "organization_id": "org-1",
+        "project_id": "project-1", "status": "active",
+    }
+    client = FakeClient([tasks, events, audit_events, projects])
     audit_store = MongoAuditEventStore(audit_events)
-    return MongoTaskStore(tasks, events, client, audit_store=audit_store), tasks, events
+    return MongoTaskStore(
+        tasks, events, client, audit_store=audit_store, projects=projects,
+    ), tasks, events
 
 
 @pytest.mark.asyncio
