@@ -349,3 +349,76 @@ def test_restart_recovers_crash_after_namespace_mutation_before_directory_flush(
         assert pending == []
     finally:
         restarted.close()
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "delete"])
+def test_batch_compensates_when_native_namespace_operation_mutates_then_raises(
+    tmp_path, monkeypatch, operation,
+):
+    from odei_api.services import workspace_patch_apply
+    from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+
+    project = tmp_path / "project"
+    project.mkdir()
+    target = project / "target.py"
+    before = "before"
+    after = "after"
+    if operation != "create":
+        target.write_text(before, encoding="utf-8")
+    content = after if operation != "delete" else None
+    patch = {
+        "path": "target.py",
+        "operation": operation,
+        "base_sha256": hashlib.sha256(before.encode()).hexdigest() if operation != "create" else None,
+        "result_sha256": hashlib.sha256(after.encode()).hexdigest() if content is not None else None,
+        "content": content,
+    }
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "state" / "journal.sqlite3")
+    )
+    workspace_id = registry.register_selected_root(project, allow_patch_apply=True)
+    calls = {"count": 0}
+
+    if operation == "create":
+        original = workspace_patch_apply.os.unlink
+
+        def fail_after_create(path, *args, **kwargs):
+            if isinstance(path, str) and path.startswith(".odei-") and calls["count"] == 0:
+                calls["count"] += 1
+                raise OSError("injected cleanup failure after hard-link create")
+            return original(path, *args, **kwargs)
+
+        monkeypatch.setattr(workspace_patch_apply.os, "unlink", fail_after_create)
+    elif operation == "update":
+        original = workspace_patch_apply.os.replace
+
+        def replace_then_fail(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if calls["count"] == 0:
+                calls["count"] += 1
+                raise OSError("injected failure after atomic replacement")
+            return result
+
+        monkeypatch.setattr(workspace_patch_apply.os, "replace", replace_then_fail)
+    else:
+        original = workspace_patch_apply.os.unlink
+
+        def unlink_then_fail(path, *args, **kwargs):
+            result = original(path, *args, **kwargs)
+            if path == "target.py" and calls["count"] == 0:
+                calls["count"] += 1
+                raise OSError("injected failure after atomic deletion")
+            return result
+
+        monkeypatch.setattr(workspace_patch_apply.os, "unlink", unlink_then_fail)
+
+    try:
+        with pytest.raises(workspace_patch_apply.WorkspacePatchBatchError) as caught:
+            registry.apply_patch_batch(workspace_id, [patch])
+        assert caught.value.rollback_complete is True
+        if operation == "create":
+            assert not target.exists()
+        else:
+            assert target.read_text(encoding="utf-8") == before
+    finally:
+        registry.close()
