@@ -193,3 +193,46 @@ async def test_artifact_retention_resumes_nonexpired_deletion_tombstone(monkeypa
     assert database["execution_artifacts"].rows == []
     assert buckets["execution_stdout"].deleted == {"stdout-1"}
     assert buckets["execution_stderr"].deleted == {"stderr-1"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"organization_id": " org-1"}, "organization_id"),
+        ({"project_id": ""}, "project_id"),
+        ({"task_id": "task-1 "}, "task_id"),
+        ({"run_id": "x" * 129}, "run_id"),
+        ({"exit_code": True}, "exit code"),
+        ({"exit_code": 2 ** 32}, "exit code"),
+        ({"duration_ms": True}, "duration"),
+        ({"duration_ms": -1}, "duration"),
+        ({"timed_out": "false"}, "timed_out"),
+        ({"stdout_truncated": 1}, "stdout_truncated"),
+        ({"stderr_truncated": None}, "stderr_truncated"),
+    ],
+)
+async def test_artifact_put_rejects_invalid_metadata_before_gridfs_upload(
+    monkeypatch, overrides, message,
+):
+    database = Database([])
+    class RejectingBucket:
+        async def upload_from_stream(self, *_args, **_kwargs):
+            raise AssertionError("invalid metadata must be rejected before GridFS upload")
+
+    monkeypatch.setattr(
+        artifact_module, "AsyncGridFSBucket",
+        lambda _db, _bucket_name: RejectingBucket(),
+    )
+    store = MongoExecutionArtifactStore(database)
+    arguments = {
+        "organization_id": "org-1", "project_id": "project-1",
+        "task_id": "task-1", "run_id": "run-1",
+        "exit_code": 0, "duration_ms": 10, "timed_out": False,
+        "stdout": "ok", "stderr": "", "stdout_truncated": False,
+        "stderr_truncated": False,
+    }
+    arguments.update(overrides)
+
+    with pytest.raises(ValueError, match=message):
+        await store.put(**arguments)
