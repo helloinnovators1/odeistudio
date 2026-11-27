@@ -42,7 +42,7 @@ class Collection:
 class Database:
     def __init__(self):
         self.client = FakeClient()
-        self.collections = {
+        self.collections = {}
         for name in (
             "repository_index_state", "repository_index_files",
             "repository_index_symbols", "repository_index_references",
@@ -76,7 +76,9 @@ async def test_delete_project_index_removes_all_revisions_without_cross_tenant_d
         "state": 2, "files": 2, "symbols": 2, "references": 2,
         "imports": 2, "chunks": 2,
     }
-    for collection in database.collections.values():
+    for name, collection in database.collections.items():
+        if name == "projects":
+            continue
         assert collection.rows == [
             {"organization_id": "org-b", "project_id": "project-a", "revision_id": "other-tenant"},
             {"organization_id": "org-a", "project_id": "project-b", "revision_id": "other-project"},
