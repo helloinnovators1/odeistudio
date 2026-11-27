@@ -45,16 +45,19 @@ class MongoWorkspaceSnapshotStore:
         sha256: str, file_count: int, total_bytes: int,
         retention_days: int = 7,
     ) -> dict[str, Any]:
-        if not 1 <= retention_days <= 30:
-            raise ValueError("snapshot retention must be between 1 and 30 days")
+        if isinstance(retention_days, bool) or not isinstance(retention_days, int) or not 1 <= retention_days <= 30:
+            raise ValueError("snapshot retention must be an integer between 1 and 30 days")
         if not isinstance(archive, bytes) or not archive:
             raise ValueError("snapshot archive must be non-empty bytes")
         if len(archive) > _MAX_ARCHIVE_BYTES:
             raise ValueError("snapshot archive exceeds the 50 MiB storage limit")
-        if not all(isinstance(value, str) and value.strip() for value in (
-            organization_id, project_id, task_id, owner_issuer, owner_subject,
-        )):
-            raise ValueError("snapshot tenant, task and owner identifiers are required")
+        for field_name, value in (
+            ("organization_id", organization_id), ("project_id", project_id),
+            ("task_id", task_id), ("owner_issuer", owner_issuer),
+            ("owner_subject", owner_subject),
+        ):
+            if not isinstance(value, str) or not value or value != value.strip() or len(value) > 128:
+                raise ValueError(f"snapshot {field_name} is invalid")
         if not isinstance(sha256, str) or re.fullmatch(r"[0-9a-f]{64}", sha256) is None:
             raise ValueError("snapshot manifest SHA-256 must be 64 lowercase hexadecimal characters")
         if isinstance(file_count, bool) or not isinstance(file_count, int) or not 0 <= file_count <= 10_000:
@@ -195,8 +198,8 @@ class MongoWorkspaceSnapshotStore:
         return True
 
     async def delete_expired(self, *, limit: int = 100) -> int:
-        if not 1 <= limit <= 1000:
-            raise ValueError("deletion batch limit is invalid")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("deletion batch limit must be an integer between 1 and 1000")
         now = datetime.now(timezone.utc)
         cursor = self._metadata.find({
             "$or": [
