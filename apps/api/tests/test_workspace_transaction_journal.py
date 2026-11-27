@@ -351,6 +351,7 @@ def test_restart_recovers_crash_after_namespace_mutation_before_directory_flush(
         restarted.close()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX namespace fault-injection boundary")
 @pytest.mark.parametrize("operation", ["create", "update", "delete"])
 def test_batch_compensates_when_native_namespace_operation_mutates_then_raises(
     tmp_path, monkeypatch, operation,
