@@ -55,7 +55,10 @@ from odei_api.services.repository_index_store import MongoRepositoryIndexStore
 from odei_api.services.repository_intelligence import router as repository_intelligence_router
 from odei_api.services.repository_merge_approvals import MongoRepositoryMergeApprovalStore
 from odei_api.services.task_store import MongoTaskStore
-from odei_api.services.workspace_snapshot_retention import run_snapshot_retention
+from odei_api.services.workspace_snapshot_retention import (
+    run_execution_artifact_retention,
+    run_snapshot_retention,
+)
 from odei_api.services.workspace_snapshot_store import MongoWorkspaceSnapshotStore
 
 logger = logging.getLogger(__name__)
@@ -76,7 +79,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own the optional MongoDB client for the lifetime of the API process."""
     client = None
     database_name = None
-    snapshot_retention_task = None
+    retention_tasks = []
     http_client = httpx.AsyncClient(timeout=5.0)
     application.state.http_client = http_client
     mcp_gateway = McpGateway(load_mcp_servers(settings.nexus_mcp_servers_json))
@@ -182,10 +185,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             snapshot_store = MongoWorkspaceSnapshotStore(application.state.mongo_database)
             await snapshot_store.initialize()
             application.state.workspace_snapshot_store = snapshot_store
-            snapshot_retention_task = asyncio.create_task(
+            retention_tasks.append(asyncio.create_task(
                 run_snapshot_retention(snapshot_store),
                 name="odei-workspace-snapshot-retention",
-            )
+            ))
             repository_index_store = MongoRepositoryIndexStore(application.state.mongo_database)
             await repository_index_store.initialize()
             application.state.repository_index_store = repository_index_store
@@ -195,6 +198,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             artifact_store = MongoExecutionArtifactStore(application.state.mongo_database)
             await artifact_store.initialize()
             application.state.execution_artifact_store = artifact_store
+            retention_tasks.append(asyncio.create_task(
+                run_execution_artifact_retention(artifact_store),
+                name="odei-execution-artifact-retention",
+            ))
         else:
             application.state.mac_environment_store = None
             application.state.mac_deployment_store = None
@@ -209,12 +216,10 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             application.state.execution_artifact_store = None
         yield
     finally:
-        if snapshot_retention_task is not None:
-            snapshot_retention_task.cancel()
-            try:
-                await snapshot_retention_task
-            except asyncio.CancelledError:
-                pass
+        for retention_task in retention_tasks:
+            retention_task.cancel()
+        if retention_tasks:
+            await asyncio.gather(*retention_tasks, return_exceptions=True)
         if client is not None:
             await client.close()
         mcp_gateway.close()
