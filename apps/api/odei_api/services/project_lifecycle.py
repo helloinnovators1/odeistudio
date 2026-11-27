@@ -7,6 +7,7 @@ check-then-write race.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
@@ -39,6 +40,38 @@ async def fence_project_write(
             "status": {"$in": ["active", "deleting"]} if allow_deleting else "active",
         },
         {"$inc": {"lifecycle_write_seq": 1}},
+        session=session,
+    )
+    if result.matched_count != 1:
+        raise ProjectLifecycleWriteBlocked()
+
+
+async def begin_project_deletion(
+    projects: Any,
+    *,
+    organization_id: str,
+    project_id: str,
+    session: Any,
+) -> None:
+    """Atomically close admission to new writes for a project.
+
+    Must run in the same transaction as the deletion tombstone and its audit
+    event. The update touches the same document and sequence as every writer
+    fence, so concurrent writer/deleter transactions cannot both commit
+    without MongoDB detecting the conflict.
+    """
+    if not organization_id or not project_id or session is None:
+        raise ValueError("tenant, project and transaction session are required")
+    result = await projects.update_one(
+        {
+            "organization_id": organization_id,
+            "project_id": project_id,
+            "status": "active",
+        },
+        {
+            "$set": {"status": "deleting", "deleting_at": datetime.now(timezone.utc)},
+            "$inc": {"lifecycle_write_seq": 1},
+        },
         session=session,
     )
     if result.matched_count != 1:

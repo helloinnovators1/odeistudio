@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 from pymongo import AsyncMongoClient
 
-from odei_api.services.project_lifecycle import fence_project_write
+from odei_api.services.project_lifecycle import begin_project_deletion, fence_project_write
 
 
 @pytest.mark.asyncio
@@ -82,12 +82,10 @@ async def test_mongodb_tombstone_blocks_new_writes_but_allows_existing_worker_dr
                  "project_id": project_id}, session=session,
             )
         async with client.start_session() as session, await session.start_transaction():
-            changed = await database["projects"].update_one(
-                {"organization_id": organization_id, "project_id": project_id,
-                 "status": "active"},
-                {"$set": {"status": "deleting"}}, session=session,
+            await begin_project_deletion(
+                database["projects"], organization_id=organization_id,
+                project_id=project_id, session=session,
             )
-            assert changed.modified_count == 1
         with pytest.raises(HTTPException) as raised:
             async with client.start_session() as session, await session.start_transaction():
                 await fence_project_write(
