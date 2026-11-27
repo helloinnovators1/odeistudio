@@ -588,6 +588,10 @@ class MongoExecutionRunStore:
                 await fence_project_write(
                     self._projects, organization_id=current["organization_id"],
                     project_id=current["project_id"], session=session,
+                    allow_deleting=next_status in {
+                        ExecutionRunStatus.COLLECTING, ExecutionRunStatus.COMPLETED,
+                        ExecutionRunStatus.FAILED, ExecutionRunStatus.CANCELLED,
+                    },
                 )
             current_status = ExecutionRunStatus(current["status"])
             if current.get("cancel_requested") and next_status is not ExecutionRunStatus.CANCELLED:

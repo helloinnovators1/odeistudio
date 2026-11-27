@@ -48,6 +48,10 @@ class FakeClient:
 
 
 class FakeProjects:
+    def __init__(self, status="active"):
+        self.status = status
+    async def find_one(self, *_args, **_kwargs):
+        return {"status": self.status}
     async def update_one(self, *_args, **_kwargs):
         return Result(1)
 

@@ -205,11 +205,20 @@ class MongoParallelJobStore:
         }).limit(100).to_list(length=100)
         for row in expired:
             cancelled = bool(row.get("cancel_requested"))
-            retry = row["attempt"] < row["max_attempts"] and not cancelled
-            next_status = "cancelled" if cancelled else "queued" if retry else "failed"
             if self._client is None or self._projects is None:
                 raise RuntimeError("parallel-job writes require transactional project lifecycle fencing")
             async with self._client.start_session() as session, await session.start_transaction():
+                project = await self._projects.find_one(
+                    {"organization_id": row["organization_id"], "project_id": row["project_id"]},
+                    session=session,
+                )
+                if project is None:
+                    continue
+                retry = (
+                    project.get("status") == "active"
+                    and row["attempt"] < row["max_attempts"] and not cancelled
+                )
+                next_status = "cancelled" if cancelled else "queued" if retry else "failed"
                 await fence_project_write(
                     self._projects, organization_id=row["organization_id"],
                     project_id=row["project_id"], session=session, allow_deleting=True,
@@ -438,7 +447,7 @@ class MongoParallelJobStore:
                 raise ParallelJobConflict("job lease expired or job state changed")
             await fence_project_write(
                 self._projects, organization_id=organization_id,
-                project_id=current["project_id"], session=session,
+                project_id=current["project_id"], session=session, allow_deleting=True,
             )
             row = await self._jobs.find_one_and_update(
                 {"_id": current["_id"], "version": expected_version, "status": "leased"},
