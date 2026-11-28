@@ -95,6 +95,32 @@ async def _require_org_member(request: Request, database, principal: Principal, 
         }) from exc
 
 
+async def _fence_organization_membership(
+    memberships,
+    *,
+    organization_id: str,
+    identity_issuer: str,
+    identity_subject: str,
+    session,
+) -> None:
+    """Serialize project admission against concurrent organization-member revocation."""
+    result = await memberships.update_one(
+        {
+            "organization_id": organization_id,
+            "identity_issuer": identity_issuer,
+            "identity_subject": identity_subject,
+            "status": "active",
+        },
+        {"$inc": {"project_admission_write_seq": 1}},
+        session=session,
+    )
+    if result.matched_count != 1:
+        raise HTTPException(status_code=403, detail={
+            "code": "ORGANIZATION_ACCESS_DENIED",
+            "message": "Active organization membership is required.",
+        })
+
+
 async def _require_owner(request: Request, database, organization_id: str,
                         project_id: str, principal: Principal):
     try:
@@ -217,6 +243,13 @@ async def create_project(
         raise HTTPException(status_code=503, detail={"code": "PROJECT_STORE_UNAVAILABLE"})
     try:
         async with client.start_session() as session, await session.start_transaction():
+            await _fence_organization_membership(
+                database["organization_memberships"],
+                organization_id=organization_id,
+                identity_issuer=principal.issuer,
+                identity_subject=principal.subject,
+                session=session,
+            )
             await database["projects"].insert_one(project, session=session)
             await _audit(
                 request, principal, organization_id, "project.create",
@@ -357,6 +390,20 @@ async def add_project_member(
             "status": "active", "updated_at": now,
         }
         async with client.start_session() as session, await session.start_transaction():
+            await _fence_organization_membership(
+                database["organization_memberships"],
+                organization_id=organization_id,
+                identity_issuer=principal.issuer,
+                identity_subject=principal.subject,
+                session=session,
+            )
+            await _fence_organization_membership(
+                database["organization_memberships"],
+                organization_id=organization_id,
+                identity_issuer=payload.identity_issuer,
+                identity_subject=payload.identity_subject,
+                session=session,
+            )
             await fence_project_write(
                 database["projects"], organization_id=organization_id,
                 project_id=project_id, session=session,
