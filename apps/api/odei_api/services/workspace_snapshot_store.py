@@ -11,6 +11,7 @@ from gridfs.asynchronous import AsyncGridFSBucket
 from gridfs.errors import NoFile
 
 from odei_api.services.project_lifecycle import fence_project_write
+from odei_api.services.gridfs_upload_intents import MongoGridFSUploadIntentStore
 
 
 _MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
@@ -29,8 +30,10 @@ class MongoWorkspaceSnapshotStore:
         self._client = database.client
         self._runs = database["execution_runs"]
         self._bucket = AsyncGridFSBucket(database, bucket_name="workspace_snapshot_blobs")
+        self._upload_intents = MongoGridFSUploadIntentStore(database)
 
     async def initialize(self) -> None:
+        await self._upload_intents.initialize()
         await self._metadata.create_index(
             [("organization_id", 1), ("project_id", 1), ("created_at", -1)]
         )
@@ -66,15 +69,25 @@ class MongoWorkspaceSnapshotStore:
             raise ValueError("snapshot expanded byte count is invalid")
         snapshot_id = uuid4().hex
         now = datetime.now(timezone.utc)
-        blob_id = await self._bucket.upload_from_stream(
-            f"{snapshot_id}.zip", io.BytesIO(archive),
-            metadata={
-                "snapshot_id": snapshot_id,
-                "organization_id": organization_id,
-                "project_id": project_id,
-                "task_id": task_id,
-                "sha256": sha256,
-            },
+        intent_id = await self._upload_intents.create(
+            organization_id=organization_id,
+            project_id=project_id,
+            resource_type="workspace_snapshot",
+            bucket_names=("workspace_snapshot_blobs",),
+        )
+        blob_id = await self._upload_intents.upload_with_heartbeat(
+            intent_id,
+            lambda: self._bucket.upload_from_stream(
+                f"{snapshot_id}.zip", io.BytesIO(archive),
+                metadata={
+                    "snapshot_id": snapshot_id,
+                    "organization_id": organization_id,
+                    "project_id": project_id,
+                    "task_id": task_id,
+                    "sha256": sha256,
+                    "upload_intent_id": intent_id,
+                },
+            ),
         )
         document = {
             "_id": snapshot_id,
@@ -91,6 +104,7 @@ class MongoWorkspaceSnapshotStore:
             "created_at": now,
             "expires_at": now + timedelta(days=retention_days),
             "state": "available",
+            "upload_intent_id": intent_id,
         }
         try:
             async with self._client.start_session() as session, await session.start_transaction():
@@ -99,6 +113,7 @@ class MongoWorkspaceSnapshotStore:
                     project_id=project_id, session=session,
                 )
                 await self._metadata.insert_one(document, session=session)
+                await self._upload_intents.mark_committed(intent_id, session=session)
         except Exception:
             # A transaction commit can have an unknown outcome when the
             # connection drops after MongoDB commits. Never compensate-delete
