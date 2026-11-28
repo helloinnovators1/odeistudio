@@ -148,7 +148,7 @@ async def test_create_upload_intent_is_project_fenced_and_leased():
 
     intent_id = await store.create(
         organization_id="org", project_id="project",
-        resource_type="snapshot", bucket_names=("workspace_snapshot_blobs",),
+        resource_type="workspace_snapshot", bucket_names=("workspace_snapshot_blobs",),
     )
 
     intent = await database["gridfs_upload_intents"].find_one({"_id": intent_id})
@@ -242,7 +242,7 @@ async def test_upload_heartbeat_renews_lease_while_upload_is_running(monkeypatch
     store = MongoGridFSUploadIntentStore(database)
     intent_id = await store.create(
         organization_id="org", project_id="project",
-        resource_type="snapshot", bucket_names=("workspace_snapshot_blobs",),
+        resource_type="workspace_snapshot", bucket_names=("workspace_snapshot_blobs",),
     )
     monkeypatch.setattr(intents_module, "HEARTBEAT_SECONDS", 0.001)
     finished = asyncio.Event()
@@ -264,7 +264,7 @@ async def test_upload_is_cancelled_when_lease_is_lost(monkeypatch):
     store = MongoGridFSUploadIntentStore(database)
     intent_id = await store.create(
         organization_id="org", project_id="project",
-        resource_type="snapshot", bucket_names=("workspace_snapshot_blobs",),
+        resource_type="workspace_snapshot", bucket_names=("workspace_snapshot_blobs",),
     )
     monkeypatch.setattr(intents_module, "HEARTBEAT_SECONDS", 0.001)
     started = asyncio.Event()
