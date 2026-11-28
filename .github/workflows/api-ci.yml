@@ -11,6 +11,7 @@ on:
     paths:
       - "apps/api/**"
       - "apps/web/**"
+      - "apps/desktop/**"
       - ".github/workflows/api-ci.yml"
   workflow_dispatch:
 

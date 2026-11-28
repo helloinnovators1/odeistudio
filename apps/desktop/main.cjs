@@ -123,6 +123,9 @@ function createMainWindow() {
   mainWindow.webContents.on("will-navigate", (event, target) => {
     if (!isTrustedAppUrl(target)) event.preventDefault();
   });
+  mainWindow.webContents.on("will-redirect", (event, target) => {
+    if (!isTrustedAppUrl(target)) event.preventDefault();
+  });
   mainWindow.on("closed", () => {
     for (const terminal of terminals.values()) terminal.kill();
     terminals.clear();
