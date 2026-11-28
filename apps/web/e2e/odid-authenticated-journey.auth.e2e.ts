@@ -149,5 +149,5 @@ test("ODID PKCE browser journey authenticates and loads tenant-scoped projects",
   await expect(page.getByRole("log", { name: "Conversation" }).getByText(
     "Signed out. In-memory access/refresh tokens and conversation were cleared.",
   )).toBeVisible();
-  await expect(page.locator("#nexus-org-id")).toHaveCount(0);
+  await expect(page.locator("#nexus-org-id")).toBeDisabled();
 });
