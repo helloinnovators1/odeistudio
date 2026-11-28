@@ -176,7 +176,11 @@ class MongoGridFSUploadIntentStore:
         }
         if resource_type is not None:
             query["resource_type"] = resource_type
-        cursor = self._collection.find(query).limit(limit)
+        # Keep deleting tombstones after a successful sweep. A process can be
+        # paused beyond its lease and later resume a GridFS stream; recurring
+        # sweeps must therefore remain able to remove chunks written after an
+        # earlier cleanup pass. Oldest cleanup timestamps rotate bounded batches.
+        cursor = self._collection.find(query).sort("last_cleanup_at", 1).limit(limit)
         intents = await cursor.to_list(length=limit)
         reconciled = 0
         for intent in intents:
@@ -223,6 +227,12 @@ class MongoGridFSUploadIntentStore:
                             await buckets[bucket_name].delete(file_document["_id"])
                         except NoFile:
                             pass
-            await self._collection.delete_one({"_id": intent_id, "state": "deleting"})
+            await self._collection.update_one(
+                {"_id": intent_id, "state": "deleting"},
+                {
+                    "$set": {"last_cleanup_at": datetime.now(timezone.utc)},
+                    "$inc": {"cleanup_passes": 1},
+                },
+            )
             reconciled += 1
         return reconciled
