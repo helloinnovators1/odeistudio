@@ -65,14 +65,6 @@ class Collection:
         return Cursor([row for row in self.rows if self.matches(row, query)])
 
     async def find_one(self, query, **_kwargs):
-        def matches(row):
-            for key, value in query.items():
-                if isinstance(value, dict) and "$in" in value:
-                    if row.get(key) not in value["$in"]:
-                        return False
-                elif row.get(key) != value:
-                    return False
-            return True
         return next((row for row in self.rows if self.matches(row, query)), None)
 
     async def insert_one(self, document, **_kwargs):
