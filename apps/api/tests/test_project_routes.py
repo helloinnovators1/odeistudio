@@ -173,6 +173,7 @@ def test_project_create_list_and_membership_lifecycle():
         assert project["owner"]["subject"] == "owner"
         assert audit.events[-1]["action"] == "project.create"
         assert audit.events[-1]["session"] is not None
+        assert database["organization_memberships"].rows[0]["project_admission_write_seq"] == 1
 
         listed = client.get("/api/v1/organizations/org-1/projects")
         assert listed.status_code == 200, listed.text
@@ -186,6 +187,8 @@ def test_project_create_list_and_membership_lifecycle():
         assert member.json()["status"] == "active"
         assert audit.events[-1]["action"] == "project.member.add"
         assert audit.events[-1]["session"] is not None
+        assert database["organization_memberships"].rows[0]["project_admission_write_seq"] == 2
+        assert database["organization_memberships"].rows[1]["project_admission_write_seq"] == 1
 
         members = client.get(
             f"/api/v1/organizations/org-1/projects/{project['project_id']}/members"
@@ -203,6 +206,7 @@ def test_project_create_list_and_membership_lifecycle():
         assert removed.json()["status"] == "inactive"
         assert audit.events[-1]["action"] == "project.member.remove"
         assert audit.events[-1]["session"] is not None
+        assert database["organization_memberships"].rows[0]["project_admission_write_seq"] == 3
     finally:
         app.dependency_overrides.pop(get_current_principal, None)
         for key, value in previous.items():
