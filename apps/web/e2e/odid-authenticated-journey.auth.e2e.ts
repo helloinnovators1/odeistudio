@@ -143,4 +143,9 @@ test("ODID PKCE browser journey authenticates and loads tenant-scoped projects",
     path: "src/auth.ts", line: 42, revision: 7, snapshot_id: "snapshot-e2e",
   });
   expect(search.body.results[0].sha256).toMatch(/^[a-f0-9]{64}$/);
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in with ODID" })).toBeEnabled();
+  await expect(page.getByText(/Signed out\\. In-memory access\\/refresh tokens and conversation were cleared\\./)).toBeVisible();
+  await expect(page.locator("#nexus-org-id")).toHaveCount(0);
 });

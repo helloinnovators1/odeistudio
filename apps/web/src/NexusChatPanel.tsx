@@ -1822,7 +1822,7 @@ export default function NexusChatPanel({
             ) : selectedPatch.status === "approved" && !workspaceContext ? (
               <p className="nexus-task-safety">Pair the local companion and select the target workspace before applying this approved change.</p>
             ) : null}
-            <p className="nexus-task-safety">Local writes require explicit confirmation, a fresh session-bound companion challenge and a short-lived owner-signed capability. Each file write is atomic; failed batches attempt reverse-order compensation. Crash-safe journal recovery is still pending.</p>
+            <p className="nexus-task-safety">Local writes require explicit confirmation, a fresh session-bound companion challenge and a short-lived owner-signed capability. Multi-file batches use a durable journal and hash-guarded reverse-order compensation; interrupted transactions are reconciled when the workspace is selected again. Windows directory-metadata durability is not yet confirmed.</p>
             <small>Proposal ID: {selectedPatch.proposal_id} · Version {selectedPatch.version}</small>
           </section>
         )}
