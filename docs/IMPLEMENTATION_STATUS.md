@@ -10,10 +10,10 @@ mainline/production snapshot below.
 - **Mainline base observed for this branch:** `41aeefeb6b3b27a197464e824da366f0e2e6a74c`.
 - **Remediation branch:** `fix/worker-project-fencing-wiring`.
 - **Latest implementation commit covered by the CI evidence:** `df49f78ee9a3bdc00181b583854204a0d23e3ec7`; subsequent changes are documentation-only.
-- **Branch comparison at last check:** 178 commits ahead, 0 behind main; 66 changed paths. The branch is not protected.
+- **Branch comparison at last check:** 180 commits ahead, 0 behind main; 66 changed paths (comparison at commit `3191c58b0b464c0f6cecbf5c6ef4049d0ae3914d`). The branch is not protected.
 - **Current implementation CI evidence:** [CI run 46144066936](https://github.com/helloinnovators1/odeistudio/actions/runs/46144066936) completed successfully against implementation tree `55d57c53216392e99773c3d88a53adaa4efb3aaa`. All four Python OS/version matrix jobs, MongoDB replica-set integration, web tests/build/browser journeys and desktop IPC security tests passed. Since that run, only this status document has changed; executable source, tests and workflow configuration are unchanged from the tested tree.
 - **Open, unmerged PRs:** [#127](https://github.com/helloinnovators1/odeistudio/pull/127), [#128](https://github.com/helloinnovators1/odeistudio/pull/128), and [#129](https://github.com/helloinnovators1/odeistudio/pull/129). The remediation branch is not itself a PR. No merge or production deployment was initiated.
-- **Repository inventory:** the current branch tree contains 334 tracked paths, including 137 Python files under `apps/api`. The tree inventory is complete; this is not a claim that all 334 files have received a line-by-line review.
+- **Repository inventory:** the current branch tree contains 336 tracked paths, including 137 Python files under `apps/api`. The tree inventory is complete; this is not a claim that all 334 files have received a line-by-line review.
 
 ### Changes on the unmerged remediation branch
 
@@ -39,6 +39,7 @@ mainline/production snapshot below.
 7. **Windows acceptance remains incomplete:** target Windows 10 build 18362 device validation is outstanding and directory-metadata durability is not confirmed.
 8. **Production remains NO-GO:** production ODID registration, API origin, MongoDB binding, secret rotation evidence, hardened worker fleet, backups/restore, monitoring, staging and rollback acceptance are not established.
 9. **The Zuri OS root remains protected:** do not change or replace `https://zurios.vercel.app/`; the intended ODEI route remains `/odeistudio`.
+10. **Electron workspace file access still needs native-handle parity.** The desktop host has a separate path-based workspace explorer/Git/terminal bridge; its filesystem read path still needs adversarial symlink/TOCTOU review and cross-platform acceptance equivalent to the retained-handle companion. Do not treat the companion's path-safety guarantees as proof that the Electron bridge has the same guarantees.
 
 
 ## Authoritative repository snapshot — 2026-11-23
