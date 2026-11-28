@@ -330,4 +330,4 @@ async def test_artifact_put_commits_both_blobs_and_intent_atomically(monkeypatch
     assert intent["state"] == "committed"
     assert database["execution_stdout.files"].rows[0]["metadata"]["upload_intent_id"] == intent["_id"]
     assert database["execution_stderr.files"].rows[0]["metadata"]["upload_intent_id"] == intent["_id"]
-\n
+
