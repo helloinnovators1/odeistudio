@@ -54,6 +54,9 @@ class Collection:
             elif isinstance(value, dict) and "$in" in value:
                 if row.get(key) not in value["$in"]:
                     return False
+            elif isinstance(value, dict) and "$gt" in value:
+                if row.get(key) is None or row[key] <= value["$gt"]:
+                    return False
             elif row.get(key) != value:
                 return False
         return True
@@ -77,10 +80,12 @@ class Collection:
         return SimpleNamespace(inserted_id=document.get("_id"))
 
     async def update_one(self, query, update, **_kwargs):
-        row = await self.find_one({"_id": query["_id"]})
-        if row is None or not self.matches(row, query):
+        row = await self.find_one(query)
+        if row is None:
             return SimpleNamespace(matched_count=0)
         row.update(update.get("$set", {}))
+        for key, amount in update.get("$inc", {}).items():
+            row[key] = row.get(key, 0) + amount
         for key in update.get("$unset", {}):
             row.pop(key, None)
         return SimpleNamespace(matched_count=1)
