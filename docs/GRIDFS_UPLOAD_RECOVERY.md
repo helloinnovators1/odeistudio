@@ -10,7 +10,7 @@ must not assume that a metadata transaction can roll back a blob upload.
    transaction that calls `fence_project_write`.
 2. Persist a unique GridFS file ID for every target bucket in that intent
    before opening any upload stream.
-3. Upload through `open_upload_stream_with_id`. Each completed GridFS file
+3. Revalidate and renew the unexpired lease immediately before opening a stream, then upload through `open_upload_stream_with_id`. Each completed GridFS file
    includes `metadata.upload_intent_id`. A heartbeat renews the intent lease;
    the upload is cancelled if the lease is lost.
 4. In one MongoDB transaction, fence the project again, insert the resource
@@ -34,6 +34,10 @@ must not assume that a metadata transaction can roll back a blob upload.
   paused beyond its lease, resumed after an earlier cleanup pass, and wrote
   additional chunks under its original file IDs. Tombstones must not be
   garbage-collected merely because one cleanup pass found no remaining blobs.
+  They are currently retained indefinitely, so their count and oldest
+  `last_cleanup_at` must be monitored. This creates unbounded metadata growth
+  until a stronger late-writer exclusion mechanism is implemented; adding a
+  TTL index or time-based tombstone purge would be unsafe.
 - A `committed` intent is never used to delete blobs. Its intent record is
   removed after the committed-intent retention period.
 - A partial cleanup leaves the intent in `deleting`; the next worker pass
@@ -45,7 +49,7 @@ must not assume that a metadata transaction can roll back a blob upload.
 
 ## Operational constraints
 
-- The upload lease is five minutes and is renewed every 30 seconds.
+- The upload lease is five minutes. It is renewed before stream creation and every 30 seconds while the upload remains active.
 - Expired uploads receive a further two-minute reconciliation grace period.
 - Reconciliation is bounded to at most 1,000 intents per pass.
 - Snapshot and artifact workers filter by resource type so neither worker
