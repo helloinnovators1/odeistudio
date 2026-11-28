@@ -5,11 +5,13 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { app, BrowserWindow, WebContentsView, dialog, ipcMain, shell } = require("electron");
 const pty = require("node-pty");
+const { isTrustedAppUrl } = require("./security.cjs");
 
 const execFileAsync = promisify(execFile);
 const APP_URL = process.env.ODEI_DESKTOP_URL || "https://zurios.vercel.app/odeistudio?window=ide";
-const APP_ORIGIN = new URL(APP_URL).origin;
-const ALLOWED_APP_ORIGINS = new Set([APP_ORIGIN, "http://127.0.0.1:3002", "http://localhost:3002"]);
+if (!isTrustedAppUrl(APP_URL)) {
+  throw new Error("ODEI_DESKTOP_URL must use the ODEI production route or an explicit localhost development origin");
+}
 const MAX_TERMINALS = 4;
 const terminals = new Map();
 let mainWindow;
@@ -21,8 +23,9 @@ function trusted(event) {
   if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame) {
     throw new Error("Untrusted ODEI desktop IPC sender");
   }
-  const origin = new URL(event.senderFrame.url).origin;
-  if (!ALLOWED_APP_ORIGINS.has(origin)) throw new Error("ODEI desktop API is unavailable to this origin");
+  if (!isTrustedAppUrl(event.senderFrame.url)) {
+    throw new Error("ODEI desktop API is unavailable outside the trusted ODEI application route");
+  }
 }
 function handle(channel, fn) {
   ipcMain.handle(channel, async (event, ...args) => { trusted(event); return fn(...args); });
@@ -118,8 +121,7 @@ function createMainWindow() {
     return { action: "deny" };
   });
   mainWindow.webContents.on("will-navigate", (event, target) => {
-    const targetOrigin = new URL(target).origin;
-    if (!ALLOWED_APP_ORIGINS.has(targetOrigin)) event.preventDefault();
+    if (!isTrustedAppUrl(target)) event.preventDefault();
   });
   mainWindow.on("closed", () => {
     for (const terminal of terminals.values()) terminal.kill();
