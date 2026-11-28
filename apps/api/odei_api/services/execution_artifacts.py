@@ -152,6 +152,15 @@ class MongoExecutionArtifactStore:
                         pass
             raise
 
+    async def reconcile_upload_intents(self, *, limit: int = 100) -> int:
+        return await self._upload_intents.reconcile(
+            {
+                "execution_stdout": self._stdout,
+                "execution_stderr": self._stderr,
+            },
+            limit=limit,
+        )
+
     async def get_for_tenant(
         self, *, organization_id: str, project_id: str,
         task_id: str, run_id: str,
