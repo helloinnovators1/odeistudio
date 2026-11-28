@@ -54,6 +54,8 @@ class Collection:
         if row is None:
             return SimpleNamespace(matched_count=0)
         row.update(update.get("$set", {}))
+        for key, amount in update.get("$inc", {}).items():
+            row[key] = row.get(key, 0) + amount
         return SimpleNamespace(matched_count=1)
 
 
