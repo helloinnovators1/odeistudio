@@ -27,7 +27,7 @@ Every retrieval verifies that the active index still references the newest unexp
 ## Persistence and bounds
 
 - MongoDB stores immutable index revisions for files, symbols, references, imports, chunks, and the active project revision pointer.
-- New revision records are written before the active pointer changes. The pointer and success audit event are committed in one MongoDB transaction. Failed unpublished revisions are cleaned up best-effort.
+- New revision records are staged with the active-pointer update and success audit event in one MongoDB transaction. Failed/uncertain unpublished-revision cleanup checks the active pointer and removes orphan rows in a snapshot transaction, avoiding a read-then-delete race with an uncertain publish commit.
 - Superseded revisions receive a one-hour retirement window for in-flight readers. All index documents expire no later than their source snapshot.
 - Indexing is bounded to 5,000 files, 1 MiB per file, 64 MiB total extracted text, a 50 MiB archive, 500 embedding chunks, 25,000 symbols, 50,000 references, and 10,000 import edges.
 - Unchanged file/chunk hashes reuse project-scoped embeddings. Index state reports when chunk or analysis limits truncated coverage.
