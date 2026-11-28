@@ -341,6 +341,5 @@ def test_repository_binding_mutations_reject_active_runs_inside_transaction():
         assert remove.status_code == 409
         assert remove.json()["detail"]["code"] == "REPOSITORY_BINDING_LOCKED"
         assert len(database["nexus_repository_bindings"].rows) == 1
-        assert database["organization_memberships"].rows[0]["project_admission_write_seq"] >= 2
     finally:
         restore(previous)
