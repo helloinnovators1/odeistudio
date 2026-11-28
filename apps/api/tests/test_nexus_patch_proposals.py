@@ -369,3 +369,10 @@ def test_multi_file_apply_capability_binds_every_approved_file(patch_state, monk
     assert response.json()["capability"] == "signed-capability"
     assert len(captured["files"]) == 2
     assert {item["path"] for item in captured["files"]} == {"src/main.py", "second.py"}
+
+def test_patch_proposal_store_rejects_missing_lifecycle_dependencies():
+    from odei_api.services.nexus_patch_proposals import MongoPatchProposalStore
+
+    with pytest.raises(ValueError, match="transactional project lifecycle fencing"):
+        MongoPatchProposalStore(object(), None, None)
+
