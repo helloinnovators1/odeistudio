@@ -87,13 +87,13 @@ function readWorkspaceTextFile(root, relativePath, expectedRootIdentity) {
         componentMetadata.isSymbolicLink()
         || (index < parts.length - 1 && !componentMetadata.isDirectory())
       ) {
-        throw new Error("Workspace path changed to a symbolic link while being read");
+        throw new Error("Selected workspace identity changed: a path component became a symbolic link");
       }
       if (
         index === parts.length - 1
         && (componentMetadata.dev !== before.dev || componentMetadata.ino !== before.ino)
       ) {
-        throw new Error("Workspace file path changed while being read");
+        throw new Error("Selected workspace identity changed: file path changed while being read");
       }
     }
     const resolvedAgain = fs.realpathSync(current);
