@@ -672,7 +672,7 @@ def test_companion_applies_only_a_signed_one_use_approved_patch(tmp_path):
         assert response.json()["applied"] is True
         assert len(response.json()["files"]) == 2
         assert all(isinstance(item["durability_confirmed"], bool) for item in response.json()["files"])
-        assert response.json()["transaction_semantics"] == "per-file-atomic-with-compensating-rollback"
+        assert response.json()["transaction_semantics"] == "durable-write-ahead-journal-with-crash-recovery"
         assert registry.read_text(workspace_id, "main.py") == replacement
         assert registry.read_text(workspace_id, "README.md") == second_content
         replay = client.post(
@@ -793,7 +793,7 @@ def test_workspace_handle_applies_multi_file_batch_with_hash_guarded_operations(
              "result_sha256": None, "content": None},
         ])
         assert result["applied"] is True
-        assert result["transaction_semantics"] == "per-file-atomic-with-compensating-rollback"
+        assert result["transaction_semantics"] == "durable-write-ahead-journal-with-crash-recovery"
         assert len(result["files"]) == 3
         assert registry.read_text(workspace_id, "main.py") == replacement
         assert registry.read_text(workspace_id, "new.txt") == created

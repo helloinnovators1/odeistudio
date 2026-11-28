@@ -120,7 +120,11 @@ class FakeProjectCollection(FakeCollection):
             if (
                 document.get("organization_id") == query.get("organization_id")
                 and document.get("project_id") == query.get("project_id")
-                and document.get("status") == query.get("status")
+                and (
+                    document.get("status") in query["status"]["$in"]
+                    if isinstance(query.get("status"), dict) and "$in" in query["status"]
+                    else document.get("status") == query.get("status")
+                )
             ):
                 for field, amount in update.get("$inc", {}).items():
                     document[field] = document.get(field, 0) + amount

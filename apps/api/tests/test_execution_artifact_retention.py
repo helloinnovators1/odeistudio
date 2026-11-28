@@ -233,7 +233,7 @@ async def test_artifact_put_rejects_invalid_metadata_before_gridfs_upload(
 
     monkeypatch.setattr(
         artifact_module, "AsyncGridFSBucket",
-        lambda _db, _bucket_name: RejectingBucket(),
+        lambda _db, bucket_name: RejectingBucket(),
     )
     store = MongoExecutionArtifactStore(database)
     arguments = {
@@ -254,8 +254,12 @@ async def test_artifact_put_rejects_invalid_metadata_before_gridfs_upload(
     ("retention_days", "limit"),
     [(True, 100), (0, 100), (366, 100), (30, False), (30, 0), (30, 1001), (30, 1.5)],
 )
-async def test_artifact_retention_rejects_invalid_policy_bounds(retention_days, limit):
+async def test_artifact_retention_rejects_invalid_policy_bounds(monkeypatch, retention_days, limit):
     database = Database([])
+    monkeypatch.setattr(
+        artifact_module, "AsyncGridFSBucket",
+        lambda _db, bucket_name: Bucket(),
+    )
     store = MongoExecutionArtifactStore(database)
 
     with pytest.raises(ValueError, match="retention days and batch limit"):
@@ -263,9 +267,13 @@ async def test_artifact_retention_rejects_invalid_policy_bounds(retention_days, 
 
 
 @pytest.mark.asyncio
-async def test_artifact_read_hides_unknown_nonavailable_states():
+async def test_artifact_read_hides_unknown_nonavailable_states(monkeypatch):
     row = artifact_row(state="quarantined")
     database = Database([row])
+    monkeypatch.setattr(
+        artifact_module, "AsyncGridFSBucket",
+        lambda _db, bucket_name: Bucket(),
+    )
     store = MongoExecutionArtifactStore(database)
 
     result = await store.get_for_tenant(

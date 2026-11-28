@@ -283,7 +283,7 @@ async def test_snapshot_put_rejects_invalid_or_oversized_archive_before_gridfs_u
         ({"total_bytes": -1}, "expanded byte"),
         ({"total_bytes": 512 * 1024 * 1024 + 1}, "expanded byte"),
         ({"total_bytes": True}, "expanded byte"),
-        ({"owner_subject": " "}, "identifiers"),
+        ({"owner_subject": " "}, "owner_subject"),
     ],
 )
 async def test_snapshot_put_rejects_invalid_metadata_before_gridfs_upload(
@@ -327,7 +327,7 @@ async def test_snapshot_put_rejects_invalid_metadata_before_gridfs_upload(
         ({"organization_id": " org"}, "organization_id"),
         ({"project_id": "project "}, "project_id"),
         ({"task_id": ""}, "task_id"),
-        ({"owner_issuer": "issuer\\n"}, "owner_issuer"),
+        ({"owner_issuer": "issuer\n"}, "owner_issuer"),
         ({"owner_subject": "x" * 129}, "owner_subject"),
     ],
 )
@@ -365,8 +365,12 @@ async def test_snapshot_put_rejects_malformed_retention_and_identifiers_before_u
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("limit", [True, False, 0, 1001, 1.5, "10"])
-async def test_snapshot_retention_rejects_invalid_batch_limits(limit):
+async def test_snapshot_retention_rejects_invalid_batch_limits(monkeypatch, limit):
     database = Database()
+    monkeypatch.setattr(
+        snapshot_module, "AsyncGridFSBucket",
+        lambda _database, bucket_name: Bucket(),
+    )
     store = MongoWorkspaceSnapshotStore(database)
 
     with pytest.raises(ValueError, match="batch limit"):
