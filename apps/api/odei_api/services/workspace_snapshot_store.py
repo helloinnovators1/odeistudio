@@ -137,6 +137,11 @@ class MongoWorkspaceSnapshotStore:
             raise
         return self.public_metadata(document)
 
+    async def reconcile_upload_intents(self, *, limit: int = 100) -> int:
+        return await self._upload_intents.reconcile(
+            {"workspace_snapshot_blobs": self._bucket}, limit=limit,
+        )
+
     async def get_for_tenant(
         self, *, organization_id: str, project_id: str, snapshot_id: str,
     ) -> dict[str, Any] | None:
