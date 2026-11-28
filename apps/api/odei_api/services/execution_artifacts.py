@@ -8,8 +8,8 @@ from uuid import uuid4
 from gridfs.asynchronous import AsyncGridFSBucket
 from gridfs.errors import NoFile
 
-from odei_api.services.project_lifecycle import fence_project_write
 from odei_api.services.gridfs_upload_intents import MongoGridFSUploadIntentStore
+from odei_api.services.project_lifecycle import fence_project_write
 from odei_api.services.secret_redaction import redact_secrets
 
 
@@ -59,7 +59,7 @@ class MongoExecutionArtifactStore:
             ("stderr_truncated", stderr_truncated),
         ):
             if not isinstance(value, bool):
-                raise ValueError(f"execution artifact {field_name} must be boolean")
+                raise TypeError(f"execution artifact {field_name} must be boolean")
         if not isinstance(stdout, str) or not isinstance(stderr, str):
             raise TypeError("execution output must be text")
         if len(stdout.encode("utf-8")) > 1_048_576 or len(stderr.encode("utf-8")) > 1_048_576:
@@ -135,19 +135,14 @@ class MongoExecutionArtifactStore:
             # A lost commit acknowledgement can leave the transaction outcome
             # unknown. Preserve blobs whenever metadata may have committed;
             # deleting them would create a dangling artifact record.
-            try:
-                committed = await self._metadata.find_one({
-                    "organization_id": organization_id,
-                    "project_id": project_id,
-                    "task_id": task_id,
-                    "run_id": run_id,
-                    "stdout_blob_id": stdout_id,
-                    "stderr_blob_id": stderr_id,
-                })
-            except Exception:
-                # An orphan can be reconciled later; a committed record must
-                # never be left pointing at blobs removed by compensation.
-                raise
+            committed = await self._metadata.find_one({
+                "organization_id": organization_id,
+                "project_id": project_id,
+                "task_id": task_id,
+                "run_id": run_id,
+                "stdout_blob_id": stdout_id,
+                "stderr_blob_id": stderr_id,
+            })
             if committed is None:
                 try:
                     await self._stdout.delete(stdout_id)

@@ -9,8 +9,9 @@ garbage and are never used as a reason to delete blobs.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any
 from uuid import uuid4
 
 from gridfs.errors import NoFile
