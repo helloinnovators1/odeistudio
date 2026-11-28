@@ -102,7 +102,9 @@ class PatchApplyCapabilityRequest(BaseModel):
 class MongoPatchProposalStore:
     """Persist bounded patch previews and owner decisions in MongoDB."""
 
-    def __init__(self, collection: Any, client: Any | None = None, projects: Any | None = None) -> None:
+    def __init__(self, collection: Any, client: Any, projects: Any) -> None:
+        if client is None or projects is None:
+            raise ValueError("MongoPatchProposalStore requires transactional project lifecycle fencing")
         self.collection = collection
         self._client = client
         self._projects = projects
