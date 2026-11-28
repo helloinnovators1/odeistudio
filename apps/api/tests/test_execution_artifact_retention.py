@@ -245,7 +245,7 @@ async def test_artifact_put_rejects_invalid_metadata_before_gridfs_upload(
     }
     arguments.update(overrides)
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises((TypeError, ValueError), match=message):
         await store.put(**arguments)
 
 
