@@ -155,15 +155,6 @@ async def bind_repository(
             "code": "GITHUB_APP_NOT_CONFIGURED",
             "message": "Trusted repository binding is unavailable until a GitHub App is configured.",
         })
-    active_run = await database["execution_runs"].find_one({
-        "organization_id": organization_id, "project_id": project_id,
-        "status": {"$in": ["queued", "leased", "running", "collecting"]},
-    })
-    if active_run is not None:
-        raise HTTPException(status_code=409, detail={
-            "code": "REPOSITORY_BINDING_LOCKED",
-            "message": "The trusted repository cannot change while a project execution is active.",
-        })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
     await _audit(audit, principal, organization_id, project_id,
@@ -214,6 +205,19 @@ async def bind_repository(
                 database["projects"], organization_id=organization_id,
                 project_id=project_id, session=session,
             )
+            # Recheck after acquiring the same project write fence used by run
+            # admission. This closes the race where a run starts after the
+            # preflight check but before the repository binding transaction.
+            active_run = await database["execution_runs"].find_one({
+                "organization_id": organization_id,
+                "project_id": project_id,
+                "status": {"$in": ["queued", "leased", "running", "collecting"]},
+            }, session=session)
+            if active_run is not None:
+                raise HTTPException(status_code=409, detail={
+                    "code": "REPOSITORY_BINDING_LOCKED",
+                    "message": "The trusted repository cannot change while a project execution is active.",
+                })
             await collection.update_one(
                 {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
                 {"$unset": {"merge_lock": ""}}, session=session,
