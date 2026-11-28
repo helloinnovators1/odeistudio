@@ -153,3 +153,8 @@ async def test_failed_approval_is_terminal_and_not_reusable():
     )
     assert failed["status"] == "failed"
     assert failed["merge_commit_sha"] is None
+
+def test_merge_approval_store_rejects_missing_lifecycle_dependencies():
+    with pytest.raises(ValueError, match="transactional project lifecycle fencing"):
+        MongoRepositoryMergeApprovalStore(Collection(), None, None)
+
