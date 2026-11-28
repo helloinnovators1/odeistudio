@@ -14,6 +14,8 @@ class FakeSession:
         return False
     async def start_transaction(self):
         return self
+    async def with_transaction(self, callback):
+        return await callback(self)
 
 
 class FakeClient:
@@ -25,6 +27,12 @@ class Collection:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
         self.queries = []
+
+    async def find_one(self, query, **_kwargs):
+        return next(
+            (row for row in self.rows if all(row.get(k) == v for k, v in query.items())),
+            None,
+        )
 
     async def delete_one(self, query, **_kwargs):
         self.queries.append(query)
@@ -103,3 +111,49 @@ async def test_delete_project_index_rejects_empty_scope():
     store = MongoRepositoryIndexStore(Database())
     with pytest.raises(ValueError):
         await store.delete_project_index(organization_id="", project_id="project-a")
+
+@pytest.mark.asyncio
+async def test_unpublished_revision_cleanup_skips_revision_that_is_active():
+    database = Database()
+    store = MongoRepositoryIndexStore(database)
+    database.collections["repository_index_state"].rows = [{
+        "organization_id": "org-a", "project_id": "project-a",
+        "revision_id": "now-active",
+    }]
+
+    await store._cleanup_unpublished_revision("org-a", "project-a", "now-active")
+
+    for name in (
+        "repository_index_files", "repository_index_symbols",
+        "repository_index_references", "repository_index_imports",
+        "repository_index_chunks",
+    ):
+        assert len(database.collections[name].rows) == 4
+        assert database.collections[name].queries == []
+
+
+@pytest.mark.asyncio
+async def test_unpublished_revision_cleanup_deletes_only_target_revision_transactionally():
+    database = Database()
+    store = MongoRepositoryIndexStore(database)
+    for name in (
+        "repository_index_files", "repository_index_symbols",
+        "repository_index_references", "repository_index_imports",
+        "repository_index_chunks",
+    ):
+        database.collections[name].rows.append({
+            "organization_id": "org-a", "project_id": "project-a",
+            "revision_id": "failed-refresh",
+        })
+
+    await store._cleanup_unpublished_revision("org-a", "project-a", "failed-refresh")
+
+    for name in (
+        "repository_index_files", "repository_index_symbols",
+        "repository_index_references", "repository_index_imports",
+        "repository_index_chunks",
+    ):
+        rows = database.collections[name].rows
+        assert all(row.get("revision_id") != "failed-refresh" for row in rows)
+        assert any(row.get("revision_id") == "active" for row in rows)
+        assert any(row.get("organization_id") == "org-b" for row in rows)
