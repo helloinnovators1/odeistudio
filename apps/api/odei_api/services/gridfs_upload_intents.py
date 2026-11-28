@@ -69,6 +69,7 @@ class MongoGridFSUploadIntentStore:
             "project_id": project_id,
             "resource_type": resource_type,
             "bucket_names": list(bucket_names),
+            "blob_ids": {name: uuid4().hex for name in bucket_names},
             "state": "uploading",
             "created_at": now,
             "heartbeat_at": now,
@@ -81,6 +82,16 @@ class MongoGridFSUploadIntentStore:
             )
             await self._collection.insert_one(document, session=session)
         return intent_id
+
+    async def blob_id(self, intent_id: str, bucket_name: str) -> str:
+        if bucket_name not in ALLOWED_BUCKETS:
+            raise ValueError("unsupported GridFS bucket")
+        intent = await self._collection.find_one(
+            {"_id": intent_id, "state": "uploading"}
+        )
+        if intent is None or bucket_name not in intent.get("blob_ids", {}):
+            raise UploadIntentLeaseLost("GridFS upload intent is unavailable")
+        return intent["blob_ids"][bucket_name]
 
     async def _heartbeat(self, intent_id: str) -> None:
         while True:
@@ -178,15 +189,29 @@ class MongoGridFSUploadIntentStore:
             for bucket_name in intent.get("bucket_names", []):
                 if bucket_name not in ALLOWED_BUCKETS or bucket_name not in buckets:
                     raise RuntimeError("upload intent references an unsupported GridFS bucket")
-                files = await self._database[f"{bucket_name}.files"].find(
-                    {"metadata.upload_intent_id": intent_id},
-                    {"_id": 1},
-                ).to_list(length=10_000)
-                for file_document in files:
-                    try:
-                        await buckets[bucket_name].delete(file_document["_id"])
-                    except NoFile:
-                        pass
+                blob_id = intent.get("blob_ids", {}).get(bucket_name)
+                if blob_id is not None:
+                    # The file ID is persisted before the upload begins. This
+                    # also removes chunks left by a process crash before GridFS
+                    # could publish the corresponding .files document.
+                    await self._database[f"{bucket_name}.chunks"].delete_many(
+                        {"files_id": blob_id}
+                    )
+                    await self._database[f"{bucket_name}.files"].delete_one(
+                        {"_id": blob_id}
+                    )
+                else:
+                    # Compatibility for intents written before deterministic
+                    # file IDs were introduced.
+                    files = await self._database[f"{bucket_name}.files"].find(
+                        {"metadata.upload_intent_id": intent_id},
+                        {"_id": 1},
+                    ).to_list(length=10_000)
+                    for file_document in files:
+                        try:
+                            await buckets[bucket_name].delete(file_document["_id"])
+                        except NoFile:
+                            pass
             await self._collection.delete_one({"_id": intent_id, "state": "deleting"})
             reconciled += 1
         return reconciled
