@@ -1,7 +1,6 @@
 """Durable, bounded, secret-redacted execution result storage."""
 from __future__ import annotations
 
-import io
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -80,26 +79,35 @@ class MongoExecutionArtifactStore:
             bucket_names=("execution_stdout", "execution_stderr"),
         )
 
+        stdout_id = await self._upload_intents.blob_id(
+            intent_id, "execution_stdout",
+        )
+        stderr_id = await self._upload_intents.blob_id(
+            intent_id, "execution_stderr",
+        )
+
         async def upload_both() -> tuple[Any, Any]:
-            stdout_id = await self._stdout.upload_from_stream(
-                f"{run_id}-stdout.txt", io.BytesIO(safe_stdout.encode("utf-8")),
+            async with self._stdout.open_upload_stream_with_id(
+                stdout_id,
+                f"{run_id}-stdout.txt",
                 metadata={
                     "organization_id": organization_id, "project_id": project_id,
                     "run_id": run_id, "upload_intent_id": intent_id,
                 },
-            )
-            stderr_id = await self._stderr.upload_from_stream(
-                f"{run_id}-stderr.txt", io.BytesIO(safe_stderr.encode("utf-8")),
+            ) as stdout_stream:
+                await stdout_stream.write(safe_stdout.encode("utf-8"))
+            async with self._stderr.open_upload_stream_with_id(
+                stderr_id,
+                f"{run_id}-stderr.txt",
                 metadata={
                     "organization_id": organization_id, "project_id": project_id,
                     "run_id": run_id, "upload_intent_id": intent_id,
                 },
-            )
+            ) as stderr_stream:
+                await stderr_stream.write(safe_stderr.encode("utf-8"))
             return stdout_id, stderr_id
 
-        stdout_id, stderr_id = await self._upload_intents.upload_with_heartbeat(
-            intent_id, upload_both,
-        )
+        await self._upload_intents.upload_with_heartbeat(intent_id, upload_both)
         try:
             document = {
                 "_id": uuid4().hex, "organization_id": organization_id,
