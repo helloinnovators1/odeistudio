@@ -105,6 +105,7 @@ class Database:
         self.collections = {
             "execution_artifacts": Collection(artifact_rows),
             "execution_runs": Collection(),
+            "gridfs_upload_intents": Collection(),
             "projects": Collection(),
         }
 
