@@ -86,3 +86,36 @@ test("detects in-place modification during a descriptor read", () => {
     }
   });
 });
+
+test("rejects a selected workspace root replaced during a file read", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "odei-root-race-"));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "odei-outside-"));
+  const movedRoot = root + ".original";
+  const file = path.join(root, "race.txt");
+  fs.writeFileSync(file, "before");
+  fs.writeFileSync(path.join(outside, "race.txt"), "outside");
+  const selectedIdentity = identity(root);
+  const originalRead = fs.readSync;
+  let swapped = false;
+  fs.readSync = function patchedRead(...args) {
+    const result = originalRead.apply(this, args);
+    if (result > 0 && !swapped) {
+      swapped = true;
+      fs.renameSync(root, movedRoot);
+      fs.symlinkSync(outside, root, "dir");
+    }
+    return result;
+  };
+  try {
+    assert.throws(
+      () => readWorkspaceTextFile(root, "race.txt", selectedIdentity),
+      /outside the workspace|identity changed/,
+    );
+  } finally {
+    fs.readSync = originalRead;
+    if (fs.lstatSync(root).isSymbolicLink()) fs.unlinkSync(root);
+    if (fs.existsSync(movedRoot)) fs.renameSync(movedRoot, root);
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
