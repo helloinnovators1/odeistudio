@@ -1,7 +1,6 @@
 """Tenant-scoped GridFS storage for immutable workspace snapshot archives."""
 from __future__ import annotations
 
-import io
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -75,10 +74,14 @@ class MongoWorkspaceSnapshotStore:
             resource_type="workspace_snapshot",
             bucket_names=("workspace_snapshot_blobs",),
         )
-        blob_id = await self._upload_intents.upload_with_heartbeat(
-            intent_id,
-            lambda: self._bucket.upload_from_stream(
-                f"{snapshot_id}.zip", io.BytesIO(archive),
+        blob_id = await self._upload_intents.blob_id(
+            intent_id, "workspace_snapshot_blobs",
+        )
+
+        async def upload_snapshot() -> str:
+            async with self._bucket.open_upload_stream_with_id(
+                blob_id,
+                f"{snapshot_id}.zip",
                 metadata={
                     "snapshot_id": snapshot_id,
                     "organization_id": organization_id,
@@ -87,7 +90,12 @@ class MongoWorkspaceSnapshotStore:
                     "sha256": sha256,
                     "upload_intent_id": intent_id,
                 },
-            ),
+            ) as grid_in:
+                await grid_in.write(archive)
+            return blob_id
+
+        await self._upload_intents.upload_with_heartbeat(
+            intent_id, upload_snapshot,
         )
         document = {
             "_id": snapshot_id,
