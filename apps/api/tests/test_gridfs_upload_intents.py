@@ -312,3 +312,40 @@ async def test_reconcile_removes_incomplete_gridfs_chunks_without_files_document
         "_id": "partial-intent",
     }) is None
 \n
+
+@pytest.mark.asyncio
+async def test_reconciliation_is_scoped_to_one_resource_worker():
+    database = Database()
+    store = MongoGridFSUploadIntentStore(database)
+    stale = datetime.now(timezone.utc) - timedelta(hours=1)
+    database["gridfs_upload_intents"].rows.extend([
+        {
+            "_id": "snapshot-intent", "resource_type": "workspace_snapshot",
+            "state": "uploading", "lease_expires_at": stale,
+            "bucket_names": ["workspace_snapshot_blobs"],
+        },
+        {
+            "_id": "artifact-intent", "resource_type": "execution_artifact",
+            "state": "uploading", "lease_expires_at": stale,
+            "bucket_names": ["execution_stdout", "execution_stderr"],
+        },
+    ])
+    database["workspace_snapshot_blobs.files"].rows.append({
+        "_id": "snapshot-blob",
+        "metadata": {"upload_intent_id": "snapshot-intent"},
+    })
+    database["execution_stdout.files"].rows.append({
+        "_id": "stdout-blob",
+        "metadata": {"upload_intent_id": "artifact-intent"},
+    })
+    snapshot_bucket = Bucket()
+
+    assert await store.reconcile(
+        {"workspace_snapshot_blobs": snapshot_bucket},
+        resource_type="workspace_snapshot",
+    ) == 1
+    assert snapshot_bucket.deleted == {"snapshot-blob"}
+    assert await database["gridfs_upload_intents"].find_one({
+        "_id": "artifact-intent",
+    }) is not None
+\n
