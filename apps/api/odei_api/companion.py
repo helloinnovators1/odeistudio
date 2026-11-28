@@ -906,8 +906,11 @@ def main() -> int:
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
     try:
+        allow_patch_apply = bool(approval_issuer and approval_public_keys)
         for selected_path in selected_paths:
-            workspace_ids.append(registry.register_selected_root(selected_path))
+            workspace_ids.append(registry.register_selected_root(
+                selected_path, allow_patch_apply=allow_patch_apply,
+            ))
         import uvicorn
 
         app = create_companion_app(
@@ -922,7 +925,7 @@ def main() -> int:
         print("ODEI Local Workspace Companion is starting on 127.0.0.1.")
         print(f"{len(workspace_ids)} selected folder(s) are held by OS handles.")
         print(
-            "Signed one-file patch application is configured; writable roots advertise approval-gated access."
+            "Signed bounded multi-file patch application is configured; writable roots advertise approval-gated access."
             if approval_issuer else
             "Access is read-only; signed patch application is not configured."
         )

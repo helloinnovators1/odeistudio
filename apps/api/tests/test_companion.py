@@ -1424,3 +1424,49 @@ def test_companion_exact_search_requires_pairing_and_enforces_query_limits(tmp_p
         assert oversized_limit.status_code == 422
     finally:
         registry.close()
+
+@pytest.mark.parametrize(
+    ("issuer", "public_keys", "expected_write_access"),
+    [
+        ("https://api.example.test", '{"kid":"YQ"}', True),
+        ("", "", False),
+    ],
+)
+def test_companion_main_only_enables_patch_writes_with_pinned_approval_keys(
+    tmp_path, monkeypatch, issuer, public_keys, expected_write_access,
+) -> None:
+    import builtins
+    import sys
+    from types import SimpleNamespace
+
+    from odei_api import companion as companion_module
+
+    selected_path = str(tmp_path)
+    selections = iter([selected_path])
+    registrations = []
+
+    class FakeRegistry:
+        def __init__(self, *, journal):
+            self.journal = journal
+
+        def register_selected_root(self, path, *, allow_patch_apply=False):
+            registrations.append((path, allow_patch_apply))
+            return "selected-workspace"
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(companion_module, "WorkspaceHandleRegistry", FakeRegistry)
+    monkeypatch.setattr(companion_module, "DurableWorkspaceJournal", lambda _path: object())
+    monkeypatch.setattr(companion_module, "default_journal_path", lambda: tmp_path / "journal.sqlite3")
+    monkeypatch.setattr(companion_module, "select_directory_native", lambda: next(selections, None))
+    monkeypatch.setattr(companion_module, "create_companion_app", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(sys, "argv", ["odei-companion"])
+    monkeypatch.setattr(builtins, "input", lambda _prompt: "n")
+    monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(run=lambda *_args, **_kwargs: None))
+    monkeypatch.setenv("ODEI_COMPANION_ALLOWED_ORIGINS", ORIGIN)
+    monkeypatch.setenv("ODEI_PATCH_APPROVAL_ISSUER", issuer)
+    monkeypatch.setenv("ODEI_PATCH_APPROVAL_PUBLIC_KEYS", public_keys)
+
+    assert companion_module.main() == 0
+    assert registrations == [(selected_path, expected_write_access)]
