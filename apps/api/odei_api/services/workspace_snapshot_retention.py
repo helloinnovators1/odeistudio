@@ -22,7 +22,10 @@ async def run_snapshot_retention(
         raise ValueError("snapshot retention worker bounds are invalid")
     while True:
         try:
+            reconciled = await snapshot_store.reconcile_upload_intents(limit=batch_size)
             deleted = await snapshot_store.delete_expired(limit=batch_size)
+            if reconciled:
+                logger.info("GridFS snapshot upload reconciliation processed %d intent(s)", reconciled)
             if deleted:
                 logger.info("Expired workspace snapshot retention removed %d snapshot(s)", deleted)
         except asyncio.CancelledError:
@@ -47,7 +50,10 @@ async def run_execution_artifact_retention(
         raise ValueError("execution artifact retention worker bounds are invalid")
     while True:
         try:
+            reconciled = await artifact_store.reconcile_upload_intents(limit=batch_size)
             deleted = await artifact_store.delete_expired(limit=batch_size)
+            if reconciled:
+                logger.info("GridFS execution upload reconciliation processed %d intent(s)", reconciled)
             if deleted:
                 logger.info("Execution artifact retention removed %d artifact(s)", deleted)
         except asyncio.CancelledError:
