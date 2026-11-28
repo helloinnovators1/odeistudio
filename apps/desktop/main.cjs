@@ -198,13 +198,12 @@ function listWorkspaceFiles(root) {
 handle("odei:workspace:select", async () => {
   const result = await dialog.showOpenDialog(mainWindow, { title: "Open ODEI workspace", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || !result.filePaths[0]) return null;
-  selectedWorkspace = fs.realpathSync(result.filePaths[0]);
-  const metadata = fs.statSync(selectedWorkspace, { bigint: true });
+  const selectedPath = fs.realpathSync(result.filePaths[0]);
+  const metadata = fs.statSync(selectedPath, { bigint: true });
   if (!metadata.isDirectory()) {
-    selectedWorkspace = null;
-    selectedWorkspaceIdentity = null;
     throw new Error("The selected workspace is not a directory");
   }
+  selectedWorkspace = selectedPath;
   selectedWorkspaceIdentity = {
     dev: metadata.dev, ino: metadata.ino, birthtimeNs: metadata.birthtimeNs,
   };

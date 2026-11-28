@@ -56,7 +56,20 @@ function readWorkspaceTextFile(root, relativePath) {
     if (!before.isFile() || before.size > BigInt(MAX_TEXT_FILE_BYTES) || before.nlink > 1n) {
       throw new Error("Selected path is not a bounded, unlinked regular file");
     }
-    const content = fs.readFileSync(descriptor);
+    const chunks = [];
+    let totalBytes = 0;
+    const buffer = Buffer.alloc(64 * 1024);
+    while (totalBytes <= MAX_TEXT_FILE_BYTES) {
+      const requested = Math.min(buffer.length, MAX_TEXT_FILE_BYTES + 1 - totalBytes);
+      const bytesRead = fs.readSync(descriptor, buffer, 0, requested, null);
+      if (bytesRead === 0) break;
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+      totalBytes += bytesRead;
+    }
+    if (totalBytes > MAX_TEXT_FILE_BYTES) {
+      throw new Error("Selected file exceeds the 1 MB text editor limit");
+    }
+    const content = Buffer.concat(chunks, totalBytes);
     const after = fs.fstatSync(descriptor, { bigint: true });
     const resolvedAgain = fs.realpathSync(current);
     if (!isWithinRoot(canonicalRoot, resolvedAgain)) {

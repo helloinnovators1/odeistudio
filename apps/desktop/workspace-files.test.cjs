@@ -64,16 +64,20 @@ test("detects in-place modification during a descriptor read", () => {
   withWorkspace((root) => {
     const file = path.join(root, "race.txt");
     fs.writeFileSync(file, "before");
-    const originalRead = fs.readFileSync;
-    fs.readFileSync = function patchedRead(...args) {
+    const originalRead = fs.readSync;
+    let mutated = false;
+    fs.readSync = function patchedRead(...args) {
       const result = originalRead.apply(this, args);
-      fs.writeFileSync(file, "changed");
+      if (result > 0 && !mutated) {
+        mutated = true;
+        fs.writeFileSync(file, "change");
+      }
       return result;
     };
     try {
       assert.throws(() => readWorkspaceTextFile(root, "race.txt"), /changed while being read/);
     } finally {
-      fs.readFileSync = originalRead;
+      fs.readSync = originalRead;
     }
   });
 });
