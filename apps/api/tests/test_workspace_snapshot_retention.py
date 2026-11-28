@@ -16,6 +16,9 @@ async def test_snapshot_retention_runs_periodically_and_stops_cleanly():
     called = asyncio.Event()
 
     class Store:
+        async def reconcile_upload_intents(self, *, limit):
+            return 0
+
         async def delete_expired(self, *, limit):
             assert limit == 25
             called.set()
@@ -36,6 +39,9 @@ async def test_snapshot_retention_retries_after_a_failed_batch():
     attempts = 0
 
     class Store:
+        async def reconcile_upload_intents(self, *, limit):
+            return 0
+
         async def delete_expired(self, *, limit):
             nonlocal attempts
             attempts += 1
@@ -57,6 +63,9 @@ async def test_snapshot_retention_retries_after_a_failed_batch():
 @pytest.mark.asyncio
 async def test_snapshot_retention_rejects_unbounded_or_invalid_schedule():
     class Store:
+        async def reconcile_upload_intents(self, *, limit):
+            return 0
+
         async def delete_expired(self, *, limit):
             return 0
 
@@ -72,6 +81,9 @@ async def test_snapshot_retention_survives_non_mongo_gridfs_failure():
     attempts = 0
 
     class Store:
+        async def reconcile_upload_intents(self, *, limit):
+            return 0
+
         async def delete_expired(self, *, limit):
             nonlocal attempts
             attempts += 1
@@ -94,6 +106,9 @@ async def test_execution_artifact_retention_retries_and_cancels_cleanly():
     attempts = 0
 
     class Store:
+        async def reconcile_upload_intents(self, *, limit):
+            return 0
+
         async def delete_expired(self, *, limit):
             nonlocal attempts
             assert limit == 100
