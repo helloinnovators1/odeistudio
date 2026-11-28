@@ -482,6 +482,13 @@ async def remove_project_member(
     client = request.app.state.mongo_client
     try:
         async with client.start_session() as session, await session.start_transaction():
+            await _fence_organization_membership(
+                database["organization_memberships"],
+                organization_id=organization_id,
+                identity_issuer=principal.issuer,
+                identity_subject=principal.subject,
+                session=session,
+            )
             await fence_project_write(
                 database["projects"], organization_id=organization_id,
                 project_id=project_id, session=session,
@@ -503,7 +510,13 @@ async def remove_project_member(
                 {"member_issuer": payload.identity_issuer,
                  "member_subject": payload.identity_subject}, session,
             )
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            await _audit(
+                request, principal, organization_id, "project.member.remove",
+                "project", project_id, "denied",
+                {"reason": "active_organization_membership_required"},
+            )
         raise
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={
