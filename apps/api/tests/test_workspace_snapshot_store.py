@@ -62,6 +62,10 @@ class Collection:
     async def find_one(self, query, **_kwargs):
         return next((row for row in self.rows if self.matches(row, query)), None)
 
+    async def insert_one(self, document, **_kwargs):
+        self.rows.append(dict(document))
+        return SimpleNamespace(inserted_id=document.get("_id"))
+
     async def update_one(self, query, update, **_kwargs):
         row = await self.find_one(query)
         if row is None:
@@ -69,6 +73,8 @@ class Collection:
         row.update(update.get("$set", {}))
         for key, amount in update.get("$inc", {}).items():
             row[key] = row.get(key, 0) + amount
+        for key in update.get("$unset", {}):
+            row.pop(key, None)
         return SimpleNamespace(matched_count=1, modified_count=1)
 
     async def delete_one(self, query, **_kwargs):
@@ -110,6 +116,8 @@ class Database:
             "workspace_snapshots": Collection(),
             "execution_runs": Collection(),
             "gridfs_upload_intents": Collection(),
+            "workspace_snapshot_blobs.files": Collection(),
+            "workspace_snapshot_blobs.chunks": Collection(),
             "projects": Collection([
                 {"organization_id": "org", "project_id": "project", "status": "active"},
             ]),
@@ -360,3 +368,57 @@ async def test_snapshot_retention_rejects_invalid_batch_limits(limit):
 
     with pytest.raises(ValueError, match="batch limit"):
         await store.delete_expired(limit=limit)
+
+class UploadStream:
+    def __init__(self, bucket, file_id, filename, metadata):
+        self.bucket = bucket
+        self.file_id = file_id
+        self.filename = filename
+        self.metadata = metadata
+
+    async def __aenter__(self):
+        return self
+
+    async def write(self, data):
+        self.data = data
+
+    async def __aexit__(self, *_args):
+        self.bucket.database[f"{self.bucket.name}.files"].rows.append({
+            "_id": self.file_id, "filename": self.filename,
+            "metadata": self.metadata, "length": len(getattr(self, "data", b"")),
+        })
+
+
+class UploadBucket(Bucket):
+    def __init__(self, database, name):
+        super().__init__()
+        self.database = database
+        self.name = name
+
+    def open_upload_stream_with_id(self, file_id, filename, metadata=None):
+        return UploadStream(self, file_id, filename, metadata or {})
+
+
+@pytest.mark.asyncio
+async def test_snapshot_put_commits_upload_intent_with_snapshot_metadata(monkeypatch):
+    database = Database()
+    monkeypatch.setattr(
+        snapshot_module, "AsyncGridFSBucket",
+        lambda db, bucket_name: UploadBucket(db, bucket_name),
+    )
+    store = MongoWorkspaceSnapshotStore(database)
+
+    result = await store.put(
+        organization_id="org", project_id="project", task_id="task",
+        owner_issuer="https://issuer.example", owner_subject="owner",
+        archive=b"zip-content", sha256="a" * 64, file_count=1, total_bytes=10,
+    )
+
+    snapshot = database["workspace_snapshots"].rows[0]
+    intent = database["gridfs_upload_intents"].rows[0]
+    assert result["snapshot_id"] == snapshot["_id"]
+    assert snapshot["blob_id"] == intent["blob_ids"]["workspace_snapshot_blobs"]
+    assert snapshot["upload_intent_id"] == intent["_id"]
+    assert intent["state"] == "committed"
+    assert database["workspace_snapshot_blobs.files"].rows[0]["metadata"]["upload_intent_id"] == intent["_id"]
+\n
