@@ -1209,7 +1209,7 @@ export default function NexusChatPanel({
     const files = selectedPatch.files;
     const fileSummary = files.map((file) => `• ${file.operation.toUpperCase()} ${file.path}`).join("\\n");
     if (!window.confirm(
-      `Apply all ${files.length} approved file operation(s) to the selected local workspace?\\n\\n${fileSummary}\\n\\nEach file operation is atomic. If a later operation fails, NEXUS attempts hash-guarded rollback of earlier operations. A process crash or failed rollback can still require manual recovery.`,
+      `Apply all ${files.length} approved file operation(s) to the selected local workspace?\\n\\n${fileSummary}\\n\\nEach file operation is atomic. If a later operation fails, NEXUS attempts hash-guarded rollback of earlier operations. If compensation is incomplete, inspect the durable journal receipt and affected paths. Interrupted transactions are reconciled when the selected workspace is registered again; Windows directory-metadata durability may not be confirmed.`,
     )) return;
     setPatchBusy(true);
     setPatchError("");
@@ -1234,7 +1234,7 @@ export default function NexusChatPanel({
       if (!durable) {
         setNotice(`NEXUS applied ${result.files.length} file operation(s), but one or more directory flushes could not be confirmed. Inspect the workspace before continuing.`);
       } else {
-        setNotice(`Applied all ${result.files.length} approved file operation(s). Individual file writes were atomic; compensation is attempted if a later operation fails. A durable crash-recovery journal is not yet implemented.`);
+        setNotice(`Applied all ${result.files.length} approved file operation(s). Individual file writes were atomic; the durable journal supports hash-guarded compensation and recovery after an interrupted transaction.`);
       }
     } catch (cause) {
       setPatchError(errorMessage(cause));
