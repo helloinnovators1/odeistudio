@@ -274,21 +274,29 @@ class MongoRepositoryIndexStore:
     ) -> None:
         """Remove orphaned build documents unless the revision became active."""
         try:
-            active = await self._state.find_one({
-                "organization_id": organization_id,
-                "project_id": project_id,
-                "revision_id": revision_id,
-            })
-            if active is not None:
-                return
-            for collection in (
-                self._files, self._symbols, self._references, self._imports, self._chunks,
-            ):
-                await collection.delete_many({
-                    "organization_id": organization_id,
-                    "project_id": project_id,
-                    "revision_id": revision_id,
-                })
+            # Read the active pointer and remove unpublished rows in one
+            # snapshot transaction. A non-transactional read followed by
+            # deletes can race an uncertain publish commit and erase a newly
+            # active revision after the pointer check has returned no row.
+            async with self._client.start_session() as session:
+                async def cleanup_transaction(active_session):
+                    active = await self._state.find_one({
+                        "organization_id": organization_id,
+                        "project_id": project_id,
+                        "revision_id": revision_id,
+                    }, session=active_session)
+                    if active is not None:
+                        return
+                    for collection in (
+                        self._files, self._symbols, self._references,
+                        self._imports, self._chunks,
+                    ):
+                        await collection.delete_many({
+                            "organization_id": organization_id,
+                            "project_id": project_id,
+                            "revision_id": revision_id,
+                        }, session=active_session)
+                await session.with_transaction(cleanup_transaction)
         except PyMongoError as exc:
             logger.warning(
                 "Could not clean up unpublished repository index revision (%s)",
