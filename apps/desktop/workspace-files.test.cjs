@@ -7,6 +7,11 @@ const path = require("node:path");
 const test = require("node:test");
 const { readWorkspaceTextFile } = require("./workspace-files.cjs");
 
+function identity(root) {
+  const metadata = fs.statSync(root, { bigint: true });
+  return { dev: metadata.dev, ino: metadata.ino, birthtimeNs: metadata.birthtimeNs };
+}
+
 function withWorkspace(run) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "odei-workspace-"));
   try {
@@ -20,7 +25,7 @@ test("reads a stable UTF-8 file beneath the selected workspace", () => {
   withWorkspace((root) => {
     fs.mkdirSync(path.join(root, "src"));
     fs.writeFileSync(path.join(root, "src", "main.ts"), "export const odei = true;");
-    assert.equal(readWorkspaceTextFile(root, "src/main.ts"), "export const odei = true;");
+    assert.equal(readWorkspaceTextFile(root, "src/main.ts", identity(root)), "export const odei = true;");
   });
 });
 
@@ -29,18 +34,18 @@ test("rejects traversal, absolute paths, symbolic links and hard links", (t) => 
     const outside = path.join(path.dirname(root), "odei-outside.txt");
     fs.writeFileSync(outside, "outside");
     try {
-      assert.throws(() => readWorkspaceTextFile(root, "../odei-outside.txt"), /traversal/);
-      assert.throws(() => readWorkspaceTextFile(root, outside), /Invalid workspace-relative/);
+      assert.throws(() => readWorkspaceTextFile(root, "../odei-outside.txt", identity(root)), /traversal/);
+      assert.throws(() => readWorkspaceTextFile(root, outside, identity(root)), /Invalid workspace-relative/);
       try {
         fs.symlinkSync(outside, path.join(root, "linked.txt"));
-        assert.throws(() => readWorkspaceTextFile(root, "linked.txt"), /Symbolic links/);
+        assert.throws(() => readWorkspaceTextFile(root, "linked.txt", identity(root)), /Symbolic links/);
       } catch (error) {
         if (error.code === "EPERM" || error.code === "EACCES") t.skip("symlink creation is unavailable");
         else throw error;
       }
       try {
         fs.linkSync(outside, path.join(root, "hard-linked.txt"));
-        assert.throws(() => readWorkspaceTextFile(root, "hard-linked.txt"), /hard-linked|unlinked/i);
+        assert.throws(() => readWorkspaceTextFile(root, "hard-linked.txt", identity(root)), /hard-linked|unlinked/i);
       } catch (error) {
         if (error.code === "EPERM" || error.code === "EACCES") t.skip("hard-link creation is unavailable");
         else throw error;
@@ -55,8 +60,8 @@ test("rejects binary and oversized files", () => {
   withWorkspace((root) => {
     fs.writeFileSync(path.join(root, "binary.bin"), Buffer.from([0, 1, 2]));
     fs.writeFileSync(path.join(root, "large.txt"), "x".repeat(1024 * 1024 + 1));
-    assert.throws(() => readWorkspaceTextFile(root, "binary.bin"), /bounded|Binary/);
-    assert.throws(() => readWorkspaceTextFile(root, "large.txt"), /bounded/);
+    assert.throws(() => readWorkspaceTextFile(root, "binary.bin", identity(root)), /bounded|Binary/);
+    assert.throws(() => readWorkspaceTextFile(root, "large.txt", identity(root)), /bounded/);
   });
 });
 
@@ -75,7 +80,7 @@ test("detects in-place modification during a descriptor read", () => {
       return result;
     };
     try {
-      assert.throws(() => readWorkspaceTextFile(root, "race.txt"), /changed while being read/);
+      assert.throws(() => readWorkspaceTextFile(root, "race.txt", identity(root)), /changed while being read/);
     } finally {
       fs.readSync = originalRead;
     }

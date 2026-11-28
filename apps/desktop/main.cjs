@@ -214,7 +214,7 @@ handle("odei:workspace:current", () => selectedWorkspace
   : null);
 handle("odei:workspace:files", () => listWorkspaceFiles(requireWorkspace()));
 handle("odei:workspace:read-file", (relativePath) => (
-  readWorkspaceTextFile(requireWorkspace(), relativePath)
+  readWorkspaceTextFile(requireWorkspace(), relativePath, selectedWorkspaceIdentity)
 ));
 
 handle("odei:git:status", async () => {

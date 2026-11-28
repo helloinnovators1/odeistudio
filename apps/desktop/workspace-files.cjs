@@ -12,7 +12,7 @@ function isWithinRoot(root, candidate) {
     && !path.isAbsolute(relative);
 }
 
-function readWorkspaceTextFile(root, relativePath) {
+function readWorkspaceTextFile(root, relativePath, expectedRootIdentity) {
   if (
     typeof relativePath !== "string"
     || !relativePath
@@ -28,7 +28,15 @@ function readWorkspaceTextFile(root, relativePath) {
 
   const canonicalRoot = fs.realpathSync(root);
   const rootMetadata = fs.statSync(canonicalRoot, { bigint: true });
-  if (!rootMetadata.isDirectory()) throw new Error("Selected workspace is not a directory");
+  if (
+    !rootMetadata.isDirectory()
+    || !expectedRootIdentity
+    || rootMetadata.dev !== expectedRootIdentity.dev
+    || rootMetadata.ino !== expectedRootIdentity.ino
+    || rootMetadata.birthtimeNs !== expectedRootIdentity.birthtimeNs
+  ) {
+    throw new Error("Selected workspace identity changed; select it again");
+  }
 
   let current = canonicalRoot;
   for (const part of parts) {
@@ -76,6 +84,16 @@ function readWorkspaceTextFile(root, relativePath) {
       throw new Error("Selected path changed outside the workspace while being read");
     }
     const pathMetadata = fs.statSync(resolvedAgain, { bigint: true });
+    const rootResolvedAgain = fs.realpathSync(root);
+    const rootMetadataAfter = fs.statSync(rootResolvedAgain, { bigint: true });
+    if (
+      rootResolvedAgain !== canonicalRoot
+      || rootMetadataAfter.dev !== expectedRootIdentity.dev
+      || rootMetadataAfter.ino !== expectedRootIdentity.ino
+      || rootMetadataAfter.birthtimeNs !== expectedRootIdentity.birthtimeNs
+    ) {
+      throw new Error("Selected workspace identity changed while reading");
+    }
     const stableFields = ["dev", "ino", "mode", "size", "mtimeNs", "ctimeNs"];
     if (
       stableFields.some((field) => before[field] !== after[field])
