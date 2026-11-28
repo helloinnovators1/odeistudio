@@ -1,0 +1,82 @@
+"use strict";
+
+const fs = require("node:fs");
+const path = require("node:path");
+
+const MAX_TEXT_FILE_BYTES = 1024 * 1024;
+
+function isWithinRoot(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative !== ".."
+    && !relative.startsWith(".." + path.sep)
+    && !path.isAbsolute(relative);
+}
+
+function readWorkspaceTextFile(root, relativePath) {
+  if (
+    typeof relativePath !== "string"
+    || !relativePath
+    || relativePath.includes("\0")
+    || path.isAbsolute(relativePath)
+  ) {
+    throw new Error("Invalid workspace-relative file path");
+  }
+  const parts = relativePath.replace(/\\/g, "/").split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) {
+    throw new Error("Path traversal is not allowed");
+  }
+
+  const canonicalRoot = fs.realpathSync(root);
+  const rootMetadata = fs.statSync(canonicalRoot, { bigint: true });
+  if (!rootMetadata.isDirectory()) throw new Error("Selected workspace is not a directory");
+
+  let current = canonicalRoot;
+  for (const part of parts) {
+    current = path.join(current, part);
+    const metadata = fs.lstatSync(current, { bigint: true });
+    if (metadata.isSymbolicLink()) {
+      throw new Error("Symbolic links are not opened by the workspace explorer");
+    }
+    if (current !== path.join(canonicalRoot, ...parts) && !metadata.isDirectory()) {
+      throw new Error("Workspace path contains a non-directory component");
+    }
+  }
+
+  const resolved = fs.realpathSync(current);
+  if (!isWithinRoot(canonicalRoot, resolved)) {
+    throw new Error("Selected path is outside the workspace");
+  }
+
+  const flags = fs.constants.O_RDONLY
+    | (fs.constants.O_NOFOLLOW || 0)
+    | (fs.constants.O_NONBLOCK || 0);
+  const descriptor = fs.openSync(resolved, flags);
+  try {
+    const before = fs.fstatSync(descriptor, { bigint: true });
+    if (!before.isFile() || before.size > BigInt(MAX_TEXT_FILE_BYTES) || before.nlink > 1n) {
+      throw new Error("Selected path is not a bounded, unlinked regular file");
+    }
+    const content = fs.readFileSync(descriptor);
+    const after = fs.fstatSync(descriptor, { bigint: true });
+    const resolvedAgain = fs.realpathSync(current);
+    if (!isWithinRoot(canonicalRoot, resolvedAgain)) {
+      throw new Error("Selected path changed outside the workspace while being read");
+    }
+    const pathMetadata = fs.statSync(resolvedAgain, { bigint: true });
+    const stableFields = ["dev", "ino", "mode", "size", "mtimeNs", "ctimeNs"];
+    if (
+      stableFields.some((field) => before[field] !== after[field])
+      || before.dev !== pathMetadata.dev
+      || before.ino !== pathMetadata.ino
+      || content.length !== Number(after.size)
+    ) {
+      throw new Error("Workspace file changed while being read");
+    }
+    if (content.includes(0)) throw new Error("Binary files cannot be opened in the text editor");
+    return content.toString("utf8");
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+module.exports = { readWorkspaceTextFile };

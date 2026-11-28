@@ -1,0 +1,79 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+const { readWorkspaceTextFile } = require("./workspace-files.cjs");
+
+function withWorkspace(run) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "odei-workspace-"));
+  try {
+    return run(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("reads a stable UTF-8 file beneath the selected workspace", () => {
+  withWorkspace((root) => {
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(path.join(root, "src", "main.ts"), "export const odei = true;");
+    assert.equal(readWorkspaceTextFile(root, "src/main.ts"), "export const odei = true;");
+  });
+});
+
+test("rejects traversal, absolute paths, symbolic links and hard links", (t) => {
+  withWorkspace((root) => {
+    const outside = path.join(path.dirname(root), "odei-outside.txt");
+    fs.writeFileSync(outside, "outside");
+    try {
+      assert.throws(() => readWorkspaceTextFile(root, "../odei-outside.txt"), /traversal/);
+      assert.throws(() => readWorkspaceTextFile(root, outside), /Invalid workspace-relative/);
+      try {
+        fs.symlinkSync(outside, path.join(root, "linked.txt"));
+        assert.throws(() => readWorkspaceTextFile(root, "linked.txt"), /Symbolic links/);
+      } catch (error) {
+        if (error.code === "EPERM" || error.code === "EACCES") t.skip("symlink creation is unavailable");
+        else throw error;
+      }
+      try {
+        fs.linkSync(outside, path.join(root, "hard-linked.txt"));
+        assert.throws(() => readWorkspaceTextFile(root, "hard-linked.txt"), /hard-linked|unlinked/i);
+      } catch (error) {
+        if (error.code === "EPERM" || error.code === "EACCES") t.skip("hard-link creation is unavailable");
+        else throw error;
+      }
+    } finally {
+      fs.rmSync(outside, { force: true });
+    }
+  });
+});
+
+test("rejects binary and oversized files", () => {
+  withWorkspace((root) => {
+    fs.writeFileSync(path.join(root, "binary.bin"), Buffer.from([0, 1, 2]));
+    fs.writeFileSync(path.join(root, "large.txt"), "x".repeat(1024 * 1024 + 1));
+    assert.throws(() => readWorkspaceTextFile(root, "binary.bin"), /bounded|Binary/);
+    assert.throws(() => readWorkspaceTextFile(root, "large.txt"), /bounded/);
+  });
+});
+
+test("detects in-place modification during a descriptor read", () => {
+  withWorkspace((root) => {
+    const file = path.join(root, "race.txt");
+    fs.writeFileSync(file, "before");
+    const originalRead = fs.readFileSync;
+    fs.readFileSync = function patchedRead(...args) {
+      const result = originalRead.apply(this, args);
+      fs.writeFileSync(file, "changed");
+      return result;
+    };
+    try {
+      assert.throws(() => readWorkspaceTextFile(root, "race.txt"), /changed while being read/);
+    } finally {
+      fs.readFileSync = originalRead;
+    }
+  });
+});

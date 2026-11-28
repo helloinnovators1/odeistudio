@@ -28,6 +28,7 @@
       "main.cjs",
       "preload.cjs",
       "security.cjs",
+      "workspace-files.cjs",
       "package.json",
       "node_modules/**/*"
     ],

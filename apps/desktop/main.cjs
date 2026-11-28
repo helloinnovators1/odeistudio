@@ -6,6 +6,7 @@ const { promisify } = require("node:util");
 const { app, BrowserWindow, WebContentsView, dialog, ipcMain, shell } = require("electron");
 const pty = require("node-pty");
 const { isTrustedAppUrl } = require("./security.cjs");
+const { readWorkspaceTextFile } = require("./workspace-files.cjs");
 
 const execFileAsync = promisify(execFile);
 const APP_URL = process.env.ODEI_DESKTOP_URL || "https://zurios.vercel.app/odeistudio?window=ide";
@@ -16,6 +17,7 @@ const MAX_TERMINALS = 4;
 const terminals = new Map();
 let mainWindow;
 let selectedWorkspace = null;
+let selectedWorkspaceIdentity = null;
 let browserView = null;
 let browserState = { url: "about:blank", canGoBack: false, canGoForward: false, loading: false };
 
@@ -36,10 +38,29 @@ function safeWebUrl(value) {
   return url.toString();
 }
 function requireWorkspace() {
-  if (!selectedWorkspace) throw new Error("Select a local workspace first");
-  if (!fs.existsSync(selectedWorkspace) || !fs.statSync(selectedWorkspace).isDirectory()) {
+  if (!selectedWorkspace || !selectedWorkspaceIdentity) {
+    throw new Error("Select a local workspace first");
+  }
+  let resolved;
+  let metadata;
+  try {
+    resolved = fs.realpathSync(selectedWorkspace);
+    metadata = fs.statSync(resolved, { bigint: true });
+  } catch {
     selectedWorkspace = null;
+    selectedWorkspaceIdentity = null;
     throw new Error("The selected workspace is no longer available");
+  }
+  if (
+    resolved !== selectedWorkspace
+    || !metadata.isDirectory()
+    || metadata.dev !== selectedWorkspaceIdentity.dev
+    || metadata.ino !== selectedWorkspaceIdentity.ino
+    || metadata.birthtimeNs !== selectedWorkspaceIdentity.birthtimeNs
+  ) {
+    selectedWorkspace = null;
+    selectedWorkspaceIdentity = null;
+    throw new Error("The selected workspace identity changed; select it again");
   }
   return selectedWorkspace;
 }
@@ -173,40 +194,29 @@ function listWorkspaceFiles(root) {
   }
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }
-function safeWorkspaceFile(relativePath) {
-  const root = requireWorkspace();
-  if (typeof relativePath !== "string" || !relativePath || relativePath.includes(String.fromCharCode(0)) || path.isAbsolute(relativePath)) {
-    throw new Error("Invalid workspace-relative file path");
-  }
-  const parts = relativePath.split(String.fromCharCode(92)).join("/").split("/");
-  if (parts.some((part) => !part || part === "." || part === "..")) throw new Error("Path traversal is not allowed");
-  let current = root;
-  for (const part of parts) {
-    current = path.join(current, part);
-    const stat = fs.lstatSync(current);
-    if (stat.isSymbolicLink()) throw new Error("Symbolic links are not opened by the workspace explorer");
-  }
-  const resolved = fs.realpathSync(current);
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith(".." + path.sep) || relative === ".." || path.isAbsolute(relative) || !fs.statSync(resolved).isFile()) throw new Error("Selected path is not a regular workspace file");
-  return resolved;
-}
+
 handle("odei:workspace:select", async () => {
   const result = await dialog.showOpenDialog(mainWindow, { title: "Open ODEI workspace", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || !result.filePaths[0]) return null;
   selectedWorkspace = fs.realpathSync(result.filePaths[0]);
+  const metadata = fs.statSync(selectedWorkspace, { bigint: true });
+  if (!metadata.isDirectory()) {
+    selectedWorkspace = null;
+    selectedWorkspaceIdentity = null;
+    throw new Error("The selected workspace is not a directory");
+  }
+  selectedWorkspaceIdentity = {
+    dev: metadata.dev, ino: metadata.ino, birthtimeNs: metadata.birthtimeNs,
+  };
   return { name: path.basename(selectedWorkspace) };
 });
-handle("odei:workspace:current", () => selectedWorkspace ? ({ name: path.basename(selectedWorkspace) }) : null);
+handle("odei:workspace:current", () => selectedWorkspace
+  ? ({ name: path.basename(requireWorkspace()) })
+  : null);
 handle("odei:workspace:files", () => listWorkspaceFiles(requireWorkspace()));
-handle("odei:workspace:read-file", (relativePath) => {
-  const filePath = safeWorkspaceFile(relativePath);
-  const stat = fs.statSync(filePath);
-  if (stat.size > 1024 * 1024) throw new Error("Files larger than 1 MB are not opened in the text editor");
-  const content = fs.readFileSync(filePath);
-  if (content.includes(0)) throw new Error("Binary files cannot be opened in the text editor");
-  return content.toString("utf8");
-});
+handle("odei:workspace:read-file", (relativePath) => (
+  readWorkspaceTextFile(requireWorkspace(), relativePath)
+));
 
 handle("odei:git:status", async () => {
   const root = (await git(["rev-parse", "--show-toplevel"])).trim();
