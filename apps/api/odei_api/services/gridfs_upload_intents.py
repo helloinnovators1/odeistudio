@@ -88,35 +88,46 @@ class MongoGridFSUploadIntentStore:
         if bucket_name not in ALLOWED_BUCKETS:
             raise ValueError("unsupported GridFS bucket")
         intent = await self._collection.find_one(
-            {"_id": intent_id, "state": "uploading"}
+            {
+                "_id": intent_id,
+                "state": "uploading",
+                "lease_expires_at": {"$gt": datetime.now(timezone.utc)},
+            }
         )
         if intent is None or bucket_name not in intent.get("blob_ids", {}):
             raise UploadIntentLeaseLost("GridFS upload intent is unavailable")
         return intent["blob_ids"][bucket_name]
 
+    async def _renew_lease(self, intent_id: str) -> None:
+        """Renew only an unexpired upload lease; never resurrect stale ownership."""
+        now = datetime.now(timezone.utc)
+        result = await self._collection.update_one(
+            {
+                "_id": intent_id,
+                "state": "uploading",
+                "lease_expires_at": {"$gt": now},
+            },
+            {
+                "$set": {
+                    "heartbeat_at": now,
+                    "lease_expires_at": now + timedelta(seconds=LEASE_SECONDS),
+                },
+            },
+        )
+        if result.matched_count != 1:
+            raise UploadIntentLeaseLost("GridFS upload intent lease was lost")
+
     async def _heartbeat(self, intent_id: str) -> None:
         while True:
             await asyncio.sleep(HEARTBEAT_SECONDS)
-            now = datetime.now(timezone.utc)
-            result = await self._collection.update_one(
-                {
-                    "_id": intent_id,
-                    "state": "uploading",
-                    "lease_expires_at": {"$gt": now},
-                },
-                {
-                    "$set": {
-                        "heartbeat_at": now,
-                        "lease_expires_at": now + timedelta(seconds=LEASE_SECONDS),
-                    },
-                },
-            )
-            if result.matched_count != 1:
-                raise UploadIntentLeaseLost("GridFS upload intent lease was lost")
+            await self._renew_lease(intent_id)
 
     async def upload_with_heartbeat(
         self, intent_id: str, upload: Callable[[], Awaitable[Any]],
     ) -> Any:
+        # Establish live ownership before opening a GridFS stream. A delayed
+        # caller must not start writing against an expired/reaped intent.
+        await self._renew_lease(intent_id)
         upload_task = asyncio.create_task(upload())
         heartbeat_task = asyncio.create_task(self._heartbeat(intent_id))
         try:
