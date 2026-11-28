@@ -331,7 +331,7 @@ async def test_reconcile_removes_incomplete_gridfs_chunks_without_files_document
     })
     assert tombstone["state"] == "deleting"
     assert tombstone["cleanup_passes"] == 1
-\n
+
 
 @pytest.mark.asyncio
 async def test_reconciliation_is_scoped_to_one_resource_worker():
