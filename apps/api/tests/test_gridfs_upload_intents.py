@@ -349,3 +349,16 @@ async def test_reconciliation_is_scoped_to_one_resource_worker():
         "_id": "artifact-intent",
     }) is not None
 
+@pytest.mark.asyncio
+async def test_create_rejects_resource_type_bucket_mismatch_before_database_write():
+    database = Database()
+    store = MongoGridFSUploadIntentStore(database)
+
+    with pytest.raises(ValueError, match="resource type and GridFS buckets"):
+        await store.create(
+            organization_id="org", project_id="project",
+            resource_type="workspace_snapshot",
+            bucket_names=("execution_stdout", "execution_stderr"),
+        )
+    assert database["gridfs_upload_intents"].rows == []
+
