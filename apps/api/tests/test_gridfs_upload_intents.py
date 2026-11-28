@@ -18,6 +18,16 @@ class Cursor:
     def __init__(self, rows):
         self.rows = list(rows)
 
+    def sort(self, key, direction=1):
+        self.rows.sort(
+            key=lambda row: (
+                row.get(key) is not None,
+                row.get(key) or datetime.min.replace(tzinfo=timezone.utc),
+            ),
+            reverse=direction < 0,
+        )
+        return self
+
     def limit(self, count):
         self.rows = self.rows[:count]
         return self
@@ -179,7 +189,13 @@ async def test_reconcile_expired_upload_deletes_only_its_gridfs_files():
     assert [row["_id"] for row in database["workspace_snapshot_blobs.files"].rows] == [
         "orphan", "unrelated",
     ]
-    assert await database["gridfs_upload_intents"].find_one({"_id": "stale-intent"}) is None
+    tombstone = await database["gridfs_upload_intents"].find_one({"_id": "stale-intent"})
+    assert tombstone["state"] == "deleting"
+    assert tombstone["cleanup_passes"] == 1
+    # Re-sweeping is intentional: a paused uploader may resume after the first
+    # pass and write new chunks under its preallocated file ID.
+    assert await store.reconcile({"workspace_snapshot_blobs": bucket}) == 1
+    assert tombstone["cleanup_passes"] == 2
 
 
 @pytest.mark.asyncio
@@ -231,9 +247,11 @@ async def test_reconcile_resumes_after_partial_bucket_cleanup_failure():
     }) == 1
     assert stdout.deleted == {"stdout"}
     assert stderr.deleted == {"stderr"}
-    assert await database["gridfs_upload_intents"].find_one({
+    tombstone = await database["gridfs_upload_intents"].find_one({
         "_id": "deleting-intent",
-    }) is None
+    })
+    assert tombstone["state"] == "deleting"
+    assert tombstone["cleanup_passes"] == 1
 
 
 @pytest.mark.asyncio
@@ -308,9 +326,11 @@ async def test_reconcile_removes_incomplete_gridfs_chunks_without_files_document
         {"_id": "other-chunk", "files_id": "another-file", "n": 0},
     ]
     assert database["workspace_snapshot_blobs.files"].rows == []
-    assert await database["gridfs_upload_intents"].find_one({
+    tombstone = await database["gridfs_upload_intents"].find_one({
         "_id": "partial-intent",
-    }) is None
+    })
+    assert tombstone["state"] == "deleting"
+    assert tombstone["cleanup_passes"] == 1
 \n
 
 @pytest.mark.asyncio
