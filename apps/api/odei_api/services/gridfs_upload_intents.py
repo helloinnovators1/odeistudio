@@ -46,10 +46,10 @@ class MongoGridFSUploadIntentStore:
 
     async def initialize(self) -> None:
         await self._collection.create_index(
-            [("state", 1), ("lease_expires_at", 1)]
+            [("resource_type", 1), ("state", 1), ("lease_expires_at", 1)]
         )
         await self._collection.create_index(
-            [("state", 1), ("committed_at", 1)]
+            [("resource_type", 1), ("state", 1), ("committed_at", 1)]
         )
         await self._collection.create_index(
             [("organization_id", 1), ("project_id", 1), ("state", 1)]
