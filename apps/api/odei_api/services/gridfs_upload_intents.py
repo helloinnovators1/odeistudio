@@ -22,11 +22,13 @@ LEASE_SECONDS = 300
 HEARTBEAT_SECONDS = 30
 RECONCILE_GRACE_SECONDS = 120
 COMMITTED_INTENT_RETENTION = timedelta(days=1)
-ALLOWED_BUCKETS = frozenset({
-    "workspace_snapshot_blobs",
-    "execution_stdout",
-    "execution_stderr",
-})
+RESOURCE_BUCKETS = {
+    "workspace_snapshot": ("workspace_snapshot_blobs",),
+    "execution_artifact": ("execution_stdout", "execution_stderr"),
+}
+ALLOWED_BUCKETS = frozenset(
+    bucket for bucket_names in RESOURCE_BUCKETS.values() for bucket in bucket_names
+)
 
 
 class UploadIntentLeaseLost(RuntimeError):
@@ -57,10 +59,9 @@ class MongoGridFSUploadIntentStore:
         self, *, organization_id: str, project_id: str,
         resource_type: str, bucket_names: tuple[str, ...],
     ) -> str:
-        if not bucket_names or any(name not in ALLOWED_BUCKETS for name in bucket_names):
-            raise ValueError("upload intent contains an unsupported GridFS bucket")
-        if len(set(bucket_names)) != len(bucket_names):
-            raise ValueError("upload intent bucket names must be unique")
+        expected_buckets = RESOURCE_BUCKETS.get(resource_type)
+        if expected_buckets is None or tuple(bucket_names) != expected_buckets:
+            raise ValueError("upload intent resource type and GridFS buckets do not match")
         intent_id = uuid4().hex
         now = datetime.now(timezone.utc)
         document = {
@@ -159,6 +160,10 @@ class MongoGridFSUploadIntentStore:
         """Resume deleting intents and reap expired uploads in bounded batches."""
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ValueError("upload-intent reconciliation limit must be between 1 and 1000")
+        if resource_type is not None:
+            expected_buckets = RESOURCE_BUCKETS.get(resource_type)
+            if expected_buckets is None or set(buckets) != set(expected_buckets):
+                raise ValueError("upload-intent reconciler resource type and buckets do not match")
         now = datetime.now(timezone.utc)
         stale_before = now - timedelta(seconds=RECONCILE_GRACE_SECONDS)
         committed_before = now - COMMITTED_INTENT_RETENTION
