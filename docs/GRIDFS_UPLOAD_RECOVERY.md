@@ -25,13 +25,20 @@ must not assume that a metadata transaction can roll back a blob upload.
 - An unexpired `uploading` intent is owned by its uploader and is not touched.
 - An expired `uploading` intent is atomically claimed as `deleting` only
   after the lease expiry grace period.
-- A `deleting` intent is restartable. Its preallocated file IDs allow cleanup
-  of both completed `.files` documents and orphan `.chunks` records left by
-  a process crash before GridFS finalized the file.
+- A `deleting` intent is a durable tombstone and is deliberately retained
+  after a successful cleanup pass. Its preallocated file IDs allow cleanup of
+  both completed `.files` documents and orphan `.chunks` records left by a
+  process crash before GridFS finalized the file.
+- Reconciliation repeats cleanup for retained tombstones, rotating bounded
+  batches by the oldest cleanup timestamp. This covers a process that was
+  paused beyond its lease, resumed after an earlier cleanup pass, and wrote
+  additional chunks under its original file IDs. Tombstones must not be
+  garbage-collected merely because one cleanup pass found no remaining blobs.
 - A `committed` intent is never used to delete blobs. Its intent record is
   removed after the committed-intent retention period.
 - A partial cleanup leaves the intent in `deleting`; the next worker pass
-  repeats the idempotent file/chunk cleanup.
+  repeats the idempotent file/chunk cleanup. Successful passes also retain
+  the tombstone and update its cleanup timestamp/pass count.
 - Intent creation and publication both use the project write fence. A project
   entering deletion cannot admit a new upload or publish an upload that lost
   its lease.
