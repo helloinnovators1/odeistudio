@@ -29,7 +29,7 @@ async def run_snapshot_retention(
                 logger.info("Expired workspace snapshot retention removed %d snapshot(s)", deleted)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001 - retry transient storage and reconciliation failures
+        except Exception as exc:  # noqa: BLE001 - retry transient storage and reconciliation failures  # noqa: BLE001 - retry transient storage and reconciliation failures
             logger.warning(
                 "Expired workspace snapshot cleanup failed (%s); it will be retried",
                 type(exc).__name__,
@@ -57,7 +57,7 @@ async def run_execution_artifact_retention(
                 logger.info("Execution artifact retention removed %d artifact(s)", deleted)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - retry transient storage and reconciliation failures
             logger.warning(
                 "Execution artifact cleanup failed (%s); it will be retried",
                 type(exc).__name__,

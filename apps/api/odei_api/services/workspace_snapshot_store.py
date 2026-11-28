@@ -12,7 +12,6 @@ from gridfs.errors import NoFile
 from odei_api.services.gridfs_upload_intents import MongoGridFSUploadIntentStore
 from odei_api.services.project_lifecycle import fence_project_write
 
-
 _MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 
 

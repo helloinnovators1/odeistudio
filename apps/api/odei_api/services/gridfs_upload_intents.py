@@ -18,7 +18,6 @@ from gridfs.errors import NoFile
 
 from odei_api.services.project_lifecycle import fence_project_write
 
-
 LEASE_SECONDS = 300
 HEARTBEAT_SECONDS = 30
 RECONCILE_GRACE_SECONDS = 120
