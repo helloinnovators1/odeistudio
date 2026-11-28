@@ -152,20 +152,26 @@ class MongoGridFSUploadIntentStore:
         if result.matched_count != 1:
             raise UploadIntentLeaseLost("GridFS upload intent could not be committed")
 
-    async def reconcile(self, buckets: dict[str, Any], *, limit: int = 100) -> int:
+    async def reconcile(
+        self, buckets: dict[str, Any], *, limit: int = 100,
+        resource_type: str | None = None,
+    ) -> int:
         """Resume deleting intents and reap expired uploads in bounded batches."""
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ValueError("upload-intent reconciliation limit must be between 1 and 1000")
         now = datetime.now(timezone.utc)
         stale_before = now - timedelta(seconds=RECONCILE_GRACE_SECONDS)
         committed_before = now - COMMITTED_INTENT_RETENTION
-        cursor = self._collection.find({
+        query = {
             "$or": [
                 {"state": "deleting"},
                 {"state": "uploading", "lease_expires_at": {"$lte": stale_before}},
                 {"state": "committed", "committed_at": {"$lte": committed_before}},
             ],
-        }).limit(limit)
+        }
+        if resource_type is not None:
+            query["resource_type"] = resource_type
+        cursor = self._collection.find(query).limit(limit)
         intents = await cursor.to_list(length=limit)
         reconciled = 0
         for intent in intents:
