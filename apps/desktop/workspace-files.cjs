@@ -79,6 +79,23 @@ function readWorkspaceTextFile(root, relativePath, expectedRootIdentity) {
     }
     const content = Buffer.concat(chunks, totalBytes);
     const after = fs.fstatSync(descriptor, { bigint: true });
+    let verifyPath = canonicalRoot;
+    for (let index = 0; index < parts.length; index += 1) {
+      verifyPath = path.join(verifyPath, parts[index]);
+      const componentMetadata = fs.lstatSync(verifyPath, { bigint: true });
+      if (
+        componentMetadata.isSymbolicLink()
+        || (index < parts.length - 1 && !componentMetadata.isDirectory())
+      ) {
+        throw new Error("Workspace path changed to a symbolic link while being read");
+      }
+      if (
+        index === parts.length - 1
+        && (componentMetadata.dev !== before.dev || componentMetadata.ino !== before.ino)
+      ) {
+        throw new Error("Workspace file path changed while being read");
+      }
+    }
     const resolvedAgain = fs.realpathSync(current);
     if (!isWithinRoot(canonicalRoot, resolvedAgain)) {
       throw new Error("Selected path changed outside the workspace while being read");
