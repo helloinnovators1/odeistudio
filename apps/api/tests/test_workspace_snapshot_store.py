@@ -109,6 +109,7 @@ class Database:
         self.collections = {
             "workspace_snapshots": Collection(),
             "execution_runs": Collection(),
+            "gridfs_upload_intents": Collection(),
             "projects": Collection([
                 {"organization_id": "org", "project_id": "project", "status": "active"},
             ]),
