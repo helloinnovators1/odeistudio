@@ -337,7 +337,7 @@ def test_repository_binding_mutations_reject_active_runs_inside_transaction():
             "_id": "org:project", "organization_id": "org",
             "project_id": "project", "binding_version": 1,
         })
-        remove = client.delete(url, json={"expected_version": 1})
+        remove = client.request("DELETE", url, json={"expected_version": 1})
         assert remove.status_code == 409
         assert remove.json()["detail"]["code"] == "REPOSITORY_BINDING_LOCKED"
         assert len(database["nexus_repository_bindings"].rows) == 1
