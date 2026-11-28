@@ -54,7 +54,7 @@ class Collection:
                 return False
         return True
 
-    async def find_one(self, query):
+    async def find_one(self, query, **_kwargs):
         for row in self.rows:
             if self._matches(row, query):
                 return dict(row)
@@ -311,5 +311,36 @@ def test_repository_binding_cannot_change_while_execution_is_active():
         remove = TestClient(app).request("DELETE", url, json={"expected_version": 1})
         assert remove.status_code == 409
         assert remove.json()["detail"]["code"] == "REPOSITORY_BINDING_LOCKED"
+    finally:
+        restore(previous)
+
+
+
+def test_repository_binding_mutations_reject_active_runs_inside_transaction():
+    principal = Principal(subject="owner", issuer="https://id.example/")
+    previous, database, _audit = install(principal)
+    database["execution_runs"].rows.append({
+        "organization_id": "org", "project_id": "project",
+        "_id": "run-active", "status": "running",
+    })
+    try:
+        client = TestClient(app)
+        url = "/api/v1/organizations/org/projects/project/repository-binding"
+        bind = client.put(url, json={
+            "installation_id": 77, "owner": "acme", "repository": "service",
+        })
+        assert bind.status_code == 409
+        assert bind.json()["detail"]["code"] == "REPOSITORY_BINDING_LOCKED"
+        assert database["nexus_repository_bindings"].rows == []
+
+        database["nexus_repository_bindings"].rows.append({
+            "_id": "org:project", "organization_id": "org",
+            "project_id": "project", "binding_version": 1,
+        })
+        remove = client.delete(url, json={"expected_version": 1})
+        assert remove.status_code == 409
+        assert remove.json()["detail"]["code"] == "REPOSITORY_BINDING_LOCKED"
+        assert len(database["nexus_repository_bindings"].rows) == 1
+        assert database["organization_memberships"].rows[0]["project_admission_write_seq"] >= 2
     finally:
         restore(previous)
