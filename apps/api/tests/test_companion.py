@@ -14,7 +14,8 @@ from pydantic import SecretStr
 from odei_api.companion import ApplyChallengeManager, PairingManager, create_companion_app
 from odei_api.config import Settings
 from odei_api.services.patch_approval import issue_patch_apply_capability
-from odei_api.services.workspace_handles import WorkspaceHandleRegistry
+from odei_api.services.workspace_handles import WorkspaceHandleError, WorkspaceHandleRegistry
+from odei_api.services.workspace_transaction_journal import DurableWorkspaceJournal
 
 ORIGIN = "https://studio.example.test"
 BASE_URL = "http://127.0.0.1:8765"
@@ -25,7 +26,7 @@ def _build_client(tmp_path):
     selected.mkdir()
     (selected / "main.py").write_text("print('ODEI')", encoding="utf-8")
     registry = WorkspaceHandleRegistry()
-    workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
+    workspace_id = registry.register_selected_root(selected)
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
     app = create_companion_app(
@@ -536,7 +537,9 @@ def _build_apply_client(tmp_path):
     selected.mkdir()
     original = "print('ODEI')"
     (selected / "main.py").write_text(original, encoding="utf-8")
-    registry = WorkspaceHandleRegistry()
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    )
     workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     pairing = PairingManager()
     code = pairing.issue_pairing_code()
@@ -731,7 +734,9 @@ def test_companion_rejects_stale_or_mismatched_signed_patch_without_writing(tmp_
 def test_workspace_handle_applies_root_create_and_delete_atomically(tmp_path):
     selected = tmp_path / "project"
     selected.mkdir()
-    registry = WorkspaceHandleRegistry()
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    )
     workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     try:
         created_content = "print('created')"
@@ -768,7 +773,9 @@ def test_workspace_handle_applies_multi_file_batch_with_hash_guarded_operations(
     original = "print('before')"
     (selected / "main.py").write_text(original, encoding="utf-8")
     (selected / "remove.txt").write_text("remove me", encoding="utf-8")
-    registry = WorkspaceHandleRegistry()
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    )
     workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     try:
         replacement = "print('after')"
@@ -802,7 +809,9 @@ def test_workspace_handle_compensates_prior_files_when_later_operation_fails(tmp
     selected.mkdir()
     original = "before"
     (selected / "main.py").write_text(original, encoding="utf-8")
-    registry = WorkspaceHandleRegistry()
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    )
     workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     real_apply = workspace_patch_apply.apply_single_file_patch
     calls = {"count": 0}
@@ -840,7 +849,9 @@ def test_workspace_handle_reports_incomplete_batch_compensation(tmp_path, monkey
     selected = tmp_path / "project"
     selected.mkdir()
     (selected / "main.py").write_text("before", encoding="utf-8")
-    registry = WorkspaceHandleRegistry()
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    )
     workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     real_apply = workspace_patch_apply.apply_single_file_patch
     calls = {"count": 0}
@@ -913,7 +924,9 @@ def test_unconfigured_companion_stays_read_only_and_cannot_issue_apply_challenge
 def test_companion_rejects_invalid_pinned_public_keys_at_startup(tmp_path):
     selected = tmp_path / "project"
     selected.mkdir()
-    registry = WorkspaceHandleRegistry()
+    registry = WorkspaceHandleRegistry(
+        journal=DurableWorkspaceJournal(tmp_path / "journal.sqlite3")
+    )
     workspace_id = registry.register_selected_root(selected, allow_patch_apply=True)
     try:
         with pytest.raises(ValueError, match="public keys are invalid"):
@@ -1470,3 +1483,13 @@ def test_companion_main_only_enables_patch_writes_with_pinned_approval_keys(
 
     assert companion_module.main() == 0
     assert registrations == [(selected_path, expected_write_access)]
+
+def test_workspace_handle_refuses_write_access_without_durable_journal(tmp_path):
+    selected = tmp_path / "project"
+    selected.mkdir()
+    registry = WorkspaceHandleRegistry()
+    try:
+        with pytest.raises(WorkspaceHandleError, match="durable workspace journal"):
+            registry.register_selected_root(selected, allow_patch_apply=True)
+    finally:
+        registry.close()

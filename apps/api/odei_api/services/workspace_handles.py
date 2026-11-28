@@ -71,6 +71,10 @@ class WorkspaceHandleRegistry:
         absolute path supplied by a remote browser request to this method.
         """
         label = Path(selected_path).name or "Selected folder"
+        if allow_patch_apply and self._journal is None:
+            raise WorkspaceHandleError(
+                "A durable workspace journal is required for approved patch application"
+            )
         if os.name == "nt":
             from odei_api.services.windows_file_handles import open_directory_handle
 
