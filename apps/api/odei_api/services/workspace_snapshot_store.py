@@ -148,6 +148,7 @@ class MongoWorkspaceSnapshotStore:
     async def reconcile_upload_intents(self, *, limit: int = 100) -> int:
         return await self._upload_intents.reconcile(
             {"workspace_snapshot_blobs": self._bucket}, limit=limit,
+            resource_type="workspace_snapshot",
         )
 
     async def get_for_tenant(
