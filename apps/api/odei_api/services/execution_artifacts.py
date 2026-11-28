@@ -10,6 +10,7 @@ from gridfs.asynchronous import AsyncGridFSBucket
 from gridfs.errors import NoFile
 
 from odei_api.services.project_lifecycle import fence_project_write
+from odei_api.services.gridfs_upload_intents import MongoGridFSUploadIntentStore
 from odei_api.services.secret_redaction import redact_secrets
 
 
@@ -27,8 +28,10 @@ class MongoExecutionArtifactStore:
         self._client = database.client
         self._stdout = AsyncGridFSBucket(database, bucket_name="execution_stdout")
         self._stderr = AsyncGridFSBucket(database, bucket_name="execution_stderr")
+        self._upload_intents = MongoGridFSUploadIntentStore(database)
 
     async def initialize(self) -> None:
+        await self._upload_intents.initialize()
         await self._metadata.create_index(
             [("organization_id", 1), ("project_id", 1), ("task_id", 1), ("run_id", 1)],
             unique=True,
@@ -70,16 +73,34 @@ class MongoExecutionArtifactStore:
             return self.public_metadata(existing)
         safe_stdout = redact_secrets(stdout)
         safe_stderr = redact_secrets(stderr)
-        stdout_id = await self._stdout.upload_from_stream(
-            f"{run_id}-stdout.txt", io.BytesIO(safe_stdout.encode("utf-8")),
-            metadata={"organization_id": organization_id, "run_id": run_id},
+        intent_id = await self._upload_intents.create(
+            organization_id=organization_id,
+            project_id=project_id,
+            resource_type="execution_artifact",
+            bucket_names=("execution_stdout", "execution_stderr"),
         )
-        stderr_id = None
-        try:
+
+        async def upload_both() -> tuple[Any, Any]:
+            stdout_id = await self._stdout.upload_from_stream(
+                f"{run_id}-stdout.txt", io.BytesIO(safe_stdout.encode("utf-8")),
+                metadata={
+                    "organization_id": organization_id, "project_id": project_id,
+                    "run_id": run_id, "upload_intent_id": intent_id,
+                },
+            )
             stderr_id = await self._stderr.upload_from_stream(
                 f"{run_id}-stderr.txt", io.BytesIO(safe_stderr.encode("utf-8")),
-                metadata={"organization_id": organization_id, "run_id": run_id},
+                metadata={
+                    "organization_id": organization_id, "project_id": project_id,
+                    "run_id": run_id, "upload_intent_id": intent_id,
+                },
             )
+            return stdout_id, stderr_id
+
+        stdout_id, stderr_id = await self._upload_intents.upload_with_heartbeat(
+            intent_id, upload_both,
+        )
+        try:
             document = {
                 "_id": uuid4().hex, "organization_id": organization_id,
                 "project_id": project_id, "task_id": task_id, "run_id": run_id,
@@ -92,6 +113,7 @@ class MongoExecutionArtifactStore:
                 "stderr_bytes": len(safe_stderr.encode("utf-8")),
                 "created_at": datetime.now(timezone.utc),
                 "state": "available",
+                "upload_intent_id": intent_id,
             }
             async with self._client.start_session() as session, await session.start_transaction():
                 await fence_project_write(
@@ -99,6 +121,7 @@ class MongoExecutionArtifactStore:
                     project_id=project_id, session=session,
                 )
                 await self._metadata.insert_one(document, session=session)
+                await self._upload_intents.mark_committed(intent_id, session=session)
             return self.public_metadata(document)
         except Exception:
             # A lost commit acknowledgement can leave the transaction outcome
