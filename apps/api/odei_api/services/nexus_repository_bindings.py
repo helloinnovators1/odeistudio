@@ -96,6 +96,25 @@ async def _owner_only(request: Request, organization_id: str, project_id: str, p
     return database, audit
 
 
+async def _fence_owner_membership(database, organization_id: str, principal: Principal, session) -> None:
+    """Serialize privileged binding writes against organization membership revocation."""
+    result = await database["organization_memberships"].update_one(
+        {
+            "organization_id": organization_id,
+            "identity_issuer": principal.issuer,
+            "identity_subject": principal.subject,
+            "status": "active",
+        },
+        {"$inc": {"project_admission_write_seq": 1}},
+        session=session,
+    )
+    if result.matched_count != 1:
+        raise HTTPException(status_code=403, detail={
+            "code": "ORGANIZATION_ACCESS_DENIED",
+            "message": "Active organization membership is required.",
+        })
+
+
 async def _audit(audit, principal, organization_id, project_id, action, outcome, metadata=None, session=None):
     try:
         await audit.append(
@@ -201,6 +220,7 @@ async def bind_repository(
     try:
         client = request.app.state.mongo_client
         async with client.start_session() as session, await session.start_transaction():
+            await _fence_owner_membership(database, organization_id, principal, session)
             await fence_project_write(
                 database["projects"], organization_id=organization_id,
                 project_id=project_id, session=session,
@@ -254,15 +274,6 @@ async def remove_repository_binding(
     principal: Principal = principal_dependency,
 ):
     database, audit = await _owner_only(request, organization_id, project_id, principal)
-    active_run = await database["execution_runs"].find_one({
-        "organization_id": organization_id, "project_id": project_id,
-        "status": {"$in": ["queued", "leased", "running", "collecting"]},
-    })
-    if active_run is not None:
-        raise HTTPException(status_code=409, detail={
-            "code": "REPOSITORY_BINDING_LOCKED",
-            "message": "The trusted repository cannot change while a project execution is active.",
-        })
     collection = database["nexus_repository_bindings"]
     key = f"{organization_id}:{project_id}"
     await _audit(audit, principal, organization_id, project_id,
@@ -271,10 +282,21 @@ async def remove_repository_binding(
     try:
         client = request.app.state.mongo_client
         async with client.start_session() as session, await session.start_transaction():
+            await _fence_owner_membership(database, organization_id, principal, session)
             await fence_project_write(
                 database["projects"], organization_id=organization_id,
                 project_id=project_id, session=session,
             )
+            active_run = await database["execution_runs"].find_one({
+                "organization_id": organization_id,
+                "project_id": project_id,
+                "status": {"$in": ["queued", "leased", "running", "collecting"]},
+            }, session=session)
+            if active_run is not None:
+                raise HTTPException(status_code=409, detail={
+                    "code": "REPOSITORY_BINDING_LOCKED",
+                    "message": "The trusted repository cannot change while a project execution is active.",
+                })
             await collection.update_one(
                 {"_id": key, "merge_lock.expires_at": {"$lte": datetime.now(timezone.utc)}},
                 {"$unset": {"merge_lock": ""}}, session=session,
