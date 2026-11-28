@@ -9,9 +9,9 @@ mainline/production snapshot below.
 - **Canonical repository:** `helloinnovators1/odeistudio`.
 - **Mainline base observed for this branch:** `41aeefeb6b3b27a197464e824da366f0e2e6a74c`.
 - **Remediation branch:** `fix/worker-project-fencing-wiring`.
-- **Current branch head at this addendum:** `df49f78ee9a3bdc00181b583854204a0d23e3ec7`.
+- **Latest implementation commit covered by the CI evidence:** `df49f78ee9a3bdc00181b583854204a0d23e3ec7`; subsequent changes are documentation-only.
 - **Branch comparison at last check:** 178 commits ahead, 0 behind main; 66 changed paths. The branch is not protected.
-- **Current-tree CI evidence:** the current branch tree (`55d57c53216392e99773c3d88a53adaa4efb3aaa`) is identical to the tree tested by [CI run 46144066936](https://github.com/helloinnovators1/odeistudio/actions/runs/46144066936), which completed successfully. All four Python OS/version matrix jobs, MongoDB replica-set integration, web tests/build/browser journeys and desktop IPC security tests passed. The latest commit changes only branch history; the tree hash is unchanged.
+- **Current implementation CI evidence:** [CI run 46144066936](https://github.com/helloinnovators1/odeistudio/actions/runs/46144066936) completed successfully against implementation tree `55d57c53216392e99773c3d88a53adaa4efb3aaa`. All four Python OS/version matrix jobs, MongoDB replica-set integration, web tests/build/browser journeys and desktop IPC security tests passed. Since that run, only this status document has changed; executable source, tests and workflow configuration are unchanged from the tested tree.
 - **Open, unmerged PRs:** [#127](https://github.com/helloinnovators1/odeistudio/pull/127), [#128](https://github.com/helloinnovators1/odeistudio/pull/128), and [#129](https://github.com/helloinnovators1/odeistudio/pull/129). The remediation branch is not itself a PR. No merge or production deployment was initiated.
 - **Repository inventory:** the current branch tree contains 334 tracked paths, including 137 Python files under `apps/api`. The tree inventory is complete; this is not a claim that all 334 files have received a line-by-line review.
 
