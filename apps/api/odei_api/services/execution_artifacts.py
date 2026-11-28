@@ -167,6 +167,7 @@ class MongoExecutionArtifactStore:
                 "execution_stderr": self._stderr,
             },
             limit=limit,
+            resource_type="execution_artifact",
         )
 
     async def get_for_tenant(
