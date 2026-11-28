@@ -9,9 +9,9 @@ mainline/production snapshot below.
 - **Canonical repository:** `helloinnovators1/odeistudio`.
 - **Mainline base observed for this branch:** `41aeefeb6b3b27a197464e824da366f0e2e6a74c`.
 - **Remediation branch:** `fix/worker-project-fencing-wiring`.
-- **Current branch head at this addendum:** `a3cae6068ff434cbf09ab0f02afd1a3cbf0bb3f4`.
-- **Branch comparison at last check:** 160 commits ahead, 0 behind main; 54 changed paths. The branch is not protected.
-- **Current-head CI evidence:** no combined status checks or workflow runs were returned for the latest implementation head at the last verification. The new/modified tests below are therefore **not claimed as passing**.
+- **Current branch head at this addendum:** `df49f78ee9a3bdc00181b583854204a0d23e3ec7`.
+- **Branch comparison at last check:** 178 commits ahead, 0 behind main; 66 changed paths. The branch is not protected.
+- **Current-tree CI evidence:** the current branch tree (`55d57c53216392e99773c3d88a53adaa4efb3aaa`) is identical to the tree tested by [CI run 46144066936](https://github.com/helloinnovators1/odeistudio/actions/runs/46144066936), which completed successfully. All four Python OS/version matrix jobs, MongoDB replica-set integration, web tests/build/browser journeys and desktop IPC security tests passed. The latest commit changes only branch history; the tree hash is unchanged.
 - **Open, unmerged PRs:** [#127](https://github.com/helloinnovators1/odeistudio/pull/127), [#128](https://github.com/helloinnovators1/odeistudio/pull/128), and [#129](https://github.com/helloinnovators1/odeistudio/pull/129). The remediation branch is not itself a PR. No merge or production deployment was initiated.
 - **Repository inventory:** the current branch tree contains 334 tracked paths, including 137 Python files under `apps/api`. The tree inventory is complete; this is not a claim that all 334 files have received a line-by-line review.
 
@@ -23,6 +23,8 @@ mainline/production snapshot below.
 - Owner-authorized repository-index deletion is implemented; it is **not** complete project deletion.
 - Retrieval metrics (Recall@k, Precision@k, MRR@k and nDCG@k) have an evaluator, but a representative owner-approved corpus and reviewed relevance labels are still missing.
 - The companion has a bounded multi-file patch transaction, durable local journal and hash-guarded rollback/recovery paths. Its per-workspace lock is process-local and is **not** a durable API-side project lease.
+- The companion CLI now enables local patch writes only when both an approval issuer and pinned public keys are configured. The workspace registry fails closed if a write grant is requested without the durable SQLite journal. The authenticated browser journey now exercises sign-out and tenant-state clearing.
+- Electron desktop IPC is now restricted to the production `/odeistudio` route (not the Zuri OS root or sibling paths on the same origin) and the two explicit localhost development origins. Redirects outside those routes are blocked; the desktop origin/path policy has a dedicated Node test job in CI.
 - In this follow-up pass, expired GridFS leases are rejected before opening upload streams, and failed/uncertain repository-index revision cleanup now reads the active pointer and deletes orphan rows within a MongoDB snapshot transaction. Focused regression tests were added but have not been run on this branch.
 - The local patch and repository-intelligence documentation was reconciled with these current code paths. GridFS tombstones are retained indefinitely to prevent late writers from recreating chunks; this creates unbounded intent metadata growth until a stronger late-writer exclusion protocol is implemented.
 
