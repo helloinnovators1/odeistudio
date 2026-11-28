@@ -87,34 +87,63 @@ test("detects in-place modification during a descriptor read", () => {
   });
 });
 
-test("rejects a selected workspace root replaced during a file read", () => {
+test("rejects a selected workspace root replaced during a file read", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "odei-root-race-"));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "odei-outside-"));
   const movedRoot = root + ".original";
   const file = path.join(root, "race.txt");
   fs.writeFileSync(file, "before");
   fs.writeFileSync(path.join(outside, "race.txt"), "outside");
+  const probe = path.join(outside, "symlink-probe");
+  try {
+    fs.symlinkSync(outside, probe, "dir");
+    fs.unlinkSync(probe);
+  } catch (error) {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+    if (error.code === "EPERM" || error.code === "EACCES") {
+      t.skip("directory symlink creation is unavailable");
+      return;
+    }
+    throw error;
+  }
+
   const selectedIdentity = identity(root);
   const originalRead = fs.readSync;
   let swapped = false;
+  let swapError = null;
   fs.readSync = function patchedRead(...args) {
     const result = originalRead.apply(this, args);
-    if (result > 0 && !swapped) {
-      swapped = true;
-      fs.renameSync(root, movedRoot);
-      fs.symlinkSync(outside, root, "dir");
+    if (result > 0 && !swapped && !swapError) {
+      try {
+        fs.renameSync(root, movedRoot);
+        fs.symlinkSync(outside, root, "dir");
+        swapped = true;
+      } catch (error) {
+        swapError = error;
+      }
     }
     return result;
   };
+  let readError = null;
   try {
-    assert.throws(
-      () => readWorkspaceTextFile(root, "race.txt", selectedIdentity),
-      /outside the workspace|identity changed/,
-    );
+    try {
+      readWorkspaceTextFile(root, "race.txt", selectedIdentity);
+    } catch (error) {
+      readError = error;
+    }
+    if (swapError && ["EPERM", "EACCES", "EBUSY"].includes(swapError.code)) {
+      t.skip("platform does not permit replacing an open workspace directory");
+      return;
+    }
+    assert.equal(swapped, true);
+    assert.match(String(readError), /outside the workspace|identity changed/);
   } finally {
     fs.readSync = originalRead;
-    if (fs.lstatSync(root).isSymbolicLink()) fs.unlinkSync(root);
-    if (fs.existsSync(movedRoot)) fs.renameSync(movedRoot, root);
+    try {
+      if (fs.lstatSync(root).isSymbolicLink()) fs.unlinkSync(root);
+    } catch {}
+    if (fs.existsSync(movedRoot) && !fs.existsSync(root)) fs.renameSync(movedRoot, root);
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
   }
