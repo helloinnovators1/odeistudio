@@ -100,6 +100,11 @@ class Collection:
         self.rows = [row for row in self.rows if not _matches(row, query)]
         return SimpleNamespace(deleted_count=before - len(self.rows))
 
+    async def delete_many(self, query, **_kwargs):
+        before = len(self.rows)
+        self.rows = [row for row in self.rows if not _matches(row, query)]
+        return SimpleNamespace(deleted_count=before - len(self.rows))
+
 
 class Bucket:
     def __init__(self):
@@ -125,8 +130,11 @@ class Database:
                 "project_id": "project", "status": "active",
             }]),
             "workspace_snapshot_blobs.files": Collection(),
+            "workspace_snapshot_blobs.chunks": Collection(),
             "execution_stdout.files": Collection(),
+            "execution_stdout.chunks": Collection(),
             "execution_stderr.files": Collection(),
+            "execution_stderr.chunks": Collection(),
         }
 
     def __getitem__(self, name):
@@ -278,3 +286,29 @@ async def test_upload_is_cancelled_when_lease_is_lost(monkeypatch):
     with pytest.raises(UploadIntentLeaseLost):
         await task
     assert cancelled.is_set()
+
+@pytest.mark.asyncio
+async def test_reconcile_removes_incomplete_gridfs_chunks_without_files_document():
+    database = Database()
+    store = MongoGridFSUploadIntentStore(database)
+    database["gridfs_upload_intents"].rows.append({
+        "_id": "partial-intent", "state": "deleting",
+        "bucket_names": ["workspace_snapshot_blobs"],
+        "blob_ids": {"workspace_snapshot_blobs": "reserved-file-id"},
+    })
+    database["workspace_snapshot_blobs.chunks"].rows.extend([
+        {"_id": "chunk-0", "files_id": "reserved-file-id", "n": 0},
+        {"_id": "chunk-1", "files_id": "reserved-file-id", "n": 1},
+        {"_id": "other-chunk", "files_id": "another-file", "n": 0},
+    ])
+    bucket = Bucket()
+
+    assert await store.reconcile({"workspace_snapshot_blobs": bucket}) == 1
+    assert database["workspace_snapshot_blobs.chunks"].rows == [
+        {"_id": "other-chunk", "files_id": "another-file", "n": 0},
+    ]
+    assert database["workspace_snapshot_blobs.files"].rows == []
+    assert await database["gridfs_upload_intents"].find_one({
+        "_id": "partial-intent",
+    }) is None
+\n
