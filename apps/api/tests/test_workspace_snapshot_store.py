@@ -424,4 +424,4 @@ async def test_snapshot_put_commits_upload_intent_with_snapshot_metadata(monkeyp
     assert snapshot["upload_intent_id"] == intent["_id"]
     assert intent["state"] == "committed"
     assert database["workspace_snapshot_blobs.files"].rows[0]["metadata"]["upload_intent_id"] == intent["_id"]
-\n
+
