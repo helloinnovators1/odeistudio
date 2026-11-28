@@ -256,7 +256,13 @@ async def create_project(
                 "project", project["project_id"], "success",
                 {"name": payload.name}, session,
             )
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            await _audit(
+                request, principal, organization_id, "project.create",
+                "organization", organization_id, "denied",
+                {"reason": "active_membership_required"},
+            )
         raise
     except PyMongoError as exc:
         raise HTTPException(status_code=503, detail={
@@ -432,7 +438,13 @@ async def add_project_member(
                 {"member_issuer": payload.identity_issuer,
                  "member_subject": payload.identity_subject}, session,
             )
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            await _audit(
+                request, principal, organization_id, "project.member.add",
+                "project", project_id, "denied",
+                {"reason": "active_organization_membership_required"},
+            )
         raise
     except DuplicateKeyError as exc:
         raise HTTPException(status_code=409, detail={
