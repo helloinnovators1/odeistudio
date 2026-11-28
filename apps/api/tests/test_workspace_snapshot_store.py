@@ -52,6 +52,9 @@ class Collection:
             elif isinstance(value, dict) and "$in" in value:
                 if row.get(key) not in value["$in"]:
                     return False
+            elif isinstance(value, dict) and "$gt" in value:
+                if row.get(key) is None or row[key] <= value["$gt"]:
+                    return False
             elif row.get(key) != value:
                 return False
         return True
