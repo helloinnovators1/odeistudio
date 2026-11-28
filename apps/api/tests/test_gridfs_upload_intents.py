@@ -168,6 +168,46 @@ async def test_create_upload_intent_is_project_fenced_and_leased():
 
 
 @pytest.mark.asyncio
+async def test_blob_id_rejects_expired_upload_lease():
+    database = Database()
+    store = MongoGridFSUploadIntentStore(database)
+    intent_id = await store.create(
+        organization_id="org", project_id="project",
+        resource_type="workspace_snapshot", bucket_names=("workspace_snapshot_blobs",),
+    )
+    await database["gridfs_upload_intents"].update_one(
+        {"_id": intent_id},
+        {"$set": {"lease_expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
+    )
+
+    with pytest.raises(UploadIntentLeaseLost):
+        await store.blob_id(intent_id, "workspace_snapshot_blobs")
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_expired_lease_before_starting_stream():
+    database = Database()
+    store = MongoGridFSUploadIntentStore(database)
+    intent_id = await store.create(
+        organization_id="org", project_id="project",
+        resource_type="workspace_snapshot", bucket_names=("workspace_snapshot_blobs",),
+    )
+    await database["gridfs_upload_intents"].update_one(
+        {"_id": intent_id},
+        {"$set": {"lease_expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
+    )
+    upload_started = False
+
+    async def upload():
+        nonlocal upload_started
+        upload_started = True
+
+    with pytest.raises(UploadIntentLeaseLost):
+        await store.upload_with_heartbeat(intent_id, upload)
+    assert upload_started is False
+
+
+@pytest.mark.asyncio
 async def test_reconcile_expired_upload_deletes_only_its_gridfs_files():
     database = Database()
     store = MongoGridFSUploadIntentStore(database)
