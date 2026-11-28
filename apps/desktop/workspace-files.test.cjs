@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { readWorkspaceTextFile } = require("./workspace-files.cjs");
+const { readWorkspaceTextFile, listWorkspaceFiles } = require("./workspace-files.cjs");
 
 function identity(root) {
   const metadata = fs.statSync(root, { bigint: true });
@@ -147,4 +147,45 @@ test("rejects a selected workspace root replaced during a file read", (t) => {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
   }
+});
+
+ 
+test("workspace enumeration ignores symlinks and hard links without following them", (t) => {
+  withWorkspace((root) => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "odei-list-outside-"));
+    fs.writeFileSync(path.join(root, "inside.txt"), "inside");
+    fs.writeFileSync(path.join(outside, "secret.txt"), "outside secret");
+    try {
+      fs.symlinkSync(outside, path.join(root, "linked-dir"), "dir");
+      fs.symlinkSync(path.join(outside, "secret.txt"), path.join(root, "linked-file"));
+    } catch (error) {
+      fs.rmSync(outside, { recursive: true, force: true });
+      if (error.code === "EPERM" || error.code === "EACCES") {
+        t.skip("symbolic link creation is unavailable"); return;
+      }
+      throw error;
+    }
+    try {
+      assert.deepEqual(listWorkspaceFiles(root, identity(root)).map((item) => item.path), ["inside.txt"]);
+    } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+  });
+});
+
+test("workspace enumeration enforces bounded traversal", () => {
+  withWorkspace((root) => {
+    for (let index = 0; index < 40; index += 1) fs.mkdirSync(path.join(root, "directory-" + index));
+    assert.deepEqual(listWorkspaceFiles(root, identity(root)), []);
+  });
+});
+
+test("workspace enumeration rejects a replaced selected root", () => {
+  withWorkspace((root) => {
+    const expected = identity(root), moved = root + ".moved";
+    fs.renameSync(root, moved); fs.mkdirSync(root);
+    try { assert.throws(() => listWorkspaceFiles(root, expected), /identity changed/); }
+    finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.renameSync(moved, root);
+    }
+  });
 });

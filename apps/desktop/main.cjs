@@ -6,7 +6,7 @@ const { promisify } = require("node:util");
 const { app, BrowserWindow, WebContentsView, dialog, ipcMain, shell } = require("electron");
 const pty = require("node-pty");
 const { isTrustedAppUrl } = require("./security.cjs");
-const { readWorkspaceTextFile } = require("./workspace-files.cjs");
+const { readWorkspaceTextFile, listWorkspaceFiles } = require("./workspace-files.cjs");
 
 const execFileAsync = promisify(execFile);
 const APP_URL = process.env.ODEI_DESKTOP_URL || "https://zurios.vercel.app/odeistudio?window=ide";
@@ -170,30 +170,6 @@ handle("odei:window:toggle-maximize", () => {
 handle("odei:window:close", () => { mainWindow.close(); return true; });
 handle("odei:window:state", () => ({ minimized: mainWindow.isMinimized(), maximized: mainWindow.isMaximized(), focused: mainWindow.isFocused() }));
 
-function listWorkspaceFiles(root) {
-  const ignored = new Set([".git", "node_modules", ".next", "dist", "build", "coverage", ".turbo", ".venv", "__pycache__"]);
-  const files = [];
-  const pending = [""];
-  let totalBytes = 0;
-  while (pending.length && files.length < 5000 && totalBytes < 50 * 1024 * 1024) {
-    const relative = pending.pop();
-    const absolute = path.join(root, relative);
-    const entries = fs.readdirSync(absolute, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
-    for (const entry of entries) {
-      if (ignored.has(entry.name) || entry.isSymbolicLink()) continue;
-      const childRelative = relative ? path.join(relative, entry.name) : entry.name;
-      if (entry.isDirectory()) pending.push(childRelative);
-      else if (entry.isFile()) {
-        const size = fs.statSync(path.join(root, childRelative)).size;
-        if (size > 2 * 1024 * 1024) continue;
-        files.push({ path: childRelative.split(path.sep).join("/"), size });
-        totalBytes += size;
-        if (files.length >= 5000 || totalBytes >= 50 * 1024 * 1024) break;
-      }
-    }
-  }
-  return files.sort((a, b) => a.path.localeCompare(b.path));
-}
 
 handle("odei:workspace:select", async () => {
   const result = await dialog.showOpenDialog(mainWindow, { title: "Open ODEI workspace", properties: ["openDirectory", "createDirectory"] });
@@ -212,7 +188,7 @@ handle("odei:workspace:select", async () => {
 handle("odei:workspace:current", () => selectedWorkspace
   ? ({ name: path.basename(requireWorkspace()) })
   : null);
-handle("odei:workspace:files", () => listWorkspaceFiles(requireWorkspace()));
+handle("odei:workspace:files", () => listWorkspaceFiles(requireWorkspace(), selectedWorkspaceIdentity));
 handle("odei:workspace:read-file", (relativePath) => (
   readWorkspaceTextFile(requireWorkspace(), relativePath, selectedWorkspaceIdentity)
 ));
