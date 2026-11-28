@@ -72,11 +72,17 @@ class Collection:
             return True
         return next((row for row in self.rows if self.matches(row, query)), None)
 
+    async def insert_one(self, document, **_kwargs):
+        self.rows.append(dict(document))
+        return SimpleNamespace(inserted_id=document.get("_id"))
+
     async def update_one(self, query, update, **_kwargs):
         row = await self.find_one({"_id": query["_id"]})
         if row is None or not self.matches(row, query):
             return SimpleNamespace(matched_count=0)
-        row.update(update["$set"])
+        row.update(update.get("$set", {}))
+        for key in update.get("$unset", {}):
+            row.pop(key, None)
         return SimpleNamespace(matched_count=1)
 
     async def delete_one(self, query, **_kwargs):
@@ -106,7 +112,14 @@ class Database:
             "execution_artifacts": Collection(artifact_rows),
             "execution_runs": Collection(),
             "gridfs_upload_intents": Collection(),
-            "projects": Collection(),
+            "projects": Collection([{
+                "_id": "project-1", "organization_id": "org-1",
+                "project_id": "project-1", "status": "active",
+            }]),
+            "execution_stdout.files": Collection(),
+            "execution_stdout.chunks": Collection(),
+            "execution_stderr.files": Collection(),
+            "execution_stderr.chunks": Collection(),
         }
 
     def __getitem__(self, name):
@@ -264,3 +277,60 @@ async def test_artifact_read_hides_unknown_nonavailable_states():
     )
 
     assert result is None
+
+class UploadStream:
+    def __init__(self, bucket, file_id, filename, metadata):
+        self.bucket = bucket
+        self.file_id = file_id
+        self.filename = filename
+        self.metadata = metadata
+
+    async def __aenter__(self):
+        return self
+
+    async def write(self, data):
+        self.data = data
+
+    async def __aexit__(self, *_args):
+        self.bucket.database[f"{self.bucket.name}.files"].rows.append({
+            "_id": self.file_id, "filename": self.filename,
+            "metadata": self.metadata, "length": len(getattr(self, "data", b"")),
+        })
+
+
+class UploadBucket(Bucket):
+    def __init__(self, database, name):
+        super().__init__()
+        self.database = database
+        self.name = name
+
+    def open_upload_stream_with_id(self, file_id, filename, metadata=None):
+        return UploadStream(self, file_id, filename, metadata or {})
+
+
+@pytest.mark.asyncio
+async def test_artifact_put_commits_both_blobs_and_intent_atomically(monkeypatch):
+    database = Database([])
+    monkeypatch.setattr(
+        artifact_module, "AsyncGridFSBucket",
+        lambda db, bucket_name: UploadBucket(db, bucket_name),
+    )
+    store = MongoExecutionArtifactStore(database)
+
+    result = await store.put(
+        organization_id="org-1", project_id="project-1",
+        task_id="task-1", run_id="run-1", exit_code=0, duration_ms=25,
+        timed_out=False, stdout="safe output", stderr="safe error",
+        stdout_truncated=False, stderr_truncated=False,
+    )
+
+    artifact = database["execution_artifacts"].rows[0]
+    intent = database["gridfs_upload_intents"].rows[0]
+    assert result["run_id"] == "run-1"
+    assert artifact["stdout_blob_id"] == intent["blob_ids"]["execution_stdout"]
+    assert artifact["stderr_blob_id"] == intent["blob_ids"]["execution_stderr"]
+    assert artifact["upload_intent_id"] == intent["_id"]
+    assert intent["state"] == "committed"
+    assert database["execution_stdout.files"].rows[0]["metadata"]["upload_intent_id"] == intent["_id"]
+    assert database["execution_stderr.files"].rows[0]["metadata"]["upload_intent_id"] == intent["_id"]
+\n
